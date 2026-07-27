@@ -48,7 +48,7 @@ JoveMage 将 ChatGPT 官网的文本对话、图片生成/编辑等能力封装�
 ### 方式一：管理脚本（推荐）
 
 ```bash
-bash <(curl -sL https://gist.githubusercontent.com/jiujiu532/78f40bcbecbbd6cc22e547218a617cc7/raw/gistfile1.txt)
+bash <(curl -sL https://raw.githubusercontent.com/jiujiu532/JoveMage/main/install.sh)
 ```
 
 或 clone 后执行：

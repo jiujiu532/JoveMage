@@ -48,7 +48,7 @@ JoveMage is a **self-hosted** service that reverse-engineers ChatGPT web (chatgp
 ### Installer (recommended)
 
 ```bash
-bash <(curl -sL https://gist.githubusercontent.com/jiujiu532/78f40bcbecbbd6cc22e547218a617cc7/raw/gistfile1.txt)
+bash <(curl -sL https://raw.githubusercontent.com/jiujiu532/JoveMage/main/install.sh)
 ```
 
 Or:
