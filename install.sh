@@ -2,11 +2,10 @@
 # ============================================================
 #  JoveMage 管理工具
 #
-#  动态菜单（根据环境自动切换）:
-#    - 全新机器:   安装
-#    - 老用户首次: 迁移 + 卸载旧版 + 状态
-#    - 正常使用:   状态 + 配置 + 更新 + 清理图片 + 卸载
-#                  (检测到代理混乱时多一个"规整代理")
+#  动态菜单:
+#    - 未安装: 安装
+#    - 已安装: 状态 / 配置 / 更新 / 清理图片 / 卸载 / 重启换 IP
+#              (检测到代理问题时显示「规整代理」)
 #
 #  架构: 应用 → SOCKS5 → WARP → ChatGPT (无 Privoxy)
 #
@@ -22,8 +21,6 @@ SCRIPT_VERSION="0.1.0"
 INSTALL_DIR="/opt/jovemage"
 PROXY_DIR="/opt/warp-proxy"
 IMAGE="ghcr.io/jiujiu532/jovemage:latest"
-OLD_IMAGE="ghcr.io/jiujiu532/chatgpt2api-py:latest"
-OLD_INSTALL_DIR="/opt/chatgpt2api-py"
 
 CONFIG_FILE="$INSTALL_DIR/config.json"
 COMPOSE_FILE="$INSTALL_DIR/docker-compose.yml"
@@ -125,19 +122,6 @@ ensure_docker() {
 #  状态查询
 # ============================================================
 is_installed() { [ -f "$COMPOSE_FILE" ]; }
-
-has_legacy_install() {
-    [ -f "$OLD_INSTALL_DIR/docker-compose.yml" ] && return 0
-    [ -f "$OLD_INSTALL_DIR/config.json" ] && return 0
-    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qE '^chatgpt2api-py$'; then return 0; fi
-    if docker images --format '{{.Repository}}' 2>/dev/null | grep -qE '^ghcr\.io/jiujiu532/chatgpt2api-py$'; then return 0; fi
-    return 1
-}
-
-# 仅在新版未装且检测到旧版残留时返回 0
-needs_migration() {
-    has_legacy_install && ! is_installed
-}
 
 get_app_status() {
     if ! is_installed; then echo "未安装"; return; fi
@@ -1073,259 +1057,6 @@ cmd_normalize_proxies() {
 }
 
 # ============================================================
-#  cmd_migrate (8 步)
-# ============================================================
-cmd_migrate() {
-    log ""
-    log "========================================="
-    log "  迁移到新版 (chatgpt2api-py → jovemage)"
-    log "========================================="
-    log ""
-
-    if ! has_legacy_install; then
-        warn "未检测到旧版残留，无需迁移"
-        return 0
-    fi
-
-    ensure_docker || return 1
-
-    log "  整个流程分 8 步:"
-    log "    1. 停止旧服务"
-    log "    2. 备份旧数据 (排除 data/images/)"
-    log "    3. 移动目录 /opt/chatgpt2api-py → /opt/jovemage"
-    log "    4. 改写 docker-compose.yml"
-    log "    5. 补充 config.json 新字段"
-    log "    6. 升级代理套件 (旧 HTTP+Privoxy → 新 SOCKS5 直连)"
-    log "    7. 拉取新镜像并启动"
-    log "    8. (可选) 删除旧镜像"
-    log ""
-    log "  说明:"
-    log "    - 整个过程数据不会丢失"
-    log "    - 失败时会提示手动回滚命令"
-    log "    - 预计耗时 2-5 分钟"
-    log ""
-    if ! confirm "是否开始迁移" "Y"; then
-        info "已取消"
-        return 0
-    fi
-
-    log ""
-    info "[1/8] 停止旧服务..."
-    if [ -f "$OLD_INSTALL_DIR/docker-compose.yml" ]; then
-        (cd "$OLD_INSTALL_DIR" && $COMPOSE_CMD down 2>/dev/null) || true
-    fi
-    docker stop chatgpt2api-py 2>/dev/null || true
-    docker rm chatgpt2api-py 2>/dev/null || true
-    ok "旧服务已停止"
-
-    log ""
-    info "[2/8] 备份旧数据（排除 data/images/）..."
-    local ts backup_file
-    ts=$(date +%Y%m%d-%H%M%S)
-    backup_file="${HOME}/jovemage-migrate-backup-${ts}.tar.gz"
-    if [ -d "$OLD_INSTALL_DIR" ]; then
-        if ! tar -czf "$backup_file" \
-            --exclude="$(basename "$OLD_INSTALL_DIR")/data/images" \
-            -C "$(dirname "$OLD_INSTALL_DIR")" "$(basename "$OLD_INSTALL_DIR")" 2>/dev/null; then
-            err "备份失败！迁移中止。"
-            return 1
-        fi
-        ok "备份完成: $backup_file"
-    else
-        warn "$OLD_INSTALL_DIR 不存在，跳过备份"
-    fi
-
-    log ""
-    info "[3/8] 移动目录..."
-    if [ -d "$OLD_INSTALL_DIR" ]; then
-        if [ -d "$INSTALL_DIR" ]; then
-            warn "目标目录 $INSTALL_DIR 已存在"
-            log ""
-            log "    1) 合并：保留新目录，把旧目录的 data/ 和 config.json 合并进来"
-            log "    2) 终止迁移（请先手动处理 $INSTALL_DIR）"
-            log ""
-            local mc
-            mc=$(ask "请选择" "1")
-            if [ "$mc" != "1" ]; then
-                err "已取消（备份: $backup_file）"
-                return 1
-            fi
-            mkdir -p "$INSTALL_DIR/data"
-            [ -d "$OLD_INSTALL_DIR/data" ] && cp -rn "$OLD_INSTALL_DIR/data/." "$INSTALL_DIR/data/" 2>/dev/null || true
-            [ -f "$OLD_INSTALL_DIR/config.json" ] && [ ! -f "$CONFIG_FILE" ] && cp "$OLD_INSTALL_DIR/config.json" "$CONFIG_FILE"
-            [ -f "$OLD_INSTALL_DIR/docker-compose.yml" ] && [ ! -f "$COMPOSE_FILE" ] && cp "$OLD_INSTALL_DIR/docker-compose.yml" "$COMPOSE_FILE"
-            ok "已合并"
-        else
-            if mv "$OLD_INSTALL_DIR" "$INSTALL_DIR" 2>/dev/null; then
-                ok "目录已移动: $OLD_INSTALL_DIR → $INSTALL_DIR (mv)"
-            else
-                info "跨文件系统，使用 cp + rm..."
-                if cp -a "$OLD_INSTALL_DIR" "$INSTALL_DIR" && rm -rf "$OLD_INSTALL_DIR"; then
-                    ok "目录已迁移"
-                else
-                    err "目录迁移失败 (备份: $backup_file)"
-                    return 1
-                fi
-            fi
-        fi
-    fi
-
-    log ""
-    info "[4/8] 改写 docker-compose.yml..."
-    if [ -f "$COMPOSE_FILE" ]; then
-        cp "$COMPOSE_FILE" "${COMPOSE_FILE}.migrate.bak"
-        sed -i.tmp \
-            -e 's|container_name: chatgpt2api-py|container_name: jovemage|g' \
-            -e 's|ghcr\.io/jiujiu532/chatgpt2api-py|ghcr.io/jiujiu532/jovemage|g' \
-            "$COMPOSE_FILE"
-        rm -f "${COMPOSE_FILE}.tmp"
-        ok "compose 已改写（旧版备份: ${COMPOSE_FILE}.migrate.bak）"
-    fi
-
-    log ""
-    info "[5/8] 补充 config.json 新字段..."
-    local existing_proxy=""
-    if [ -f "$CONFIG_FILE" ] && validate_json "$CONFIG_FILE"; then
-        local tmp
-        existing_proxy=$(jq -r '.proxy // empty' "$CONFIG_FILE" 2>/dev/null)
-        if ! jq -e 'has("proxy_pool")' "$CONFIG_FILE" >/dev/null 2>&1; then
-            tmp=$(mktemp)
-            jq '. + {proxy_pool: []}' "$CONFIG_FILE" > "$tmp" && mv "$tmp" "$CONFIG_FILE"
-            ok "补充 proxy_pool: []"
-        fi
-        if ! jq -e 'has("image_max_retries")' "$CONFIG_FILE" >/dev/null 2>&1; then
-            tmp=$(mktemp)
-            jq '. + {image_max_retries: 3}' "$CONFIG_FILE" > "$tmp" && mv "$tmp" "$CONFIG_FILE"
-            ok "补充 image_max_retries: 3"
-        fi
-        # 一次性迁移：旧 proxy 字段并入 proxy_pool，然后删除
-        if [ -n "$existing_proxy" ]; then
-            local pool_len
-            pool_len=$(jq '.proxy_pool | length' "$CONFIG_FILE" 2>/dev/null || echo "0")
-            if [ "$pool_len" = "0" ]; then
-                tmp=$(mktemp)
-                jq --arg p "$existing_proxy" '.proxy_pool = [$p]' "$CONFIG_FILE" > "$tmp" && mv "$tmp" "$CONFIG_FILE"
-                ok "迁移旧 proxy 到 proxy_pool: $existing_proxy"
-            fi
-        fi
-        # 删除旧 proxy 字段（统一为 proxy_pool）
-        if jq -e 'has("proxy")' "$CONFIG_FILE" >/dev/null 2>&1; then
-            tmp=$(mktemp)
-            jq 'del(.proxy)' "$CONFIG_FILE" > "$tmp" && mv "$tmp" "$CONFIG_FILE"
-            ok "清理 config.json 中已废弃的 proxy 字段"
-        fi
-    fi
-    if [ -f "$REGISTER_FILE" ] && validate_json "$REGISTER_FILE"; then
-        if ! jq -e 'has("proxy_pool")' "$REGISTER_FILE" >/dev/null 2>&1; then
-            local tmp2
-            tmp2=$(mktemp)
-            jq '. + {proxy_pool: []}' "$REGISTER_FILE" > "$tmp2" && mv "$tmp2" "$REGISTER_FILE"
-            ok "register.json 补充 proxy_pool: []"
-        fi
-        # 一次性迁移 register.json 的旧 proxy 到 pool
-        local register_legacy_proxy
-        register_legacy_proxy=$(jq -r '.proxy // empty' "$REGISTER_FILE" 2>/dev/null)
-        if [ -n "$register_legacy_proxy" ]; then
-            local reg_pool_len
-            reg_pool_len=$(jq '.proxy_pool | length' "$REGISTER_FILE" 2>/dev/null || echo "0")
-            if [ "$reg_pool_len" = "0" ]; then
-                local tmp3
-                tmp3=$(mktemp)
-                jq --arg p "$register_legacy_proxy" '.proxy_pool = [$p]' "$REGISTER_FILE" > "$tmp3" && mv "$tmp3" "$REGISTER_FILE"
-                ok "迁移 register.json 旧 proxy 到 proxy_pool: $register_legacy_proxy"
-            fi
-        fi
-        if jq -e 'has("proxy")' "$REGISTER_FILE" >/dev/null 2>&1; then
-            local tmp4
-            tmp4=$(mktemp)
-            jq 'del(.proxy)' "$REGISTER_FILE" > "$tmp4" && mv "$tmp4" "$REGISTER_FILE"
-            ok "清理 register.json 中已废弃的 proxy 字段"
-        fi
-    fi
-
-    log ""
-    info "[6/8] 升级代理套件 (SOCKS5 直连)..."
-    log ""
-    log "  =========================================="
-    log "    检测到旧版代理架构"
-    log "  =========================================="
-    log "    旧布局: warp-proxy + privoxy (HTTP)"
-    log "    新布局: warp-1..N (SOCKS5 直连，跳过 Privoxy)"
-    log ""
-    log "    优势:"
-    log "      - 少一层中转，性能更好"
-    log "      - 无 max-client-connections 限制"
-    log "      - 解决 503 Too many open connections 问题"
-    log ""
-
-    cmd_normalize_proxies "migrate" || warn "代理升级失败，但继续后续步骤"
-
-    log ""
-    info "[7/8] 拉取新镜像 $IMAGE ..."
-    if ! docker pull "$IMAGE"; then
-        err "镜像拉取失败"
-        log ""
-        warn "数据已备份在 $backup_file"
-        warn "回滚命令: rm -rf $INSTALL_DIR && tar -xzf $backup_file -C /opt/ && cd $OLD_INSTALL_DIR && $COMPOSE_CMD up -d"
-        return 1
-    fi
-    ok "镜像拉取完成"
-
-    log ""
-    info "[8/8] 启动新服务..."
-    if ! compose_in "$INSTALL_DIR" up -d; then
-        err "新服务启动失败"
-        warn "数据已备份在 $backup_file"
-        warn "回滚命令: rm -rf $INSTALL_DIR && tar -xzf $backup_file -C /opt/"
-        return 1
-    fi
-
-    local port healthy=0 wait_secs=0
-    port=$(get_service_port)
-    [ -z "$port" ] && port="9000"
-    info "等待服务就绪..."
-    while [ $wait_secs -lt 30 ]; do
-        if curl -fsS --max-time 2 "http://127.0.0.1:${port}/health" &> /dev/null; then
-            healthy=1; break
-        fi
-        sleep 2
-        wait_secs=$(( wait_secs + 2 ))
-        echo -n "."
-    done
-    echo ""
-    if [ $healthy -eq 1 ]; then
-        ok "新服务已启动并通过健康检查"
-    else
-        warn "服务未在 30 秒内通过健康检查（可能仍在启动）"
-    fi
-
-    log ""
-    if docker images --format '{{.Repository}}' 2>/dev/null | grep -qE '^ghcr\.io/jiujiu532/chatgpt2api-py$'; then
-        if confirm "是否删除旧镜像 $OLD_IMAGE" "Y"; then
-            docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null \
-                | grep -E '^ghcr\.io/jiujiu532/chatgpt2api-py:' \
-                | xargs -r -n1 docker rmi 2>/dev/null || true
-            ok "旧镜像已删除"
-        fi
-    fi
-
-    log ""
-    log "========================================="
-    ok "迁移完成"
-    log "========================================="
-    log "  备份文件:     $backup_file"
-    log "  新安装目录:   $INSTALL_DIR"
-    log "  访问地址:     http://127.0.0.1:${port}"
-    log ""
-    log "  确认服务无问题后，可删除备份: rm $backup_file"
-    if [ -f "${COMPOSE_FILE}.migrate.bak" ]; then
-        log "  迁移残留备份:                 rm ${COMPOSE_FILE}.migrate.bak"
-    fi
-    log ""
-    return 0
-}
-
-# ============================================================
 #  cmd_config 子菜单
 # ============================================================
 restart_app_if_needed() {
@@ -1699,70 +1430,6 @@ cmd_uninstall() {
 }
 
 # ============================================================
-#  cmd_uninstall_legacy (老用户菜单专用)
-# ============================================================
-cmd_uninstall_legacy() {
-    log ""
-    log "========================================="
-    log "  卸载旧版 chatgpt2api-py"
-    log "========================================="
-    log ""
-    if ! has_legacy_install; then
-        warn "未检测到旧版残留"
-        return 0
-    fi
-    ensure_docker || return 1
-
-    log "  即将卸载旧版残留:"
-    [ -d "$OLD_INSTALL_DIR" ] && log "    - 旧目录:   $OLD_INSTALL_DIR"
-    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qE '^chatgpt2api-py$'; then
-        log "    - 旧容器:   chatgpt2api-py"
-    fi
-    if docker images --format '{{.Repository}}' 2>/dev/null | grep -qE '^ghcr\.io/jiujiu532/chatgpt2api-py$'; then
-        log "    - 旧镜像:   $OLD_IMAGE"
-    fi
-    log "    - 旧代理:   保留 (warp-proxy/privoxy 不删，新版可能还在用)"
-    log ""
-    warn "如果你之后想用旧数据，请先选 [M) 迁移到新版]！"
-    log ""
-
-    if confirm "是否在卸载前备份旧目录（排除 data/images/）" "Y"; then
-        local ts bk
-        ts=$(date +%Y%m%d-%H%M%S)
-        bk="${HOME}/chatgpt2api-py-uninstall-backup-${ts}.tar.gz"
-        if [ -d "$OLD_INSTALL_DIR" ]; then
-            tar -czf "$bk" \
-                --exclude="$(basename "$OLD_INSTALL_DIR")/data/images" \
-                -C "$(dirname "$OLD_INSTALL_DIR")" "$(basename "$OLD_INSTALL_DIR")" 2>/dev/null \
-                && ok "备份: $bk" \
-                || warn "备份失败"
-        fi
-    fi
-
-    log ""
-    local cw
-    read -rp '  请输入 "DELETE" 确认卸载旧版: ' cw
-    if [ "$cw" != "DELETE" ]; then
-        warn "已取消"
-        return 0
-    fi
-
-    if [ -f "$OLD_INSTALL_DIR/docker-compose.yml" ]; then
-        (cd "$OLD_INSTALL_DIR" && $COMPOSE_CMD down 2>/dev/null) || true
-    fi
-    docker stop chatgpt2api-py 2>/dev/null || true
-    docker rm chatgpt2api-py 2>/dev/null || true
-    if [ -d "$OLD_INSTALL_DIR" ]; then
-        rm -rf "$OLD_INSTALL_DIR"
-        ok "已删除 $OLD_INSTALL_DIR"
-    fi
-    docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null \
-        | grep -E '^ghcr\.io/jiujiu532/chatgpt2api-py:' \
-        | xargs -r -n1 docker rmi 2>/dev/null || true
-    ok "旧版残留清理完成"
-}
-
-# ============================================================
 #  cmd_clean_images
 # ============================================================
 cmd_clean_images() {
@@ -1772,85 +1439,34 @@ cmd_clean_images() {
     log "========================================="
     log ""
 
-    local new_dir="$INSTALL_DIR/data/images"
-    local old_dir="$OLD_INSTALL_DIR/data/images"
-    local found=0
-
-    declare -A dir_sizes dir_labels dir_counts
+    local img_dir="$INSTALL_DIR/data/images"
     local img_pattern='.*\.\(png\|jpg\|jpeg\|webp\|gif\|bmp\)$'
 
-    if [ -d "$new_dir" ]; then
-        dir_sizes["$new_dir"]=$(du -sh "$new_dir" 2>/dev/null | awk '{print $1}')
-        dir_labels["$new_dir"]="新版"
-        dir_counts["$new_dir"]=$(find "$new_dir" -type f -regex "$img_pattern" 2>/dev/null | wc -l)
-        found=1
-    fi
-    if [ -d "$old_dir" ]; then
-        dir_sizes["$old_dir"]=$(du -sh "$old_dir" 2>/dev/null | awk '{print $1}')
-        dir_labels["$old_dir"]="旧版残留"
-        dir_counts["$old_dir"]=$(find "$old_dir" -type f -regex "$img_pattern" 2>/dev/null | wc -l)
-        found=1
-    fi
-
-    if [ $found -eq 0 ]; then
-        warn "未发现任何图片目录"
+    if [ ! -d "$img_dir" ]; then
+        warn "未发现图片目录: $img_dir"
         return 0
     fi
 
-    log "  发现以下图片目录:"
-    log ""
-    local i=1 dir_list=()
-    for d in "${!dir_sizes[@]}"; do
-        printf "    %d) %s\n" "$i" "$d"
-        printf "       %s | %s 张图片 | [%s]\n" "${dir_sizes[$d]}" "${dir_counts[$d]}" "${dir_labels[$d]}"
-        dir_list+=("$d")
-        i=$(( i + 1 ))
-    done
-    log ""
-    log "    a) 清理所有图片目录"
-    log "    0) 返回"
-    log ""
+    local size count
+    size=$(du -sh "$img_dir" 2>/dev/null | awk '{print $1}')
+    count=$(find "$img_dir" -type f -regex "$img_pattern" 2>/dev/null | wc -l)
 
-    local choice
-    choice=$(ask "请选择" "0")
-    [ "$choice" = "0" ] && return 0
-
-    local targets=()
-    if [ "$choice" = "a" ] || [ "$choice" = "A" ]; then
-        targets=("${dir_list[@]}")
-    elif [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#dir_list[@]}" ]; then
-        targets+=("${dir_list[$(( choice - 1 ))]}")
-    else
-        warn "无效选项"
-        return 0
-    fi
-
+    log "  图片目录: $img_dir"
+    log "  占用空间: $size"
+    log "  图片数量: $count 张"
     log ""
-    log "  即将清空以下目录的图片（保留目录结构，不删除目录本身）:"
-    local total_count=0
-    for t in "${targets[@]}"; do
-        log "    - $t"
-        log "      ${dir_sizes[$t]} | ${dir_counts[$t]} 张图片"
-        total_count=$(( total_count + dir_counts[$t] ))
-    done
-    log ""
-    log "  说明: 仅删除图片文件，不影响服务运行（无需重启容器）"
+    log "  说明: 仅删除图片文件，保留目录结构；不影响服务运行（无需重启）"
     log ""
     warn "⚠️  此操作不可恢复！"
     log ""
-    if ! confirm "确认清理 $total_count 张图片" "N"; then
+    if ! confirm "确认清理 $count 张图片" "N"; then
         info "已取消"
         return 0
     fi
 
-    # 计算总字节数判断是否需要 DELETE 二次确认
-    local total_bytes=0
-    for t in "${targets[@]}"; do
-        local b
-        b=$(du -sb "$t" 2>/dev/null | awk '{print $1}')
-        total_bytes=$(( total_bytes + b ))
-    done
-    if [ $total_bytes -gt 10737418240 ]; then
+    local total_bytes
+    total_bytes=$(du -sb "$img_dir" 2>/dev/null | awk '{print $1}')
+    if [ "${total_bytes:-0}" -gt 10737418240 ]; then
         warn "即将清理超过 10GB 的数据"
         local cw
         read -rp '  请输入 "DELETE" 确认: ' cw
@@ -1860,25 +1476,15 @@ cmd_clean_images() {
         fi
     fi
 
-    # 逐目录清理：只删图片文件 + 空子目录，保留顶层目录
-    local total_deleted=0
-    for t in "${targets[@]}"; do
-        info "清理 $t ..."
-        local before_count
-        before_count=${dir_counts[$t]}
-        # 删除所有图片文件
-        find "$t" -type f -regex "$img_pattern" -delete 2>/dev/null
-        # 删除空子目录（保留顶层目录本身）
-        find "$t" -mindepth 1 -type d -empty -delete 2>/dev/null
-        local after_count
-        after_count=$(find "$t" -type f -regex "$img_pattern" 2>/dev/null | wc -l)
-        local deleted=$(( before_count - after_count ))
-        total_deleted=$(( total_deleted + deleted ))
-        ok "$t : 已删除 $deleted 张图片"
-    done
+    info "清理 $img_dir ..."
+    find "$img_dir" -type f -regex "$img_pattern" -delete 2>/dev/null
+    find "$img_dir" -mindepth 1 -type d -empty -delete 2>/dev/null
+    local after_count
+    after_count=$(find "$img_dir" -type f -regex "$img_pattern" 2>/dev/null | wc -l)
+    local deleted=$(( count - after_count ))
 
     log ""
-    ok "图片清理完成，共删除 $total_deleted 张图片"
+    ok "图片清理完成，共删除 $deleted 张图片"
     log "  (服务无需重启，可继续使用)"
 }
 
@@ -1888,7 +1494,7 @@ cmd_clean_images() {
 cmd_status() {
     log ""
     log "========================================="
-    log "  jovemage 状态"
+    log "  JoveMage 状态"
     log "========================================="
     log ""
 
@@ -1966,26 +1572,6 @@ cmd_status() {
         log "     自动移除异常:  $auto_remove"
     fi
 
-    if has_legacy_install; then
-        log ""
-        log "  ⚠️  检测到旧版本残留:"
-        if [ -d "$OLD_INSTALL_DIR" ]; then
-            local oldsize
-            oldsize=$(du -sh "$OLD_INSTALL_DIR" 2>/dev/null | awk '{print $1}')
-            log "     旧目录: $OLD_INSTALL_DIR ($oldsize)"
-        fi
-        if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qE '^chatgpt2api-py$'; then
-            log "     旧容器: chatgpt2api-py"
-        fi
-        if docker images --format '{{.Repository}}' 2>/dev/null | grep -qE '^ghcr\.io/jiujiu532/chatgpt2api-py$'; then
-            log "     旧镜像: ghcr.io/jiujiu532/chatgpt2api-py"
-        fi
-        log ""
-        if ! is_installed; then
-            log "     建议: 主菜单选择 [M) 迁移到新版]"
-        fi
-    fi
-
     if is_installed && detect_proxy_issues; then
         log ""
         log "  ⚠️  代理名称/配置存在问题，建议: 主菜单选择 [9) 规整代理]"
@@ -2002,44 +1588,14 @@ show_menu() {
 
     cat <<EOF
 =========================================
-  jovemage 管理工具 v${SCRIPT_VERSION}
+  JoveMage 管理工具 v${SCRIPT_VERSION}
 =========================================
 
 EOF
 
-    # ---- 三种状态判断 ----
-    # 1. 老用户首次（旧版残留 + 新版未装）
-    # 2. 全新机器（什么都没有）
-    # 3. 正常使用（新版已装）
     local choice
 
-    if needs_migration; then
-        # 菜单 2: 老用户
-        log "  ⚠️  检测到旧版本残留 (/opt/chatgpt2api-py)"
-        log "     旧镜像 chatgpt2api-py 已停止维护"
-        log "     强烈建议立即迁移到新版"
-        log ""
-        log "  请选择操作:"
-        log "    M) ⭐ 迁移到新版         (Migrate)"
-        log "    -----------------------------------"
-        log "    S) 查看旧版状态           (Status)"
-        log "    U) 仅卸载旧版             (Uninstall Legacy)"
-        log "    0) 退出"
-        log ""
-        choice=$(ask "请输入选项" "")
-        case "$choice" in
-            m|M) cmd_migrate ;;
-            s|S) cmd_status ;;
-            u|U) cmd_uninstall_legacy ;;
-            0) log "再见"; exit 0 ;;
-            *) warn "无效选项"; sleep 1 ;;
-        esac
-        press_enter
-        return
-    fi
-
     if ! is_installed; then
-        # 菜单 1: 全新机器
         log "  当前状态: 未安装"
         log ""
         log "  请选择操作:"
@@ -2056,7 +1612,7 @@ EOF
         return
     fi
 
-    # 菜单 3: 正常使用
+    # 已安装
     local v port status
     v=$(get_app_version)
     port=$(get_service_port)

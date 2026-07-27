@@ -59,7 +59,7 @@ cd JoveMage
 bash install.sh
 ```
 
-The installer covers install, status, config, image updates, image cleanup, uninstall, IP rotation, and legacy migration.
+The installer covers install, status, config, image updates, image cleanup, uninstall, and IP rotation.
 
 ### Docker Compose
 
