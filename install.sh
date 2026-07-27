@@ -142,7 +142,7 @@ get_app_version() {
 }
 
 # 拉取远端最新版本（从 Gist 维护的版本号文件读取，3 秒超时）
-# 缓存到 /tmp/jovemage-latest-version，60 秒内复用
+# 从 GitHub Releases latest 拉取最新版本；缓存到 /tmp/jovemage-latest-version，60 秒内复用
 get_latest_version() {
     local cache="/tmp/jovemage-latest-version"
     if [ -f "$cache" ]; then
@@ -153,15 +153,26 @@ get_latest_version() {
             return 0
         fi
     fi
-    local v
-    v=$(curl -fsS --max-time 3 \
-        https://gist.githubusercontent.com/jiujiu532/95d68a1fb1f179fc9fb6cf7c11d88873/raw 2>/dev/null \
-        | head -1 \
-        | tr -d '[:space:]')
-    if [ -n "$v" ]; then
-        # 去掉 v 前缀（v0.6.23 → 0.6.23）
+    local raw v
+    raw=$(curl -fsS --max-time 5 \
+        -H "Accept: application/vnd.github+json" \
+        -H "User-Agent: jovemage-install" \
+        https://api.github.com/repos/jiujiu532/JoveMage/releases/latest 2>/dev/null || true)
+    if [ -z "$raw" ]; then
+        return 0
+    fi
+    if command -v jq >/dev/null 2>&1; then
+        v=$(printf '%s' "$raw" | jq -r '.tag_name // empty' 2>/dev/null || true)
+    else
+        v=$(printf '%s' "$raw" \
+            | grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"[^"]+"' \
+            | head -1 \
+            | sed -E 's/.*"([^"]+)"[[:space:]]*$/\1/')
+    fi
+    if [ -n "$v" ] && [ "$v" != "null" ]; then
+        # 去掉 v 前缀（v0.1.0 → 0.1.0）
         v="${v#v}"
-        echo "$v" > "$cache" 2>/dev/null
+        echo "$v" > "$cache" 2>/dev/null || true
         echo "$v"
     fi
 }
@@ -172,7 +183,7 @@ get_latest_version() {
 #   2 = current > latest (本地更新，不太可能)
 #   3 = 无法判断
 compare_versions() {
-    local current="$1" latest="$2"
+    local current="${1#v}" latest="${2#v}"
     [ -z "$current" ] || [ "$current" = "未知" ] && return 3
     [ -z "$latest" ] && return 3
     [ "$current" = "$latest" ] && return 0
