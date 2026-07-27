@@ -1,0 +1,31 @@
+.help-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 1px solid hsl(var(--border));
+  font-size: 10px;
+  line-height: 1;
+  color: hsl(var(--muted-foreground));
+  cursor: default;
+}
+
+@media (min-width: 1024px) {
+  .dashboard-split {
+    flex-direction: row;
+    flex-wrap: nowrap;
+  }
+
+  .dashboard-split .dashboard-main {
+    flex: 0 0 66.6667%;
+    max-width: 66.6667%;
+  }
+
+  .dashboard-split .dashboard-side {
+    flex: 0 0 33.3333%;
+    max-width: 33.3333%;
+  }
+}
+

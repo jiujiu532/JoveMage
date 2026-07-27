@@ -1,0 +1,67 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+web_dist
+# Virtual environments
+.venv
+.idea
+data
+config.json
+config.local*.json
+edit
+
+docker-compose-local.yml
+
+.claude/settings.local.json
+
+# Environment variables
+.env
+.env.local
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Git cache
+git_cache/
+
+# 调试/测试输出目录
+.codex/run-logs/
+.playwright-mcp/
+logs/
+*.log
+runtime/
+loginwithpassword_*/
+logwithemailverifycode_*/
+test_batch_output/
+
+# 本地实验/生成物
+.omo/
+skills/
+standalone/
+test/
+tests/
+!/test/
+/test/*
+!/test/test_register_passwordless.py
+!/test/test_sentinel_turnstile.py
+!/test/test_register_pool_metrics.py
+docs/*.md
+scripts/test_*.py
+web/
+feedback.md
+/1
+
+# Local Windows launcher scripts (not for release)
+run-backend.bat
+run-web-dev.bat
+*.bat
+
+# Local-only workflow / docs (not published to GitHub)
+.trellis/
+CHANGELOG.md
