@@ -103,8 +103,8 @@ Vue 3.5 + TS + Vite 7 + Tailwind 3 + Pinia + vue-router（**hash 模式**），U
 
 | 路线 | 架构 | 说明 |
 |---|---|---|
-| `install.sh`（主推） | 应用 → SOCKS5 → WARP，**无 Privoxy**，1-6 实例 | 生产部署脚本，`proxy_pool` 形如 `socks5h://warp-N:1080` |
-| `docker-compose.warp.yml` | 单实例 WARP + Privoxy(HTTP转SOCKS5) + FlareSolverr | 仓库自带备用编排，静态单实例 |
+| `install.sh`（主推） | 应用 → SOCKS5 → WARP，**无 Privoxy**，1-6 实例 | 全量落在 `/opt/jovemage`：代理 compose 在 `proxy/`，容器名 `jovemage-warp-N` / `jovemage-flaresolverr`，网络固定 `jovemage_net`；`proxy_pool` 形如 `socks5h://jovemage-warp-N:1080`。**检测/清理只碰本部署资源，不扫系统其它 WARP/Flare/Privoxy** |
+| `docker-compose.warp.yml` | 单实例 WARP + Privoxy(HTTP转SOCKS5) + FlareSolverr | 仓库自带备用编排，静态单实例（`jovemage-warp-proxy` 等） |
 
 两者不可混用。Cloudflare 挑战由 `services/proxy_service.py` 的 `FlareSolverrClearanceProvider` 取 cf_clearance cookie。
 

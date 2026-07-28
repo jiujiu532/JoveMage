@@ -17,9 +17,10 @@ set -uo pipefail
 # ============================================================
 #  全局变量
 # ============================================================
-SCRIPT_VERSION="0.1.0"
+SCRIPT_VERSION="0.1.1"
 INSTALL_DIR="/opt/jovemage"
-PROXY_DIR="/opt/warp-proxy"
+# 代理套件始终放在安装目录内，不碰系统其他路径
+PROXY_DIR="$INSTALL_DIR/proxy"
 IMAGE="ghcr.io/jiujiu532/jovemage:latest"
 
 CONFIG_FILE="$INSTALL_DIR/config.json"
@@ -27,6 +28,11 @@ COMPOSE_FILE="$INSTALL_DIR/docker-compose.yml"
 REGISTER_FILE="$INSTALL_DIR/data/register.json"
 PROXY_COMPOSE_FILE="$PROXY_DIR/docker-compose.yml"
 APP_NETWORK="jovemage_net"
+APP_CONTAINER="jovemage"
+APP_COMPOSE_PROJECT="jovemage"
+PROXY_COMPOSE_PROJECT="jovemage-proxy"
+WARP_NAME_PREFIX="jovemage-warp"
+FLARE_CONTAINER="jovemage-flaresolverr"
 
 COMPOSE_CMD=""
 
@@ -125,7 +131,7 @@ is_installed() { [ -f "$COMPOSE_FILE" ]; }
 
 get_app_status() {
     if ! is_installed; then echo "未安装"; return; fi
-    if docker ps --format '{{.Names}}' 2>/dev/null | grep -qE '^jovemage$'; then
+    if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$APP_CONTAINER"; then
         echo "运行中"
     else
         echo "已停止"
@@ -134,11 +140,27 @@ get_app_status() {
 
 get_app_version() {
     local v
-    v=$(docker inspect jovemage --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' 2>/dev/null || true)
+    v=$(docker inspect "$APP_CONTAINER" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' 2>/dev/null || true)
     if [ -z "$v" ] || [ "$v" = "<no value>" ]; then
-        v=$(docker inspect jovemage --format '{{ .Config.Image }}' 2>/dev/null | sed 's/.*://' || true)
+        v=$(docker inspect "$APP_CONTAINER" --format '{{ .Config.Image }}' 2>/dev/null | sed 's/.*://' || true)
     fi
     [ -z "$v" ] && echo "未知" || echo "$v"
+}
+
+wait_healthy() {
+    local max_secs="${1:-30}" port wait_secs=0
+    port=$(get_service_port)
+    [ -z "$port" ] && port="9000"
+    while [ $wait_secs -lt "$max_secs" ]; do
+        if curl -fsS --max-time 2 "http://127.0.0.1:${port}/health" &>/dev/null; then
+            return 0
+        fi
+        sleep 2
+        wait_secs=$(( wait_secs + 2 ))
+        echo -n "."
+    done
+    echo ""
+    return 1
 }
 
 # 拉取远端最新版本（从 Gist 维护的版本号文件读取，3 秒超时）
@@ -202,53 +224,111 @@ get_service_port() {
     grep -oE '127\.0\.0\.1:[0-9]+:80' "$COMPOSE_FILE" 2>/dev/null | head -1 | awk -F: '{print $2}'
 }
 
-# 当前规范命名的 WARP 数量 (warp-1, warp-2, ...)
-count_warp_normalized() {
-    docker ps --format '{{.Names}}' 2>/dev/null | grep -cE '^warp-[0-9]+$' || true
+# 本部署所属容器名（仅 jovemage 前缀，绝不扫描系统其它 WARP/Flare）
+own_warp_name() { echo "${WARP_NAME_PREFIX}-$1"; }
+
+# 本部署正在运行的 WARP 数量
+count_own_warp_running() {
+    local n=0 i
+    for (( i=1; i<=6; i++ )); do
+        if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$(own_warp_name "$i")"; then
+            n=$((n + 1))
+        fi
+    done
+    echo "$n"
 }
 
-# 旧命名 warp-proxy 是否存在
-has_legacy_warp() {
-    docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qE '^warp-proxy$'
+# 本部署 compose 声明的 WARP 数量
+count_own_warp_declared() {
+    [ -f "$PROXY_COMPOSE_FILE" ] || { echo 0; return; }
+    local n
+    n=$(grep -cE "container_name:[[:space:]]*${WARP_NAME_PREFIX}-[0-9]+" "$PROXY_COMPOSE_FILE" 2>/dev/null || true)
+    # grep -c 无匹配时某些环境输出空或 0 且非 0 退出码；统一成整数
+    [[ "$n" =~ ^[0-9]+$ ]] || n=0
+    echo "$n"
 }
 
-# 旧命名 privoxy (任意) 是否存在
-has_legacy_privoxy() {
-    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qE '^privoxy$'; then return 0; fi
-    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qE '^privoxy-[0-9]+$'; then return 0; fi
-    return 1
+has_own_flare_running() {
+    docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$FLARE_CONTAINER"
 }
 
-has_flaresolverr_container() {
-    docker ps --format '{{.Names}}' 2>/dev/null | grep -qE '^flaresolverr$'
+has_own_proxy_suite() {
+    [ -f "$PROXY_COMPOSE_FILE" ] && [ "$(count_own_warp_declared)" -gt 0 ]
 }
 
 # 专属网络是否存在
 has_app_network() {
-    docker network ls --format '{{.Name}}' 2>/dev/null | grep -qE "^${APP_NETWORK}$"
+    docker network ls --format '{{.Name}}' 2>/dev/null | grep -qx "$APP_NETWORK"
 }
 
 # 容器是否在专属网络中
 container_in_app_network() {
     local name="$1"
-    docker inspect "$name" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null | grep -q "$APP_NETWORK"
+    docker inspect "$name" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null | grep -qw "$APP_NETWORK"
 }
 
-# 确保专属网络存在
+# 本部署相关容器列表（仅自己的名字）
+list_own_containers() {
+    local names=("$APP_CONTAINER" "$FLARE_CONTAINER") i
+    for (( i=1; i<=6; i++ )); do
+        names+=("$(own_warp_name "$i")")
+    done
+    local name
+    for name in "${names[@]}"; do
+        if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$name"; then
+            echo "$name"
+        fi
+    done
+}
+
+# 确保专属网络存在；已存在则复用，不改名、不碰其它网络
 ensure_app_network() {
     if ! has_app_network; then
-        docker network create "$APP_NETWORK" >/dev/null 2>&1 || true
+        docker network create "$APP_NETWORK" >/dev/null
+        ok "已创建专属网络: $APP_NETWORK"
     fi
 }
 
-# 把容器加入专属网络（如果还没加入）
+# 重建专属网络（同名）：只断开本部署容器，不碰其它容器/网络
+recreate_app_network() {
+    local name
+    info "重建专属网络 $APP_NETWORK（仅断开本部署容器）..."
+    while IFS= read -r name; do
+        [ -z "$name" ] && continue
+        docker network disconnect -f "$APP_NETWORK" "$name" 2>/dev/null || true
+    done < <(list_own_containers)
+
+    if has_app_network; then
+        if docker network rm "$APP_NETWORK" >/dev/null 2>&1; then
+            ok "已删除旧网络 $APP_NETWORK"
+        else
+            warn "无法删除 $APP_NETWORK（可能仍有非本部署容器占用），将继续复用"
+            return 0
+        fi
+    fi
+    docker network create "$APP_NETWORK" >/dev/null
+    ok "已创建网络 $APP_NETWORK"
+}
+
+# 把本部署容器加入专属网络（如果还没加入）
 connect_to_app_network() {
     local name="$1"
-    if docker ps --format '{{.Names}}' 2>/dev/null | grep -qE "^${name}$"; then
+    if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$name"; then
         if ! container_in_app_network "$name"; then
             docker network connect "$APP_NETWORK" "$name" 2>/dev/null || true
         fi
     fi
+}
+
+connect_own_containers_to_app_network() {
+    local name n i
+    connect_to_app_network "$APP_CONTAINER"
+    connect_to_app_network "$FLARE_CONTAINER"
+    n=$(count_own_warp_declared)
+    [ "$n" -lt 1 ] && n=$(count_own_warp_running)
+    for (( i=1; i<=n; i++ )); do
+        connect_to_app_network "$(own_warp_name "$i")"
+    done
 }
 
 is_port_in_use() {
@@ -262,23 +342,38 @@ is_port_in_use() {
     fi
 }
 
-# 检测是否需要规整代理 (返回 0=需要, 1=不需要)
+# 检测本部署是否需要规整代理 (返回 0=需要, 1=不需要)
+# 只看 /opt/jovemage 内配置与本部署容器，不扫描系统其它 WARP/Flare/Privoxy
 detect_proxy_issues() {
-    # 1) 旧版 warp-proxy 还在
-    has_legacy_warp && return 0
-    # 2) 旧版 privoxy 还在
-    has_legacy_privoxy && return 0
-    # 3) proxy_pool 中包含 http://privoxy 之类的失效项
+    # 1) 本部署 config 的 proxy_pool 仍含 privoxy（失效架构）
     if [ -f "$CONFIG_FILE" ] && validate_json "$CONFIG_FILE"; then
-        if jq -e '.proxy_pool[]? | select(contains("privoxy"))' "$CONFIG_FILE" >/dev/null 2>&1; then
+        if jq -e '.proxy_pool[]? | select(test("privoxy";"i"))' "$CONFIG_FILE" >/dev/null 2>&1; then
+            return 0
+        fi
+        # 2) 本部署 config 仍指向未加前缀的旧主机名 warp-N / flaresolverr
+        if jq -e --arg p "$WARP_NAME_PREFIX" \
+            '.proxy_pool[]? | select(test("://warp-[0-9]+(:|/|$)") and (contains($p) | not))' \
+            "$CONFIG_FILE" >/dev/null 2>&1; then
             return 0
         fi
     fi
-    # 4) jovemage 不在专属网络中（但有 WARP 在跑）
+    # 3) 声明了本部署代理套件，但容器未跑齐
+    if has_own_proxy_suite; then
+        local declared running
+        declared=$(count_own_warp_declared)
+        running=$(count_own_warp_running)
+        if [ "$declared" -gt 0 ] && [ "$running" -lt "$declared" ]; then
+            return 0
+        fi
+        if ! has_own_flare_running; then
+            return 0
+        fi
+    fi
+    # 4) 本部署 app 不在专属网络（且本部署有 WARP）
     local warp_count
-    warp_count=$(count_warp_normalized)
-    if [ "$warp_count" -gt 0 ] && docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^jovemage$'; then
-        if ! container_in_app_network "jovemage"; then
+    warp_count=$(count_own_warp_running)
+    if [ "$warp_count" -gt 0 ] && docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$APP_CONTAINER"; then
+        if ! container_in_app_network "$APP_CONTAINER"; then
             return 0
         fi
     fi
@@ -345,16 +440,17 @@ validate_json() {
 # ============================================================
 #  代理套件 (SOCKS5 直连，无 Privoxy)
 # ============================================================
-# 生成 N 个 WARP + 1 个 FlareSolverr 的 compose
+# 生成 N 个 WARP + 1 个 FlareSolverr 的 compose（仅本部署命名）
 generate_proxy_compose() {
-    local out="$1" n="$2" i
+    local out="$1" n="$2" i warp_name
     {
         echo "services:"
         for (( i=1; i<=n; i++ )); do
+            warp_name="$(own_warp_name "$i")"
             cat <<EOF
   warp-$i:
     image: caomingjun/warp:latest
-    container_name: warp-$i
+    container_name: $warp_name
     restart: unless-stopped
     environment:
       - WARP_SLEEP=2
@@ -372,10 +468,8 @@ EOF
         cat <<EOF
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:latest
-    container_name: flaresolverr
+    container_name: $FLARE_CONTAINER
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:8191:8191"
     environment:
       TZ: Asia/Shanghai
       LOG_LEVEL: info
@@ -390,15 +484,21 @@ EOF
     } > "$out"
 }
 
-# 等待 WARP 就绪（轮询健康检查）
+# 等待本部署 WARP 就绪（只探测 jovemage-warp-*）
 wait_warp_ready() {
-    info "等待 WARP 连接初始化..."
-    local waited=0 probe
+    info "等待本部署 WARP 连接初始化..."
+    local waited=0 probe i
     while [ $waited -lt 60 ]; do
-        probe=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^warp-[0-9]+$|^warp-proxy$' | head -1)
+        probe=""
+        for (( i=1; i<=6; i++ )); do
+            if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$(own_warp_name "$i")"; then
+                probe="$(own_warp_name "$i")"
+                break
+            fi
+        done
         if [ -n "$probe" ] && \
            docker exec "$probe" curl -fsS --max-time 3 https://cloudflare.com/cdn-cgi/trace &>/dev/null; then
-            ok "WARP 已连接（耗时 ${waited}s）"
+            ok "WARP 已连接（$probe，耗时 ${waited}s）"
             return 0
         fi
         sleep 3
@@ -406,45 +506,40 @@ wait_warp_ready() {
         echo -n "."
     done
     echo ""
-    warn "WARP 60 秒内未完成连接，请检查容器状态"
+    warn "WARP 60 秒内未完成连接，请检查本部署容器: docker ps | grep $WARP_NAME_PREFIX"
     return 1
 }
 
-# 生成 N 个 SOCKS5 URL（换行分隔）
+# 生成 N 个 SOCKS5 URL（换行分隔，主机名为本部署容器名）
 generate_socks5_pool_text() {
     local n="$1" i out=""
     for (( i=1; i<=n; i++ )); do
         if [ -z "$out" ]; then
-            out="socks5h://warp-$i:1080"
+            out="socks5h://$(own_warp_name "$i"):1080"
         else
             out="$out
-socks5h://warp-$i:1080"
+socks5h://$(own_warp_name "$i"):1080"
         fi
     done
     echo "$out"
 }
 
-# 获取容器所在网络名（用于 jovemage 加入）
+# 本部署固定使用专属网络名
 detect_proxy_network() {
-    # 优先使用专属网络
-    if has_app_network; then
-        echo "$APP_NETWORK"
-        return
-    fi
-    # 回退：检测 WARP 容器所在网络
-    local first
-    first=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^warp-[0-9]+$|^warp-proxy$' | head -1)
-    [ -z "$first" ] && { echo ""; return; }
-    docker inspect "$first" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null | awk '{print $1}'
+    echo "$APP_NETWORK"
 }
 
 compose_in() {
     local dir="$1"; shift
-    (cd "$dir" && $COMPOSE_CMD "$@")
+    local project="$APP_COMPOSE_PROJECT"
+    if [ "$dir" = "$PROXY_DIR" ]; then
+        project="$PROXY_COMPOSE_PROJECT"
+    fi
+    (cd "$dir" && $COMPOSE_CMD -p "$project" "$@")
 }
 
 # ============================================================
-#  setup_proxy_suite (安装时调用)
+#  setup_proxy_suite (安装时调用) — 只管理 $INSTALL_DIR/proxy
 # ============================================================
 setup_proxy_suite() {
     PROXY_POOL_TEXT=""
@@ -454,49 +549,57 @@ setup_proxy_suite() {
     log ""
     log "[2/5] 部署代理套件..."
     log ""
+    log "  范围说明: 仅操作 $INSTALL_DIR 与专属网络 $APP_NETWORK"
+    log "  不会检测/改动系统中其它 WARP、FlareSolverr 或 Docker 网络"
+    log ""
 
-    # 已有完整代理（脚本部署的规范命名）
-    local existing_warp
-    existing_warp=$(count_warp_normalized)
-    if [ "$existing_warp" -gt 0 ]; then
-        ok "检测到 $existing_warp 个 WARP（脚本部署）"
-        if has_flaresolverr_container; then
-            ok "检测到 FlareSolverr"
-            FLARE_URL="http://flaresolverr:8191"
-        fi
-        PROXY_POOL_TEXT=$(generate_socks5_pool_text "$existing_warp")
-        # 确保专属网络存在并把所有容器加入
+    # 本部署已有代理套件 → 复用
+    if has_own_proxy_suite; then
+        local existing_warp
+        existing_warp=$(count_own_warp_declared)
+        ok "检测到本部署代理套件: $existing_warp 个 WARP（$PROXY_DIR）"
         ensure_app_network
-        for (( i=1; i<=existing_warp; i++ )); do
-            connect_to_app_network "warp-$i"
-        done
-        connect_to_app_network "flaresolverr"
-        USE_NETWORK="$APP_NETWORK"
-        info "将使用现有代理套件"
-        return 0
-    fi
-
-    # 检测旧版 warp-proxy
-    if has_legacy_warp; then
-        warn "检测到旧版 warp-proxy 容器"
-        log "  建议先用主菜单 [规整代理] 升级到新架构"
-        if confirm "是否现在自动升级到 SOCKS5 直连" "Y"; then
-            cmd_normalize_proxies "install"
-            existing_warp=$(count_warp_normalized)
-            PROXY_POOL_TEXT=$(generate_socks5_pool_text "$existing_warp")
-            FLARE_URL="http://flaresolverr:8191"
-            USE_NETWORK=$(detect_proxy_network)
-            return 0
+        if [ "$(count_own_warp_running)" -lt "$existing_warp" ] || ! has_own_flare_running; then
+            info "本部署代理未完全运行，尝试启动..."
+            compose_in "$PROXY_DIR" up -d || { err "本部署代理启动失败"; return 1; }
+            wait_warp_ready || true
         fi
-        warn "已跳过代理部署，请手动配置代理"
+        connect_own_containers_to_app_network
+        PROXY_POOL_TEXT=$(generate_socks5_pool_text "$existing_warp")
+        FLARE_URL="http://${FLARE_CONTAINER}:8191"
+        USE_NETWORK="$APP_NETWORK"
+        info "将使用本部署已有代理套件"
         return 0
     fi
 
-    info "未检测到代理套件，需要部署 WARP 用于 ChatGPT 访问。"
+    # 仅当本部署 config 仍含 privoxy / 旧主机名时提示重建（不扫系统其它栈）
+    # 注意：匹配 ://warp-N，不会命中 socks5h://jovemage-warp-N
+    if [ -f "$CONFIG_FILE" ] && validate_json "$CONFIG_FILE"; then
+        if jq -e --arg p "$WARP_NAME_PREFIX" \
+            '.proxy_pool[]? | select(test("privoxy";"i") or (test("://warp-[0-9]+(:|/|$)") and (contains($p) | not)))' \
+            "$CONFIG_FILE" >/dev/null 2>&1; then
+            warn "本部署 config 中的 proxy_pool 仍是旧格式"
+            if confirm "是否按新架构重建本部署代理套件" "Y"; then
+                local existing_warp
+                cmd_normalize_proxies "install"
+                existing_warp=$(count_own_warp_declared)
+                [ "$existing_warp" -lt 1 ] && existing_warp=$(count_own_warp_running)
+                [ "$existing_warp" -lt 1 ] && existing_warp=2
+                PROXY_POOL_TEXT=$(generate_socks5_pool_text "$existing_warp")
+                FLARE_URL="http://${FLARE_CONTAINER}:8191"
+                USE_NETWORK="$APP_NETWORK"
+                return 0
+            fi
+        fi
+    fi
+
+    info "本部署尚未安装代理套件，需要部署 WARP 用于 ChatGPT 访问。"
     log ""
     log "  代理池策略说明:"
-    log "    账号会按"最少绑定"分散到 N 个 WARP 出口 IP"
+    log "    账号会按\"最少绑定\"分散到 N 个 WARP 出口 IP"
     log "    每个 WARP 约占 100MB 内存"
+    log "    容器名: ${WARP_NAME_PREFIX}-N / $FLARE_CONTAINER"
+    log "    目录: $PROXY_DIR"
     log ""
 
     local warp_n
@@ -506,8 +609,9 @@ setup_proxy_suite() {
         warn "请输入 1-6 之间的数字"
     done
 
-    info "正在部署 $warp_n 个 WARP + FlareSolverr..."
+    info "正在部署 $warp_n 个 WARP + FlareSolverr 到 $PROXY_DIR ..."
     mkdir -p "$PROXY_DIR"
+    # 网络同名新建或复用；不改名、不删其它网络
     ensure_app_network
     generate_proxy_compose "$PROXY_COMPOSE_FILE" "$warp_n"
 
@@ -524,8 +628,8 @@ setup_proxy_suite() {
     wait_warp_ready
 
     PROXY_POOL_TEXT=$(generate_socks5_pool_text "$warp_n")
-    FLARE_URL="http://flaresolverr:8191"
-    USE_NETWORK=$(detect_proxy_network)
+    FLARE_URL="http://${FLARE_CONTAINER}:8191"
+    USE_NETWORK="$APP_NETWORK"
 
     log ""
     ok "代理池: $warp_n 个 SOCKS5 出口"
@@ -589,7 +693,7 @@ generate_app_compose() {
 services:
   app:
     image: $IMAGE
-    container_name: jovemage
+    container_name: $APP_CONTAINER
     restart: unless-stopped
     ports:
       - "127.0.0.1:${SERVICE_PORT}:80"
@@ -611,7 +715,7 @@ EOF
 services:
   app:
     image: $IMAGE
-    container_name: jovemage
+    container_name: $APP_CONTAINER
     restart: unless-stopped
     ports:
       - "127.0.0.1:${SERVICE_PORT}:80"
@@ -825,7 +929,7 @@ cmd_update() {
 }
 
 # ============================================================
-#  cmd_restart — 重启服务并换 IP
+#  cmd_restart — 重启本部署服务并换 IP
 # ============================================================
 cmd_restart() {
     log ""
@@ -836,46 +940,45 @@ cmd_restart() {
 
     ensure_docker || return 1
 
-    # 统计当前 WARP 实例
-    local warp_count=0
-    local i
-    for (( i=1; i<=6; i++ )); do
-        if docker ps --format '{{.Names}}' 2>/dev/null | grep -qE "^warp-$i$"; then
-            warp_count=$((warp_count + 1))
-        fi
-    done
+    local warp_count
+    warp_count=$(count_own_warp_running)
 
-    log "  当前 WARP 实例: $warp_count 个"
-    if has_flaresolverr_container; then
-        log "  FlareSolverr:    运行中"
+    log "  操作范围: 仅 $INSTALL_DIR 与网络 $APP_NETWORK"
+    log "  当前本部署 WARP: $warp_count 个"
+    if has_own_flare_running; then
+        log "  FlareSolverr:    运行中 ($FLARE_CONTAINER)"
+    else
+        log "  FlareSolverr:    未运行"
     fi
     log ""
 
-    if ! confirm "确认重启所有服务并更换 IP" "Y"; then
+    if ! confirm "确认重启本部署所有服务并更换 IP" "Y"; then
         info "已取消"
         return 0
     fi
 
-    # 1. 重启代理套件 (WARP + FlareSolverr)
+    # 1. 重启本部署代理套件
     if [ -f "$PROXY_COMPOSE_FILE" ]; then
-        info "重启代理套件 (WARP + FlareSolverr)..."
+        info "重启本部署代理套件..."
         if compose_in "$PROXY_DIR" restart; then
             ok "代理套件已重启"
         else
             warn "代理套件重启失败，尝试 down + up..."
             compose_in "$PROXY_DIR" down 2>/dev/null || true
+            ensure_app_network
             compose_in "$PROXY_DIR" up -d || { err "代理启动失败"; return 1; }
             ok "代理套件已重建"
         fi
-        # 等待 WARP 连接
         log "  等待 WARP 重新连接..."
         sleep 10
+        wait_warp_ready || true
+        connect_own_containers_to_app_network
     else
-        warn "未找到代理 compose 文件，跳过代理重启"
+        warn "未找到本部署代理 compose（$PROXY_COMPOSE_FILE），跳过代理重启"
     fi
 
     # 2. 重启主服务
-    info "重启 jovemage..."
+    info "重启 $APP_CONTAINER..."
     if compose_in "$INSTALL_DIR" restart; then
         ok "服务已重启"
     else
@@ -884,6 +987,7 @@ cmd_restart() {
         compose_in "$INSTALL_DIR" up -d || { err "服务启动失败"; return 1; }
         ok "服务已重建"
     fi
+    connect_to_app_network "$APP_CONTAINER"
 
     # 3. 健康检查
     info "等待健康检查..."
@@ -892,8 +996,9 @@ cmd_restart() {
 }
 
 # ============================================================
-#  cmd_normalize_proxies — 规整代理名称
+#  cmd_normalize_proxies — 重建本部署代理
 #  参数 $1: 调用上下文 ("migrate" | "install" | "" 表示菜单调用)
+#  只操作 $INSTALL_DIR/proxy 与 $APP_NETWORK，不动系统其它容器
 # ============================================================
 cmd_normalize_proxies() {
     local context="${1:-menu}"
@@ -901,48 +1006,52 @@ cmd_normalize_proxies() {
     if [ "$context" = "menu" ]; then
         log ""
         log "========================================="
-        log "  规整代理名称"
+        log "  规整本部署代理"
         log "========================================="
         log ""
         log "  本功能用于:"
-        log "    - 旧版 warp-proxy / privoxy 升级为新 SOCKS5 架构"
-        log "    - 重建被改名/失败的代理容器"
-        log "    - 重写 proxy_pool 为规范的 socks5h://warp-N:1080"
+        log "    - 重建 $PROXY_DIR 下的 WARP / FlareSolverr"
+        log "    - 重写本部署 proxy_pool 为 socks5h://${WARP_NAME_PREFIX}-N:1080"
+        log "    - 确保专属网络 $APP_NETWORK 存在（同名新建或复用）"
+        log ""
+        log "  不会:"
+        log "    - 扫描或删除系统中其它 warp / flaresolverr / privoxy"
+        log "    - 修改或删除其它 Docker 网络"
         log ""
     fi
 
     ensure_docker || return 1
 
-    local current_warp current_legacy_warp current_privoxy
-    current_warp=$(count_warp_normalized)
-    if has_legacy_warp; then current_legacy_warp=1; else current_legacy_warp=0; fi
-    if has_legacy_privoxy; then current_privoxy=1; else current_privoxy=0; fi
+    local current_warp
+    current_warp=$(count_own_warp_declared)
+    if [ "${current_warp:-0}" -lt 1 ]; then
+        current_warp=$(count_own_warp_running)
+    fi
 
     if [ "$context" = "menu" ]; then
-        log "  当前状态:"
-        log "    规范 WARP (warp-N):  $current_warp 个"
-        if [ $current_legacy_warp -eq 1 ]; then
-            log "    ⚠️  旧版 warp-proxy:   存在 (将删除)"
-        fi
-        if [ $current_privoxy -eq 1 ]; then
-            log "    ⚠️  旧版 privoxy:      存在 (将删除)"
-        fi
-        if has_flaresolverr_container; then
-            log "    FlareSolverr:        运行中 (保留不动)"
+        log "  当前本部署状态:"
+        log "    目录:              $PROXY_DIR"
+        log "    WARP 声明/运行:    $(count_own_warp_declared) / $(count_own_warp_running)"
+        if has_own_flare_running; then
+            log "    FlareSolverr:      运行中 ($FLARE_CONTAINER)"
         else
-            log "    FlareSolverr:        未运行 (将一并部署)"
+            log "    FlareSolverr:      未运行"
         fi
         if ! has_app_network; then
-            log "    ⚠️  专属网络:          未创建 (将自动创建)"
-        elif docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^jovemage$' && ! container_in_app_network "jovemage"; then
-            log "    ⚠️  专属网络:          jovemage 未加入 (将自动修复)"
+            log "    专属网络:          未创建 (将自动创建 $APP_NETWORK)"
+        elif docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$APP_CONTAINER" && ! container_in_app_network "$APP_CONTAINER"; then
+            log "    专属网络:          $APP_CONTAINER 未加入 (将自动修复)"
         else
-            log "    专属网络:            正常 ($APP_NETWORK)"
+            log "    专属网络:          正常 ($APP_NETWORK)"
+        fi
+        if [ -f "$CONFIG_FILE" ] && validate_json "$CONFIG_FILE"; then
+            if jq -e '.proxy_pool[]? | select(test("privoxy";"i"))' "$CONFIG_FILE" >/dev/null 2>&1; then
+                log "    ⚠️  config proxy_pool 含 privoxy (将覆盖)"
+            fi
         fi
         log ""
     fi
 
-    # 默认 WARP 数量
     local default_n=$(( current_warp > 0 ? current_warp : 2 ))
     if [ "$default_n" -lt 1 ]; then default_n=2; fi
     if [ "$default_n" -gt 6 ]; then default_n=6; fi
@@ -955,54 +1064,43 @@ cmd_normalize_proxies() {
     done
 
     log ""
-    log "  最终配置:"
+    log "  最终配置（仅本部署）:"
     local i
     for (( i=1; i<=target_n; i++ )); do
-        log "    - warp-$i (SOCKS5 端口 1080)"
+        log "    - $(own_warp_name "$i") (SOCKS5 端口 1080)"
     done
+    log "    - $FLARE_CONTAINER"
     log ""
     log "  proxy_pool 将被覆盖为:"
     for (( i=1; i<=target_n; i++ )); do
-        log "    socks5h://warp-$i:1080"
+        log "    socks5h://$(own_warp_name "$i"):1080"
     done
     log ""
 
     if [ "$context" = "menu" ]; then
-        if ! confirm "确认执行" "Y"; then
+        if ! confirm "确认执行（仅影响本部署）" "Y"; then
             info "已取消"
             return 0
         fi
     fi
 
-    # 停止并删除旧代理容器
-    info "停止并删除旧代理容器..."
+    # 只 down 本部署 proxy compose / 本部署命名容器
+    info "停止本部署代理容器..."
     if [ -f "$PROXY_COMPOSE_FILE" ]; then
-        (cd "$PROXY_DIR" && $COMPOSE_CMD down 2>/dev/null) || true
+        compose_in "$PROXY_DIR" down 2>/dev/null || true
     fi
-    docker stop warp-proxy 2>/dev/null || true
-    docker rm warp-proxy 2>/dev/null || true
-    docker stop privoxy 2>/dev/null || true
-    docker rm privoxy 2>/dev/null || true
-    docker stop flaresolverr 2>/dev/null || true
-    docker rm flaresolverr 2>/dev/null || true
+    docker rm -f "$FLARE_CONTAINER" 2>/dev/null || true
     for (( i=1; i<=6; i++ )); do
-        docker stop "privoxy-$i" 2>/dev/null || true
-        docker rm "privoxy-$i" 2>/dev/null || true
+        docker rm -f "$(own_warp_name "$i")" 2>/dev/null || true
     done
-    for (( i=1; i<=6; i++ )); do
-        docker stop "warp-$i" 2>/dev/null || true
-        docker rm "warp-$i" 2>/dev/null || true
-    done
-    ok "旧容器已清理"
+    ok "本部署旧代理容器已清理"
 
-    # 生成新 compose
-    info "生成新 compose..."
+    info "生成本部署 compose..."
     mkdir -p "$PROXY_DIR"
     generate_proxy_compose "$PROXY_COMPOSE_FILE" "$target_n"
-    ok "compose 已生成"
+    ok "compose 已生成: $PROXY_COMPOSE_FILE"
 
     info "启动 $target_n 个 WARP + FlareSolverr..."
-    # 确保专属网络存在（compose 引用 external 网络需要先创建）
     ensure_app_network
     if ! compose_in "$PROXY_DIR" pull; then
         err "镜像拉取失败"
@@ -1013,18 +1111,19 @@ cmd_normalize_proxies() {
         return 1
     fi
     ok "容器已启动"
+    connect_own_containers_to_app_network
 
     log ""
     wait_warp_ready
 
-    # 覆盖 proxy_pool
     local new_pool
     new_pool=$(generate_socks5_pool_text "$target_n")
 
     if [ -f "$CONFIG_FILE" ] && validate_json "$CONFIG_FILE"; then
-        info "覆盖 config.json proxy_pool..."
+        info "覆盖 config.json proxy_pool / flaresolverr_url..."
         jq_set_array "$CONFIG_FILE" '.proxy_pool' "$new_pool" && ok "config.json proxy_pool: $target_n 个"
-        # 顺手清理已废弃的 proxy 字段（如果存在）
+        jq_set_string "$CONFIG_FILE" '.flaresolverr_url' "http://${FLARE_CONTAINER}:8191" 2>/dev/null || true
+        jq_set_string "$CONFIG_FILE" '.clearance_mode' "flaresolverr" 2>/dev/null || true
         if jq -e 'has("proxy")' "$CONFIG_FILE" >/dev/null 2>&1; then
             local tmp_c
             tmp_c=$(mktemp)
@@ -1042,28 +1141,26 @@ cmd_normalize_proxies() {
         fi
     fi
 
-    # 如果是菜单调用且应用在跑，确保网络连通并重启
     if [ "$context" = "menu" ] && is_installed; then
         log ""
-        # 确保 jovemage 在专属网络中
-        connect_to_app_network "jovemage"
-        # 更新 docker-compose.yml 的网络配置
+        connect_to_app_network "$APP_CONTAINER"
         if [ -f "$COMPOSE_FILE" ]; then
             local cur_port
             cur_port=$(get_service_port)
             SERVICE_PORT="${cur_port:-9000}"
             USE_NETWORK="$APP_NETWORK"
             generate_app_compose
-            ok "docker-compose.yml 已更新为专属网络"
+            ok "docker-compose.yml 已更新为专属网络 $APP_NETWORK"
         fi
-        if confirm "重启 jovemage 应用新配置" "Y"; then
+        if confirm "重启 $APP_CONTAINER 应用新配置" "Y"; then
             compose_in "$INSTALL_DIR" up -d 2>/dev/null || warn "重启失败"
+            connect_to_app_network "$APP_CONTAINER"
             ok "已重启"
         fi
     fi
 
     log ""
-    ok "代理规整完成"
+    ok "本部署代理规整完成"
     return 0
 }
 
@@ -1165,7 +1262,7 @@ config_proxy_pool_submenu() {
         case "$choice" in
             a|A)
                 local url
-                url=$(ask "请输入代理 URL（如 socks5h://warp-1:1080）" "")
+                url=$(ask "请输入代理 URL（如 socks5h://${WARP_NAME_PREFIX}-1:1080）" "")
                 if [ -z "$url" ]; then continue; fi
                 local new_items
                 if [ -z "$items" ]; then
@@ -1324,22 +1421,25 @@ backup_app_data() {
 
 uninstall_app_only() {
     [ -d "$INSTALL_DIR" ] || return 0
-    info "停止并删除 jovemage 容器..."
+    info "停止并删除本部署应用容器 ($APP_CONTAINER)..."
     compose_in "$INSTALL_DIR" down 2>/dev/null || true
-    docker rm -f jovemage 2>/dev/null || true
+    docker rm -f "$APP_CONTAINER" 2>/dev/null || true
     ok "服务已停止"
 }
 
 uninstall_proxy_suite() {
-    [ -d "$PROXY_DIR" ] || return 0
-    info "停止并删除代理套件容器..."
-    compose_in "$PROXY_DIR" down 2>/dev/null || true
+    # 仅清理本部署 /opt/jovemage/proxy 与本命名容器，不动系统其它代理
+    [ -d "$PROXY_DIR" ] || [ -f "$PROXY_COMPOSE_FILE" ] || return 0
+    info "停止并删除本部署代理套件 ($PROXY_DIR)..."
+    if [ -f "$PROXY_COMPOSE_FILE" ]; then
+        compose_in "$PROXY_DIR" down 2>/dev/null || true
+    fi
     local i
     for (( i=1; i<=6; i++ )); do
-        docker rm -f "warp-$i" "privoxy-$i" 2>/dev/null || true
+        docker rm -f "$(own_warp_name "$i")" 2>/dev/null || true
     done
-    docker rm -f flaresolverr warp-proxy privoxy 2>/dev/null || true
-    ok "代理套件已停止"
+    docker rm -f "$FLARE_CONTAINER" 2>/dev/null || true
+    ok "本部署代理套件已停止"
 }
 
 cmd_uninstall() {
@@ -1396,6 +1496,8 @@ cmd_uninstall() {
             local cw
             read -rp '  请输入 "DELETE" 确认: ' cw
             if [ "$cw" != "DELETE" ]; then warn "已取消"; return 0; fi
+            # 先清本部署代理容器（PROXY_DIR 在 INSTALL_DIR 内，目录删除后容器仍会残留）
+            uninstall_proxy_suite
             uninstall_app_only
             docker rmi "$IMAGE" 2>/dev/null || true
             rm -rf "$INSTALL_DIR"
@@ -1545,24 +1647,25 @@ cmd_status() {
     fi
 
     log ""
-    log "  🌐 代理套件 (SOCKS5 直连)"
-    local warp_n
-    warp_n=$(count_warp_normalized)
-    if [ -d "$PROXY_DIR" ] || [ "$warp_n" -gt 0 ] || has_legacy_warp; then
-        log "     WARP 实例:    $warp_n 个"
-        if has_legacy_warp; then
-            log "     ⚠️  旧版 warp-proxy: 存在"
-        fi
-        if has_legacy_privoxy; then
-            log "     ⚠️  旧版 privoxy:    存在"
-        fi
-        if has_flaresolverr_container; then
-            log "     FlareSolverr: 运行中"
+    log "  🌐 本部署代理套件 (仅 $PROXY_DIR)"
+    local warp_running warp_declared
+    warp_running=$(count_own_warp_running)
+    warp_declared=$(count_own_warp_declared)
+    if has_own_proxy_suite || [ "$warp_running" -gt 0 ]; then
+        log "     目录:          $PROXY_DIR"
+        log "     WARP:          运行 $warp_running / 声明 $warp_declared"
+        if has_own_flare_running; then
+            log "     FlareSolverr:  运行中 ($FLARE_CONTAINER)"
         else
-            log "     FlareSolverr: 未运行"
+            log "     FlareSolverr:  未运行"
+        fi
+        if has_app_network; then
+            log "     专属网络:      $APP_NETWORK"
+        else
+            log "     专属网络:      未创建"
         fi
     else
-        log "     未部署"
+        log "     未部署（脚本不会扫描系统中其它 WARP/Flare）"
     fi
 
     if is_installed && validate_json "$CONFIG_FILE"; then
