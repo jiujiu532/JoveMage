@@ -1,6 +1,6 @@
 <template>
   <div class="space-y-4">
-    <FormSection title="自动拉黑规则">
+    <FormSection title="自动拉黑规则" subtitle="内置规则始终生效；自定义规则随右上角保存设置写入。">
       <SurfaceBox density="compact">
         <p class="text-xs leading-5 text-muted-foreground">
           内置规则始终生效且只读；自定义规则随右上角「保存设置」写入配置。黑名单条目本身点操作即调 API 生效。
@@ -13,7 +13,7 @@
           <div
             v-for="(rule, index) in builtinRules"
             :key="rule.id || `builtin_${index}`"
-            class="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-border bg-card px-3 py-2 text-xs"
+            class="settings-list-row"
           >
             <div class="min-w-0 space-y-0.5">
               <p class="font-medium text-foreground">{{ rule.label || rule.description || rule.id || '内置规则' }}</p>
@@ -37,7 +37,7 @@
           <div
             v-for="(rule, index) in localRules"
             :key="rule.id || `custom_${index}`"
-            class="grid gap-2 rounded-sm border border-border bg-card px-3 py-2 md:grid-cols-[1fr_auto_auto] md:items-center"
+            class="settings-list-row settings-list-row--rule"
           >
             <div class="min-w-0 space-y-1">
               <Input
@@ -69,7 +69,7 @@
       </div>
     </FormSection>
 
-    <FormSection title="黑名单列表">
+    <FormSection title="黑名单列表" subtitle="按域名管理拉黑条目，操作即时生效。">
       <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <Input
           v-model.trim="searchQuery"
@@ -235,7 +235,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { Button, Checkbox, FormField, FormSection, Input } from 'nanocat-ui'
+import { Button, Checkbox, FormField, Input } from 'nanocat-ui'
+import FormSection from '@/components/ai/FormSection.vue'
 import {
   domainBlacklistProviderRef,
   registerApi,
@@ -649,3 +650,35 @@ onMounted(() => {
   void loadList()
 })
 </script>
+
+<style scoped>
+.settings-list-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid hsl(var(--border) / 0.9);
+  border-radius: var(--radius);
+  background: hsl(var(--background) / 0.4);
+  padding: 10px 12px;
+  font-size: 12px;
+}
+
+.settings-list-row--rule {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+}
+
+@media (min-width: 768px) {
+  .settings-list-row--rule {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+}
+
+html[data-theme='dark'] .settings-list-row {
+  background: hsl(var(--background) / 0.55);
+  border-color: hsl(var(--border));
+}
+</style>

@@ -32,7 +32,7 @@
 
         <div class="grid gap-4 xl:grid-cols-3">
           <div class="space-y-4 xl:col-span-2">
-            <FormSection title="基础配置" description="按连接、清理、生图超时拆开，先改常用项。">
+            <FormSection title="基础配置" subtitle="按连接、清理、生图超时拆开，先改常用项。">
               <div class="settings-block-stack">
                 <section class="settings-block">
                   <header class="settings-block__header">
@@ -86,8 +86,8 @@
                           {{ proxyBusy === 'test' ? '测试中...' : '测试出口' }}
                         </Button>
                       </div>
-                      <div v-if="proxyTestResult" class="mt-2 rounded-sm border border-border bg-background px-3 py-2 text-xs">
-                        <p :class="proxyTestResult.ok ? 'text-emerald-600' : 'text-rose-600'">
+                      <div v-if="proxyTestResult" class="settings-result-box">
+                        <p :class="proxyTestResult.ok ? 'settings-tone-ok' : 'settings-tone-bad'">
                           {{ proxyTestResult.ok ? `出口可用：HTTP ${proxyTestResult.status}，${proxyTestResult.latency_ms} ms` : `出口不可用：${proxyTestResult.error || '未知错误'}` }}
                         </p>
                       </div>
@@ -191,7 +191,7 @@
               </div>
             </FormSection>
 
-            <FormSection title="稳定代理 / Cloudflare 清障" description="先看运行状态，再改开关与出站参数。">
+            <FormSection title="稳定代理 / Cloudflare 清障" subtitle="先看运行状态，再改开关与出站参数。">
               <div class="settings-block-stack">
                 <section class="settings-block settings-block--status">
                   <header class="settings-block__header">
@@ -403,7 +403,7 @@
                     </div>
                   </FormField>
                   <div v-if="clearanceTestResult" class="settings-result-box">
-                    <p :class="clearanceTestResult.ok ? 'text-emerald-600' : 'text-rose-600'">
+                    <p :class="clearanceTestResult.ok ? 'settings-tone-ok' : 'settings-tone-bad'">
                       {{ clearanceTestResult.ok ? `清障可用：${clearanceTestResult.latency_ms} ms` : `清障不可用：${clearanceTestResult.error || '未知错误'}` }}
                     </p>
                     <p v-if="clearanceTestResult.user_agent" class="mt-1 break-all text-muted-foreground">
@@ -414,32 +414,42 @@
               </div>
             </FormSection>
 
-            <FormSection title="全局附加指令">
-              <FormField label="全局系统提示词">
-                <template #label-extra>
-                  <HelpTip text="每次请求都会作为 system 消息注入。" />
-                </template>
-                <textarea
-                  v-model="localSettings.global_system_prompt"
-                  rows="5"
-                  class="ui-textarea-sm"
-                  placeholder="例如：先判断用户提示词是否合规；遇到违法、色情、暴力、仇恨等请求时拒绝回答。"
-                ></textarea>
-              </FormField>
-
-              <FormField label="敏感词">
-                <textarea
-                  v-model="sensitiveWordsText"
-                  rows="5"
-                  class="ui-textarea-sm"
-                  placeholder="一行一个，命中即拒绝"
-                ></textarea>
-              </FormField>
+            <FormSection title="全局附加指令" subtitle="注入到每次请求的系统提示与敏感词拦截。">
+              <div class="settings-block-stack">
+                <section class="settings-block">
+                  <header class="settings-block__header">
+                    <p class="settings-block__title">系统提示词</p>
+                    <p class="settings-block__desc">每次请求都会作为 system 消息注入。</p>
+                  </header>
+                  <FormField label="全局系统提示词">
+                    <textarea
+                      v-model="localSettings.global_system_prompt"
+                      rows="5"
+                      class="ui-textarea-sm"
+                      placeholder="例如：先判断用户提示词是否合规；遇到违法、色情、暴力、仇恨等请求时拒绝回答。"
+                    ></textarea>
+                  </FormField>
+                </section>
+                <section class="settings-block">
+                  <header class="settings-block__header">
+                    <p class="settings-block__title">敏感词</p>
+                    <p class="settings-block__desc">一行一个，命中即拒绝。</p>
+                  </header>
+                  <FormField label="敏感词列表">
+                    <textarea
+                      v-model="sensitiveWordsText"
+                      rows="5"
+                      class="ui-textarea-sm"
+                      placeholder="一行一个，命中即拒绝"
+                    ></textarea>
+                  </FormField>
+                </section>
+              </div>
             </FormSection>
           </div>
 
           <div class="space-y-4">
-            <FormSection title="账号策略" description="异常与额度耗尽后的账号处理。">
+            <FormSection title="账号策略" subtitle="异常与额度耗尽后的账号处理。">
               <div class="settings-check-grid settings-check-grid--single">
                 <div class="settings-check-item">
                   <div class="settings-check-control">
@@ -456,7 +466,7 @@
               </div>
             </FormSection>
 
-            <FormSection title="图片确认" description="结果稳定后再返回，可选清理官网会话。">
+            <FormSection title="图片确认" subtitle="结果稳定后再返回，可选清理官网会话。">
               <div class="settings-check-grid settings-check-grid--single">
                 <div class="settings-check-item">
                   <div class="settings-check-control">
@@ -485,7 +495,7 @@
               </div>
             </FormSection>
 
-            <FormSection title="控制台日志级别" description="至少保留一类级别；全不选时回落默认 info / warning / error。">
+            <FormSection title="控制台日志级别" subtitle="至少保留一类级别；全不选时回落默认 info / warning / error。">
               <div class="settings-check-grid settings-check-grid--single">
                 <div
                   v-for="level in logLevelOptions"
@@ -509,7 +519,7 @@
       </div>
 
       <div v-else-if="activeSettingsTab === 'image-errors'" class="space-y-4">
-        <FormSection title="图片错误提示" description="先决定是否友好化，再按场景改文案。">
+        <FormSection title="图片错误提示" subtitle="先决定是否友好化，再按场景改文案。">
           <div class="settings-block-stack">
             <section class="settings-block">
               <header class="settings-block__header">
@@ -566,7 +576,7 @@
 
       <div v-else-if="activeSettingsTab === 'storage'" class="grid gap-4 xl:grid-cols-3">
         <div class="xl:col-span-2">
-          <FormSection title="图片存储" description="WebDAV 远端存储与公开访问前缀。">
+          <FormSection title="图片存储" subtitle="WebDAV 远端存储与公开访问前缀。">
           <div class="settings-block-stack">
             <section class="settings-block">
               <header class="settings-block__header">
@@ -633,22 +643,23 @@
                 </Button>
               </div>
               <div v-if="imageStorageTestResult" class="settings-result-box">
-                <p :class="imageStorageTestResult.ok ? 'text-emerald-600' : 'text-slate-600'">
+                <p :class="imageStorageTestResult.ok ? 'settings-tone-ok' : 'settings-tone-bad'">
                   {{ imageStorageTestResult.ok ? 'WebDAV 可用' : 'WebDAV 不可用' }}
                   <span v-if="imageStorageTestResult.status"> · HTTP {{ imageStorageTestResult.status }}</span>
                 </p>
-                <p v-if="imageStorageTestResult.error" class="mt-1 break-all text-slate-600">{{ imageStorageTestResult.error }}</p>
+                <p v-if="imageStorageTestResult.error" class="mt-1 break-all settings-tone-bad">{{ imageStorageTestResult.error }}</p>
               </div>
             </section>
           </div>
           </FormSection>
         </div>
 
-        <FormSection title="AI 审核" description="请求前的内容审核接入。">
+        <FormSection title="AI 审核" subtitle="请求前的内容审核接入。">
           <div class="settings-block-stack">
             <section class="settings-block">
               <header class="settings-block__header">
                 <p class="settings-block__title">开关</p>
+                <p class="settings-block__desc">关闭时跳过请求前内容审核。</p>
               </header>
               <div class="settings-check-grid settings-check-grid--single">
                 <div class="settings-check-item">
@@ -661,6 +672,7 @@
             <section class="settings-block">
               <header class="settings-block__header">
                 <p class="settings-block__title">模型接入</p>
+                <p class="settings-block__desc">兼容 OpenAI Chat Completions 的审核模型。</p>
               </header>
               <div class="grid grid-cols-1 gap-3">
                 <FormField label="Base URL">
@@ -687,7 +699,7 @@
       </div>
 
       <div v-else-if="activeSettingsTab === 'backup'" class="space-y-4">
-        <FormSection title="R2 备份管理" description="定时备份到 Cloudflare R2，可加密与轮转。">
+        <FormSection title="R2 备份管理" subtitle="定时备份到 Cloudflare R2，可加密与轮转。">
           <div class="settings-block-stack">
             <section class="settings-block">
               <header class="settings-block__header">
@@ -787,15 +799,15 @@
               </div>
 
               <div v-if="backupTestResult" class="settings-result-box">
-                <p :class="backupTestResult.ok ? 'text-emerald-600' : 'text-rose-600'">
+                <p :class="backupTestResult.ok ? 'settings-tone-ok' : 'settings-tone-bad'">
                   {{ backupTestResult.ok ? '备份连接可用' : '备份连接不可用' }}
                   <span v-if="backupTestResult.status"> · HTTP {{ backupTestResult.status }}</span>
                 </p>
-                <p v-if="backupTestResult.error" class="mt-1 break-all text-rose-600">{{ backupTestResult.error }}</p>
+                <p v-if="backupTestResult.error" class="mt-1 break-all settings-tone-bad">{{ backupTestResult.error }}</p>
               </div>
 
               <div class="settings-result-box">
-                <div class="grid grid-cols-2 gap-2 text-muted-foreground">
+                <div class="settings-meta-grid">
                   <span>最近状态</span>
                   <span class="text-right text-foreground">{{ backupStatusText }}</span>
                   <span>最近开始</span>
@@ -805,7 +817,7 @@
                   <span>最近对象</span>
                   <span class="break-all text-right font-mono text-foreground">{{ backupState?.last_object_key || '-' }}</span>
                   <span>最近错误</span>
-                  <span class="break-all text-right text-rose-600">{{ backupState?.last_error || '-' }}</span>
+                  <span class="break-all text-right settings-tone-bad">{{ backupState?.last_error || '-' }}</span>
                 </div>
               </div>
 
@@ -813,7 +825,7 @@
                 <div
                   v-for="item in backupItems.slice(0, 5)"
                   :key="item.key"
-                  class="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-border bg-card px-3 py-2 text-xs"
+                  class="settings-list-row"
                 >
                   <div class="min-w-0">
                     <p class="truncate font-medium text-foreground">{{ item.name || item.key }}</p>
@@ -830,65 +842,78 @@
       </div>
 
       <div v-else-if="activeSettingsTab === 'canvas'" class="max-w-3xl">
-        <FormSection title="画布入口" description="开启后顶部导航会显示无限画布入口，并自动带上当前接口地址和密钥。">
-          <div class="settings-check-grid settings-check-grid--single">
-            <div class="settings-check-item">
-              <div class="settings-check-control">
-                <Checkbox v-model="localSettings.third_party_apps.infinite_canvas.enabled">启用无限画布入口</Checkbox>
+        <FormSection title="画布入口" subtitle="开启后顶部导航会显示无限画布入口，并自动带上当前接口地址和密钥。">
+          <div class="settings-block-stack">
+            <section class="settings-block">
+              <header class="settings-block__header">
+                <p class="settings-block__title">开关</p>
+                <p class="settings-block__desc">关闭后隐藏导航入口。</p>
+              </header>
+              <div class="settings-check-grid settings-check-grid--single">
+                <div class="settings-check-item">
+                  <div class="settings-check-control">
+                    <Checkbox v-model="localSettings.third_party_apps.infinite_canvas.enabled">启用无限画布入口</Checkbox>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-          <div class="mt-3">
-            <FormField label="无限画布地址">
-              <Input
-                v-model.trim="localSettings.third_party_apps.infinite_canvas.url"
-                block
-                placeholder="https://canvas.best"
-              />
-            </FormField>
+            </section>
+            <section class="settings-block">
+              <header class="settings-block__header">
+                <p class="settings-block__title">地址</p>
+                <p class="settings-block__desc">入口会附带当前服务地址与密钥参数。</p>
+              </header>
+              <FormField label="无限画布地址">
+                <Input
+                  v-model.trim="localSettings.third_party_apps.infinite_canvas.url"
+                  block
+                  root-class="font-mono"
+                  placeholder="https://canvas.best"
+                />
+              </FormField>
+            </section>
           </div>
         </FormSection>
       </div>
 
       <div v-else-if="activeSettingsTab === 'api-docs'" class="space-y-4">
-        <FormSection title="接口接入" description="第三方应用按 OpenAI 兼容接口接入，使用同一套 Bearer 鉴权。">
-          <div class="grid gap-3 md:grid-cols-2">
-            <SurfaceBox density="compact">
-              <p class="text-xs text-muted-foreground">服务地址</p>
-              <p class="mt-1 break-all font-mono text-xs text-foreground">{{ serviceBaseUrl }}</p>
-            </SurfaceBox>
-            <SurfaceBox density="compact">
-              <p class="text-xs text-muted-foreground">Base URL（OpenAI）</p>
-              <p class="mt-1 break-all font-mono text-xs text-foreground">{{ openAIBaseUrl }}</p>
-            </SurfaceBox>
-            <SurfaceBox density="compact">
-              <p class="text-xs text-muted-foreground">API Key</p>
-              <p class="mt-1 break-all font-mono text-xs text-foreground">{{ currentApiKey }}</p>
-            </SurfaceBox>
-            <SurfaceBox density="compact">
-              <p class="text-xs text-muted-foreground">请求头</p>
-              <p class="mt-1 break-all font-mono text-xs text-foreground">Authorization: Bearer {{ currentApiKey }}</p>
-            </SurfaceBox>
+        <FormSection title="接口接入" subtitle="第三方应用按 OpenAI 兼容接口接入，使用同一套 Bearer 鉴权。">
+          <div class="settings-kv-grid">
+            <div class="settings-kv-item">
+              <p class="settings-kv-label">服务地址</p>
+              <p class="settings-kv-value">{{ serviceBaseUrl }}</p>
+            </div>
+            <div class="settings-kv-item">
+              <p class="settings-kv-label">Base URL（OpenAI）</p>
+              <p class="settings-kv-value">{{ openAIBaseUrl }}</p>
+            </div>
+            <div class="settings-kv-item">
+              <p class="settings-kv-label">API Key</p>
+              <p class="settings-kv-value">{{ currentApiKey }}</p>
+            </div>
+            <div class="settings-kv-item">
+              <p class="settings-kv-label">请求头</p>
+              <p class="settings-kv-value">Authorization: Bearer {{ currentApiKey }}</p>
+            </div>
           </div>
         </FormSection>
 
-        <FormSection title="常用接口">
-          <div class="space-y-2">
+        <FormSection title="常用接口" subtitle="点击展开查看说明与示例请求。">
+          <div class="settings-doc-list">
             <details
               v-for="item in apiDocItems"
               :key="item.path"
-              class="rounded-sm border border-border bg-card px-4 py-3"
+              class="settings-doc-item"
             >
-              <summary class="flex cursor-pointer list-none items-center justify-between gap-3">
+              <summary class="settings-doc-summary">
                 <span class="min-w-0">
                   <span class="block text-sm font-medium text-foreground">{{ item.title }}</span>
                   <span class="mt-1 block truncate font-mono text-xs text-muted-foreground">{{ item.method }} {{ item.path }}</span>
                 </span>
-                <span class="text-xs text-muted-foreground">展开</span>
+                <span class="settings-doc-hint">展开</span>
               </summary>
-              <div class="mt-3 space-y-2">
+              <div class="settings-doc-body">
                 <p class="text-xs leading-5 text-muted-foreground">{{ item.description }}</p>
-                <pre class="overflow-auto whitespace-pre-wrap break-all rounded-sm bg-zinc-950 px-3 py-3 text-xs leading-5 text-zinc-100">{{ item.example }}</pre>
+                <pre class="settings-doc-code">{{ item.example }}</pre>
               </div>
             </details>
           </div>
@@ -916,14 +941,14 @@
 
       <div
         v-if="newUserKey"
-        class="rounded-sm border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"
+        class="settings-banner-ok"
       >
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div class="min-w-0">
             <p class="font-medium">新密钥只展示一次，请现在复制保存。</p>
             <p class="mt-2 break-all font-mono text-xs">{{ newUserKey }}</p>
           </div>
-          <Button size="xs" variant="outline" root-class="shrink-0 border-emerald-200 bg-white text-emerald-700" @click="copyUserKey(newUserKey)">
+          <Button size="xs" variant="outline" root-class="shrink-0" @click="copyUserKey(newUserKey)">
             复制
           </Button>
         </div>
@@ -934,7 +959,7 @@
         compact
         dashed
         title="正在加载用户密钥"
-        description="读取普通用户密钥列表。"
+        subtitle="读取普通用户密钥列表。"
       />
       <StateBlock v-else-if="userKeys.length === 0" compact dashed>
         暂无普通用户密钥。创建后可以分发给只需要画图入口的用户。
@@ -943,14 +968,14 @@
         <div
           v-for="item in userKeys"
           :key="item.id"
-          class="flex flex-col gap-3 rounded-sm border border-border bg-card px-4 py-3 md:flex-row md:items-center md:justify-between"
+          class="settings-list-row settings-list-row--lg md:flex-row md:items-center md:justify-between"
         >
           <div class="min-w-0">
             <div class="flex flex-wrap items-center gap-2">
               <p class="truncate text-sm font-medium text-foreground">{{ item.name || '普通用户' }}</p>
               <span
                 class="rounded-md px-2 py-0.5 text-xs"
-                :class="item.enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-secondary text-muted-foreground'"
+                :class="item.enabled ? 'settings-badge-ok' : 'settings-badge-muted'"
               >
                 {{ item.enabled ? '已启用' : '已禁用' }}
               </span>
@@ -1004,7 +1029,7 @@
       </div>
 
       <div class="grid gap-4">
-        <div v-if="activeSettingsTab === 'cpa'" class="rounded-sm border border-border bg-card p-4">
+        <div v-if="activeSettingsTab === 'cpa'" class="settings-panel-card">
           <div class="flex items-center justify-between gap-3">
             <div>
               <p class="text-sm font-semibold text-foreground">CPA 连接管理</p>
@@ -1022,7 +1047,7 @@
             <div
               v-for="pool in cpaPools"
               :key="pool.id"
-              class="rounded-sm border border-border bg-background px-3 py-2 text-xs"
+              class="settings-list-row"
             >
               <div class="flex flex-wrap items-start justify-between gap-2">
                 <div class="min-w-0">
@@ -1047,7 +1072,7 @@
           </div>
         </div>
 
-        <div v-if="activeSettingsTab === 'sub2api'" class="rounded-sm border border-border bg-card p-4">
+        <div v-if="activeSettingsTab === 'sub2api'" class="settings-panel-card">
           <div class="flex items-center justify-between gap-3">
             <div>
               <p class="text-sm font-semibold text-foreground">Sub2API 连接管理</p>
@@ -1065,7 +1090,7 @@
             <div
               v-for="server in sub2apiServers"
               :key="server.id"
-              class="rounded-sm border border-border bg-background px-3 py-2 text-xs"
+              class="settings-list-row"
             >
               <div class="flex flex-wrap items-start justify-between gap-2">
                 <div class="min-w-0">
@@ -1115,7 +1140,7 @@
       <PageLoadingState
         v-if="settingsStore.isLoading"
         title="正在加载设置"
-        description="读取系统配置、存储配置和外部连接。"
+        subtitle="读取系统配置、存储配置和外部连接。"
       />
       <StateBlock
         v-else
@@ -1303,7 +1328,8 @@
 import { computed, defineAsyncComponent, onActivated, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { storeToRefs } from 'pinia'
-import { Button, Checkbox, FormField, FormSection, HelpTip, Input } from 'nanocat-ui'
+import { Button, Checkbox, FormField, HelpTip, Input } from 'nanocat-ui'
+import FormSection from '@/components/ai/FormSection.vue'
 import GroupedSelectMenu from '@/components/ui/GroupedSelectMenu.vue'
 import { accountImportsApi, type CPAPool, type Sub2APIRemoteGroup, type Sub2APIServer } from '@/api/accountImports'
 import {
@@ -2699,21 +2725,32 @@ const handleSave = async () => {
 </script>
 
 <style scoped>
+/* 分区内子块：用顶部分割线分层，不再套第三层卡片 */
 .settings-block-stack {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
 }
 
 .settings-block {
-  border: 1px solid hsl(var(--border) / 0.9);
-  border-radius: var(--radius);
-  background: hsl(var(--background) / 0.55);
-  padding: 12px;
+  border: none;
+  border-top: 1px solid hsl(var(--border) / 0.85);
+  border-radius: 0;
+  background: transparent;
+  padding: 14px 0 4px;
+}
+
+.settings-block:first-child {
+  border-top: none;
+  padding-top: 0;
 }
 
 .settings-block--status {
+  margin: 0 0 2px;
+  border: 1px solid hsl(var(--border) / 0.9);
+  border-radius: var(--radius);
   background: hsl(var(--muted) / 0.22);
+  padding: 12px;
 }
 
 .settings-block__header {
@@ -2724,12 +2761,13 @@ const handleSave = async () => {
   font-family: var(--font-display);
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: hsl(var(--foreground));
 }
 
 .settings-block__desc {
-  margin-top: 2px;
+  margin-top: 3px;
   font-size: 11px;
   line-height: 1.45;
   color: hsl(var(--muted-foreground));
@@ -2757,19 +2795,23 @@ const handleSave = async () => {
 
 .settings-status-chip {
   min-width: 0;
-  border: 1px solid hsl(var(--border) / 0.85);
+  border: 1px solid hsl(var(--border) / 0.9);
   border-radius: var(--radius);
   background: hsl(var(--card));
   padding: 8px 10px;
 }
 
 .settings-status-chip__label {
-  font-size: 11px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: hsl(var(--muted-foreground));
 }
 
 .settings-status-chip__value {
-  margin-top: 4px;
+  margin-top: 5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2782,15 +2824,21 @@ const handleSave = async () => {
   margin-top: 10px;
   border: 1px solid hsl(var(--border));
   border-radius: var(--radius);
-  background: hsl(var(--background));
-  padding: 8px 12px;
+  background: hsl(var(--muted) / 0.2);
+  padding: 10px 12px;
   font-size: 12px;
+  line-height: 1.5;
 }
 
+/* 勾选：列表行，不再每项一卡片 */
 .settings-check-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(13.5rem, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0 12px;
+  border: 1px solid hsl(var(--border) / 0.9);
+  border-radius: var(--radius);
+  background: hsl(var(--background) / 0.35);
+  overflow: hidden;
 }
 
 .settings-check-grid--single {
@@ -2798,24 +2846,39 @@ const handleSave = async () => {
 }
 
 .settings-check-item {
-  min-height: 40px;
-  border: 1px solid hsl(var(--border));
-  border-radius: var(--radius);
-  background: hsl(var(--card));
-  transition:
-    border-color 0.16s ease,
-    background-color 0.16s ease,
-    box-shadow 0.16s ease;
+  min-height: 42px;
+  border: none;
+  border-bottom: 1px solid hsl(var(--border) / 0.75);
+  border-radius: 0;
+  background: transparent;
+  transition: background-color 0.12s ease;
+}
+
+.settings-check-item:last-child {
+  border-bottom: none;
+}
+
+.settings-check-grid:not(.settings-check-grid--single) .settings-check-item:nth-last-child(2):nth-child(odd) {
+  border-bottom: none;
+}
+
+@media (min-width: 640px) {
+  .settings-check-grid:not(.settings-check-grid--single) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settings-check-grid:not(.settings-check-grid--single) .settings-check-item:nth-child(odd) {
+    border-right: 1px solid hsl(var(--border) / 0.75);
+  }
 }
 
 .settings-check-item:hover {
-  border-color: hsl(var(--foreground) / 0.18);
   background: hsl(var(--muted) / 0.28);
 }
 
 .settings-check-control {
   display: flex;
-  min-height: 40px;
+  min-height: 42px;
   align-items: center;
   gap: 8px;
   padding-right: 10px;
@@ -2825,38 +2888,228 @@ const handleSave = async () => {
   display: flex;
   width: 100%;
   flex: 1;
-  min-height: 40px;
+  min-height: 42px;
   align-items: center;
   gap: 10px;
-  padding: 9px 11px;
+  padding: 10px 12px;
 }
 
 .settings-check-item :deep(label > span:last-child) {
-  color: hsl(var(--foreground) / 0.88);
+  color: hsl(var(--foreground) / 0.9);
   font-size: 12px;
   line-height: 1.35;
 }
 
-html[data-theme='dark'] .settings-block {
-  background: hsl(var(--card) / 0.55);
-  border-color: hsl(var(--border));
+/* 实体列表 / 连接卡片 */
+.settings-panel-card {
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  background: hsl(var(--card));
+  padding: 14px;
+}
+
+.settings-list-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid hsl(var(--border) / 0.9);
+  border-radius: var(--radius);
+  background: hsl(var(--background) / 0.4);
+  padding: 10px 12px;
+  font-size: 12px;
+}
+
+.settings-list-row--lg {
+  flex-direction: column;
+  padding: 12px 14px;
+}
+
+.settings-banner-ok {
+  border: 1px solid hsl(var(--tone-success-border) / 0.55);
+  border-radius: var(--radius);
+  background: hsl(var(--tone-success-bg));
+  padding: 12px 14px;
+  font-size: 13px;
+  color: hsl(var(--tone-success-foreground));
+}
+
+.settings-badge-ok {
+  border-radius: var(--radius);
+  background: hsl(var(--tone-success-bg));
+  padding: 2px 8px;
+  font-size: 11px;
+  color: hsl(var(--tone-success-foreground));
+}
+
+.settings-badge-muted {
+  border-radius: var(--radius);
+  background: hsl(var(--muted));
+  padding: 2px 8px;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}
+
+.settings-tone-ok {
+  color: hsl(var(--tone-success-strong));
+}
+
+.settings-tone-bad {
+  color: hsl(var(--tone-error-strong));
 }
 
 html[data-theme='dark'] .settings-block--status {
-  background: hsl(var(--muted) / 0.35);
+  background: hsl(var(--muted) / 0.28);
+  border-color: hsl(var(--border));
 }
 
-html[data-theme='dark'] .settings-check-item {
-  background: hsl(var(--background) / 0.72);
-  border-color: hsl(var(--foreground) / 0.14);
+html[data-theme='dark'] .settings-check-grid {
+  background: hsl(var(--background) / 0.45);
+  border-color: hsl(var(--border));
 }
 
 html[data-theme='dark'] .settings-check-item:hover {
-  border-color: hsl(var(--primary) / 0.45);
-  background: hsl(var(--muted) / 0.45);
+  background: hsl(var(--muted) / 0.35);
 }
 
-html[data-theme='dark'] .settings-check-item :deep(label > span:last-child) {
-  color: hsl(var(--foreground) / 0.92);
+html[data-theme='dark'] .settings-list-row {
+  background: hsl(var(--background) / 0.55);
+  border-color: hsl(var(--border));
+}
+
+html[data-theme='dark'] .settings-result-box {
+  background: hsl(var(--background) / 0.55);
+}
+
+html[data-theme='dark'] .settings-status-chip {
+  background: hsl(var(--background) / 0.55);
+}
+
+.settings-meta-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 8px 12px;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+}
+
+.settings-meta-grid > span:nth-child(even) {
+  text-align: right;
+  color: hsl(var(--foreground));
+}
+
+/* 接口接入 KV 与文档列表 */
+.settings-kv-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+@media (min-width: 768px) {
+  .settings-kv-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.settings-kv-item {
+  min-width: 0;
+  border: 1px solid hsl(var(--border) / 0.9);
+  border-radius: var(--radius);
+  background: hsl(var(--background) / 0.4);
+  padding: 10px 12px;
+}
+
+.settings-kv-label {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+
+.settings-kv-value {
+  margin-top: 6px;
+  word-break: break-all;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  color: hsl(var(--foreground));
+}
+
+.settings-doc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid hsl(var(--border) / 0.9);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: hsl(var(--background) / 0.3);
+}
+
+.settings-doc-item {
+  border-bottom: 1px solid hsl(var(--border) / 0.8);
+}
+
+.settings-doc-item:last-child {
+  border-bottom: none;
+}
+
+.settings-doc-summary {
+  display: flex;
+  cursor: pointer;
+  list-style: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+}
+
+.settings-doc-summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-doc-item[open] .settings-doc-summary {
+  border-bottom: 1px solid hsl(var(--border) / 0.7);
+  background: hsl(var(--muted) / 0.18);
+}
+
+.settings-doc-hint {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}
+
+.settings-doc-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px 14px;
+}
+
+.settings-doc-code {
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  background: hsl(var(--foreground) / 0.92);
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: hsl(var(--background));
+}
+
+html[data-theme='dark'] .settings-kv-item,
+html[data-theme='dark'] .settings-doc-list {
+  background: hsl(var(--background) / 0.5);
+  border-color: hsl(var(--border));
+}
+
+html[data-theme='dark'] .settings-doc-code {
+  background: #0f0f0f;
+  color: #f2f2f2;
+  border-color: hsl(var(--border));
 }
 </style>

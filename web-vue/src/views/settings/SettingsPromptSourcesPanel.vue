@@ -216,22 +216,32 @@ onMounted(() => {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 1rem;
   align-items: center;
-  border: 1px solid hsl(var(--border));
+  border: 1px solid hsl(var(--border) / 0.9);
   border-radius: var(--radius);
-  background: hsl(var(--card));
-  padding: 0.72rem 0.8rem;
+  background: hsl(var(--background) / 0.35);
+  padding: 0.8rem 0.9rem;
   transition:
-    background-color 0.16s ease,
-    border-color 0.16s ease;
+    background-color 0.12s ease,
+    border-color 0.12s ease;
 }
 
 .settings-prompt-source:hover {
-  border-color: hsl(var(--border) / 0.86);
-  background: hsl(var(--muted) / 0.18);
+  border-color: hsl(var(--foreground) / 0.18);
+  background: hsl(var(--muted) / 0.22);
 }
 
 .settings-prompt-source.is-disabled {
-  background: hsl(var(--muted) / 0.18);
+  opacity: 0.72;
+  background: hsl(var(--muted) / 0.14);
+}
+
+html[data-theme='dark'] .settings-prompt-source {
+  background: hsl(var(--background) / 0.5);
+  border-color: hsl(var(--border));
+}
+
+html[data-theme='dark'] .settings-prompt-source:hover {
+  background: hsl(var(--muted) / 0.32);
 }
 
 .settings-prompt-source-main {
