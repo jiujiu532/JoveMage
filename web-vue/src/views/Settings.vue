@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-6" @click="onSettingsBlockCollapseClick">
+  <div class="space-y-6">
     <PagePanel v-if="localSettings" class="space-y-5">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -2702,20 +2702,6 @@ onBeforeRouteLeave(async (_to, _from, next) => {
   next(false)
 })
 
-function onSettingsBlockCollapseClick(e: MouseEvent) {
-  const target = e.target as HTMLElement | null
-  if (!target) return
-  if (target.closest('button, a, input, textarea, select, label, .ui-btn, .form-section__actions')) return
-  const header = target.closest('.settings-block__header') as HTMLElement | null
-  if (!header) return
-  const block = header.closest('.settings-block') as HTMLElement | null
-  if (!block) return
-  const collapsed = block.classList.toggle('is-collapsed')
-  header.setAttribute('aria-expanded', collapsed ? 'false' : 'true')
-  header.setAttribute('role', 'button')
-  header.tabIndex = 0
-}
-
 const handleSave = async () => {
   if (!localSettings.value) return
   const confirmed = await confirmDialog.ask({
@@ -2768,51 +2754,7 @@ const handleSave = async () => {
 }
 
 .settings-block__header {
-  position: relative;
   margin-bottom: 10px;
-  padding-right: 18px;
-  cursor: pointer;
-  user-select: none;
-  outline: none;
-}
-
-.settings-block__header::after {
-  content: '';
-  position: absolute;
-  top: 6px;
-  right: 2px;
-  width: 7px;
-  height: 7px;
-  border-right: 1.5px solid hsl(var(--muted-foreground));
-  border-bottom: 1.5px solid hsl(var(--muted-foreground));
-  transform: rotate(45deg);
-  transition: transform 0.14s ease, border-color 0.12s ease;
-}
-
-.settings-block.is-collapsed .settings-block__header {
-  margin-bottom: 0;
-}
-
-.settings-block.is-collapsed .settings-block__header::after {
-  top: 8px;
-  transform: rotate(-45deg);
-}
-
-.settings-block.is-collapsed > :not(.settings-block__header) {
-  display: none !important;
-}
-
-.settings-block__header:hover .settings-block__title {
-  color: var(--bauhaus-blue, #2d5da1);
-}
-
-.settings-block__header:hover::after {
-  border-color: var(--bauhaus-blue, #2d5da1);
-}
-
-.settings-block__header:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 45%, transparent);
-  outline-offset: 2px;
 }
 
 .settings-block__title {
@@ -2822,7 +2764,6 @@ const handleSave = async () => {
   letter-spacing: -0.01em;
   text-transform: none;
   color: hsl(var(--foreground));
-  transition: color 0.12s ease;
 }
 
 .settings-block__desc {
@@ -2831,14 +2772,6 @@ const handleSave = async () => {
   font-weight: 400;
   line-height: 1.45;
   color: hsl(var(--muted-foreground) / 0.9);
-}
-
-html[data-theme='dark'] .settings-block__header:hover .settings-block__title {
-  color: hsl(var(--primary));
-}
-
-html[data-theme='dark'] .settings-block__header:hover::after {
-  border-color: hsl(var(--primary));
 }
 
 .settings-block__note {
