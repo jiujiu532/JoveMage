@@ -420,6 +420,61 @@ jq_set_array() {
     rm -f "$tmp"; return 1
 }
 
+# 写入应用实际读取的 proxy_runtime.clearance（扁平 flaresolverr_url/clearance_mode 不够）
+# multi-WARP 出口仍走 proxy_pool；egress_mode 默认 direct，但 runtime.enabled 必须为 true
+# 否则 proxy_service.clearance_enabled 恒为 false
+jq_set_proxy_runtime_clearance() {
+    local file="$1" flare_url="${2:-}" tmp
+    [ -f "$file" ] || return 1
+    tmp=$(mktemp)
+    if [ -n "$flare_url" ]; then
+        if jq --arg url "$flare_url" '
+            .proxy_runtime = ((.proxy_runtime // {}) * {
+              enabled: true,
+              egress_mode: ((.proxy_runtime.egress_mode // "direct")),
+              proxy_url: ((.proxy_runtime.proxy_url // "")),
+              resource_proxy_url: ((.proxy_runtime.resource_proxy_url // "")),
+              skip_ssl_verify: ((.proxy_runtime.skip_ssl_verify // false)),
+              reset_session_status_codes: ((.proxy_runtime.reset_session_status_codes // [403])),
+              clearance: ((.proxy_runtime.clearance // {}) * {
+                enabled: true,
+                mode: "flaresolverr",
+                flaresolverr_url: $url,
+                timeout_sec: ((.proxy_runtime.clearance.timeout_sec // 60)),
+                refresh_interval: ((.proxy_runtime.clearance.refresh_interval // 3600)),
+                warm_up_on_start: ((.proxy_runtime.clearance.warm_up_on_start // false)),
+                browser: ((.proxy_runtime.clearance.browser // "chrome")),
+                user_agent: ((.proxy_runtime.clearance.user_agent // "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36")),
+                cf_cookies: ((.proxy_runtime.clearance.cf_cookies // "")),
+                cf_clearance: ((.proxy_runtime.clearance.cf_clearance // ""))
+              })
+            })
+            | .flaresolverr_url = $url
+            | .clearance_mode = "flaresolverr"
+            | .clearance_refresh_interval = ((.clearance_refresh_interval // 3600))
+          ' "$file" > "$tmp"; then
+            mv "$tmp" "$file"; return 0
+        fi
+    else
+        if jq '
+            .proxy_runtime = ((.proxy_runtime // {}) * {
+              enabled: ((.proxy_runtime.enabled // false)),
+              egress_mode: ((.proxy_runtime.egress_mode // "direct")),
+              clearance: ((.proxy_runtime.clearance // {}) * {
+                enabled: false,
+                mode: "none",
+                flaresolverr_url: ""
+              })
+            })
+            | .clearance_mode = "none"
+            | .flaresolverr_url = ""
+          ' "$file" > "$tmp"; then
+            mv "$tmp" "$file"; return 0
+        fi
+    fi
+    rm -f "$tmp"; return 1
+}
+
 jq_get() {
     local file="$1" path="$2" default="${3:-}" v
     v=$(jq -r "$path // empty" "$file" 2>/dev/null)
@@ -643,7 +698,9 @@ setup_proxy_suite() {
 generate_config_files() {
     mkdir -p "$INSTALL_DIR/data"
     local clearance_mode="none"
-    [ -n "$FLARE_URL" ] && clearance_mode="flaresolverr"
+    local clearance_enabled=false
+    local runtime_enabled=false
+    [ -n "$FLARE_URL" ] && clearance_mode="flaresolverr" && clearance_enabled=true && runtime_enabled=true
 
     local pool_json
     if [ -n "$PROXY_POOL_TEXT" ]; then
@@ -652,11 +709,15 @@ generate_config_files() {
         pool_json="[]"
     fi
 
+    # 应用只读 proxy_runtime.clearance.*；顶层 flaresolverr_url/clearance_mode 仅作兼容镜像
+    # multi-WARP 业务出口走 proxy_pool，故 egress_mode=direct；但 enabled 必须为 true 才能开清障
     jq -n \
         --arg auth_key "$AUTH_KEY" \
         --argjson pool "$pool_json" \
         --arg clearance_mode "$clearance_mode" \
         --arg flare_url "$FLARE_URL" \
+        --argjson clearance_enabled "$clearance_enabled" \
+        --argjson runtime_enabled "$runtime_enabled" \
         --argjson max_retries "$IMAGE_MAX_RETRIES" \
         --argjson auto_remove "$AUTO_REMOVE_INVALID" \
         '{
@@ -668,7 +729,27 @@ generate_config_files() {
             "refresh_account_interval_minute": 15,
             "image_retention_days": 15,
             "image_max_retries": $max_retries,
-            "auto_remove_invalid_accounts": $auto_remove
+            "auto_remove_invalid_accounts": $auto_remove,
+            "proxy_runtime": {
+                "enabled": $runtime_enabled,
+                "egress_mode": "direct",
+                "proxy_url": "",
+                "resource_proxy_url": "",
+                "skip_ssl_verify": false,
+                "reset_session_status_codes": [403],
+                "clearance": {
+                    "enabled": $clearance_enabled,
+                    "mode": $clearance_mode,
+                    "cf_cookies": "",
+                    "cf_clearance": "",
+                    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+                    "browser": "chrome",
+                    "flaresolverr_url": $flare_url,
+                    "timeout_sec": 60,
+                    "refresh_interval": 3600,
+                    "warm_up_on_start": false
+                }
+            }
         }' > "$CONFIG_FILE"
 
     jq -n \
@@ -1120,10 +1201,13 @@ cmd_normalize_proxies() {
     new_pool=$(generate_socks5_pool_text "$target_n")
 
     if [ -f "$CONFIG_FILE" ] && validate_json "$CONFIG_FILE"; then
-        info "覆盖 config.json proxy_pool / flaresolverr_url..."
+        info "覆盖 config.json proxy_pool / proxy_runtime.clearance..."
         jq_set_array "$CONFIG_FILE" '.proxy_pool' "$new_pool" && ok "config.json proxy_pool: $target_n 个"
-        jq_set_string "$CONFIG_FILE" '.flaresolverr_url' "http://${FLARE_CONTAINER}:8191" 2>/dev/null || true
-        jq_set_string "$CONFIG_FILE" '.clearance_mode' "flaresolverr" 2>/dev/null || true
+        if jq_set_proxy_runtime_clearance "$CONFIG_FILE" "http://${FLARE_CONTAINER}:8191"; then
+            ok "proxy_runtime.clearance: flaresolverr @ http://${FLARE_CONTAINER}:8191"
+        else
+            warn "写入 proxy_runtime 失败，请手动在设置页启用 FlareSolverr 清障"
+        fi
         if jq -e 'has("proxy")' "$CONFIG_FILE" >/dev/null 2>&1; then
             local tmp_c
             tmp_c=$(mktemp)

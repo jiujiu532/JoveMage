@@ -358,6 +358,78 @@ def _promote_legacy_basic_settings(data: dict[str, object]) -> dict[str, object]
     return next_data
 
 
+def _promote_legacy_proxy_runtime(data: dict[str, object]) -> dict[str, object]:
+    """把 install.sh 旧版顶层 flaresolverr_url / clearance_mode 提升进 proxy_runtime。
+
+    应用只读 proxy_runtime.clearance.*；旧安装脚本只写了扁平键，导致 UI 显示清障关闭。
+    已完整配置的 nested proxy_runtime 不覆盖。
+    """
+    next_data = dict(data or {})
+    flat_mode = str(next_data.get("clearance_mode") or "").strip().lower()
+    flat_url = str(next_data.get("flaresolverr_url") or "").strip()
+    flat_interval = next_data.get("clearance_refresh_interval")
+
+    if flat_mode not in {"flaresolverr", "manual"} and not flat_url:
+        return next_data
+
+    raw_runtime = next_data.get("proxy_runtime")
+    runtime: dict[str, object] = dict(raw_runtime) if isinstance(raw_runtime, dict) else {}
+    raw_clearance = runtime.get("clearance")
+    clearance: dict[str, object] = dict(raw_clearance) if isinstance(raw_clearance, dict) else {}
+
+    nested_mode = str(clearance.get("mode") or "none").strip().lower()
+    nested_url = str(clearance.get("flaresolverr_url") or "").strip()
+    nested_enabled = _normalize_bool(clearance.get("enabled"), False)
+    runtime_enabled = _normalize_bool(runtime.get("enabled"), False)
+
+    # 已可工作的 nested 配置：runtime 开 + clearance 开 + 有效 mode（flaresolverr 还需 URL）
+    nested_ready = (
+        runtime_enabled
+        and nested_enabled
+        and nested_mode in {"manual", "flaresolverr"}
+        and (nested_mode == "manual" or bool(nested_url))
+    )
+    if nested_ready:
+        return next_data
+
+    if flat_mode in {"flaresolverr", "manual", "none"}:
+        mode = flat_mode
+    elif flat_url:
+        mode = "flaresolverr"
+    else:
+        mode = nested_mode if nested_mode in {"manual", "flaresolverr", "none"} else "none"
+    if mode == "none" and not flat_url:
+        return next_data
+    if mode == "none" and flat_url:
+        mode = "flaresolverr"
+
+    # clearance_enabled 依赖 runtime.enabled；multi-WARP 出口仍走 proxy_pool，egress 保持 direct 即可
+    runtime["enabled"] = True
+    if not str(runtime.get("egress_mode") or "").strip():
+        runtime["egress_mode"] = "direct"
+
+    clearance["enabled"] = True
+    clearance["mode"] = mode
+    if flat_url and (not nested_url or not nested_enabled or nested_mode in {"", "none"}):
+        clearance["flaresolverr_url"] = flat_url
+    elif not nested_url and mode == "flaresolverr":
+        clearance["flaresolverr_url"] = flat_url
+
+    if flat_interval is not None and clearance.get("refresh_interval") in (None, "", 0):
+        try:
+            clearance["refresh_interval"] = max(60, int(flat_interval))  # type: ignore[arg-type]
+        except (OverflowError, TypeError, ValueError):
+            pass
+
+    runtime["clearance"] = clearance
+    next_data["proxy_runtime"] = runtime
+    return next_data
+
+
+def _promote_legacy_settings(data: dict[str, object]) -> dict[str, object]:
+    return _promote_legacy_proxy_runtime(_promote_legacy_basic_settings(data))
+
+
 def _validate_image_storage_settings(settings: dict[str, object]) -> None:
     if not _normalize_bool(settings.get("enabled"), False):
         return
@@ -407,7 +479,7 @@ class ConfigStore:
         self.path = path
         self._lock = threading.RLock()
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        self.data = _promote_legacy_basic_settings(self._load())
+        self.data = _promote_legacy_settings(self._load())
         self._loaded_mtime_ns = self._config_mtime_ns()
         self._storage_backend: StorageBackend | None = None
         if _is_invalid_auth_key(self.auth_key):
@@ -433,7 +505,7 @@ class ConfigStore:
         with self._lock:
             current_mtime_ns = self._config_mtime_ns()
             if current_mtime_ns and current_mtime_ns != self._loaded_mtime_ns:
-                self.data = _promote_legacy_basic_settings(self._load())
+                self.data = _promote_legacy_settings(self._load())
                 self._loaded_mtime_ns = current_mtime_ns
 
     def _save(self) -> None:
@@ -696,7 +768,8 @@ class ConfigStore:
         return str(self.data.get("fallback_proxy") or "").strip()
 
     def get_proxy_runtime_settings(self) -> dict[str, object]:
-        return _normalize_proxy_runtime_settings(self.data.get("proxy_runtime"))
+        promoted = _promote_legacy_proxy_runtime(self.data if isinstance(self.data, dict) else {})
+        return _normalize_proxy_runtime_settings(promoted.get("proxy_runtime"))
 
     def get_public_proxy_runtime_settings(self) -> dict[str, object]:
         runtime = copy.deepcopy(self.get_proxy_runtime_settings())
@@ -719,9 +792,9 @@ class ConfigStore:
     def update(self, data: dict[str, object]) -> dict[str, object]:
         with self._lock:
             self.reload_if_changed()
-            next_data = _promote_legacy_basic_settings(self.data)
-            next_data.update(_promote_legacy_basic_settings(dict(data or {})))
-            next_data = _promote_legacy_basic_settings(next_data)
+            next_data = _promote_legacy_settings(self.data)
+            next_data.update(_promote_legacy_settings(dict(data or {})))
+            next_data = _promote_legacy_settings(next_data)
             if "backup" in next_data:
                 next_data["backup"] = _normalize_backup_settings(next_data.get("backup"))
             if "image_storage" in next_data:
