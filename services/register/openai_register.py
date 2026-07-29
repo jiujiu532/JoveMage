@@ -411,7 +411,8 @@ def _authorize_landed_page(resp) -> str:
 
 
 def create_mailbox(username: str | None = None, register_proxy: str = "") -> dict:
-    return mail_provider.create_mailbox(_mail_config(register_proxy), username)
+    purpose = str(config.get("mail_purpose") or "daily")
+    return mail_provider.create_mailbox(_mail_config(register_proxy), username, purpose=purpose)
 
 
 def wait_for_code(mailbox: dict, register_proxy: str = "") -> str | None:
@@ -1639,7 +1640,7 @@ def _reconstruct_mailbox(email: str) -> dict:
         else []
     )
     for index, entry in enumerate(providers, start=1):
-        if not entry.get("enable") and not entry.get("enable_scheduled"):
+        if not entry.get("enable") and not entry.get("schedule_enable") and not entry.get("enable_scheduled"):
             continue
         provider_type = str(entry.get("type") or "").strip().lower()
         if provider_type == "ahem":

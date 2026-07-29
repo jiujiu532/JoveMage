@@ -2585,16 +2585,23 @@ def _entries(mail_config: dict) -> list[dict]:
     return result
 
 
-def _enabled_entries(mail_config: dict) -> list[dict]:
-    items = [item for item in _entries(mail_config) if item.get("enable")]
+def _enabled_entries(mail_config: dict, purpose: str = "daily") -> list[dict]:
+    purpose = "schedule" if str(purpose or "").strip().lower() == "schedule" else "daily"
+    entries = _entries(mail_config)
+    if purpose == "schedule":
+        items = [item for item in entries if item.get("schedule_enable") or item.get("enable_scheduled")]
+        if not items:
+            raise RuntimeError("mail.providers 没有勾选「定时参与」的 provider")
+        return items
+    items = [item for item in entries if item.get("enable")]
     if not items:
         raise RuntimeError("mail.providers 没有启用的 provider")
     return items
 
 
-def _next_entry(mail_config: dict) -> dict:
+def _next_entry(mail_config: dict, purpose: str = "daily") -> dict:
     global provider_index
-    items = _enabled_entries(mail_config)
+    items = _enabled_entries(mail_config, purpose)
     if len(items) == 1:
         return dict(items[0])
     with provider_lock:
@@ -2603,9 +2610,9 @@ def _next_entry(mail_config: dict) -> dict:
         return value
 
 
-def _create_provider(mail_config: dict, provider: str = "", provider_ref: str = "") -> BaseMailProvider:
+def _create_provider(mail_config: dict, provider: str = "", provider_ref: str = "", purpose: str = "daily") -> BaseMailProvider:
     entry = next((dict(item) for item in _entries(mail_config) if provider_ref and item["provider_ref"] == provider_ref), None)
-    entry = entry or next((dict(item) for item in _enabled_entries(mail_config) if provider and item["type"] == provider), None) or _next_entry(mail_config)
+    entry = entry or next((dict(item) for item in _enabled_entries(mail_config, purpose) if provider and item["type"] == provider), None) or _next_entry(mail_config, purpose)
     conf = _config(mail_config)
     if entry["type"] == "cloudmail_gen":
         return CloudMailGenProvider(entry, conf)
@@ -2636,12 +2643,12 @@ def _create_provider(mail_config: dict, provider: str = "", provider_ref: str = 
     raise RuntimeError(f"不支持的 mail.provider: {entry['type']}")
 
 
-def create_mailbox(mail_config: dict, username: str | None = None) -> dict:
-    enabled = _enabled_entries(mail_config)
+def create_mailbox(mail_config: dict, username: str | None = None, purpose: str = "daily") -> dict:
+    enabled = _enabled_entries(mail_config, purpose)
     tried: set[str] = set()
     last_error = ""
     for _ in range(len(enabled)):
-        provider = _create_provider(mail_config)
+        provider = _create_provider(mail_config, purpose=purpose)
         provider_key = f"{provider.name}#{provider.provider_ref}"
         try:
             if provider_key in tried:
