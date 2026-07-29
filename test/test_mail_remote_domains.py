@@ -170,6 +170,20 @@ class YydsRemoteDomainTests(unittest.TestCase):
         self.addCleanup(patcher.stop)
         patcher.start()
 
+    def test_api_base_without_v1_is_normalized(self):
+        provider = mail_provider.YydsMailProvider(
+            {"api_base": "https://maliapi.example/", "api_key": "AC-test", "domain": []},
+            self.conf,
+        )
+        self.assertEqual(provider.api_base, "https://maliapi.example/v1")
+
+    def test_api_base_with_v1_not_doubled(self):
+        provider = mail_provider.YydsMailProvider(
+            {"api_base": "https://maliapi.example/v1/", "api_key": "AC-test", "domain": []},
+            self.conf,
+        )
+        self.assertEqual(provider.api_base, "https://maliapi.example/v1")
+
     def test_empty_domain_lists_then_creates(self):
         domains_payload = {
             "success": True,
@@ -204,7 +218,7 @@ class YydsRemoteDomainTests(unittest.TestCase):
         ]
         provider = mail_provider.YydsMailProvider(
             {
-                "api_base": "https://maliapi.example/v1",
+                "api_base": "https://maliapi.example",
                 "api_key": "AC-test",
                 "domain": [],
                 "provider_ref": "yyds:1",
@@ -219,8 +233,8 @@ class YydsRemoteDomainTests(unittest.TestCase):
         self.assertEqual(mailbox["address"], "alice@ok.example")
         self.assertEqual(mailbox["token"], "tok-1")
         calls = self.session.request.call_args_list
-        self.assertTrue(str(calls[0][0][1]).endswith("/domains"))
-        self.assertTrue(str(calls[1][0][1]).endswith("/accounts"))
+        self.assertEqual(str(calls[0][0][1]), "https://maliapi.example/v1/domains")
+        self.assertEqual(str(calls[1][0][1]), "https://maliapi.example/v1/accounts")
         self.assertEqual(calls[1][1]["json"]["domain"], "ok.example")
 
     def test_empty_domain_no_usable_raises(self):
@@ -236,7 +250,29 @@ class YydsRemoteDomainTests(unittest.TestCase):
             },
             self.conf,
         )
-        with self.assertRaisesRegex(RuntimeError, "无可用域名"):
+        with self.assertRaisesRegex(RuntimeError, "无可用公共域"):
+            provider.create_mailbox("alice")
+
+    def test_html_response_raises_clear_error(self):
+        class _HtmlResponse:
+            status_code = 200
+            text = "<!doctype html><html><body>SPA</body></html>"
+            headers = {"content-type": "text/html"}
+
+            def json(self):
+                raise ValueError("Expecting value: line 1 column 1 (char 0)")
+
+        self.session.request.return_value = _HtmlResponse()
+        provider = mail_provider.YydsMailProvider(
+            {
+                "api_base": "https://mail.example/",
+                "api_key": "AC-test",
+                "domain": [],
+                "provider_ref": "yyds:1",
+            },
+            self.conf,
+        )
+        with self.assertRaisesRegex(RuntimeError, "返回非 JSON"):
             provider.create_mailbox("alice")
 
 

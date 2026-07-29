@@ -2102,13 +2102,32 @@ class OutlookEmailApiProvider(BaseMailProvider):
         self.session.close()
 
 
+def _normalize_yyds_api_base(raw: str) -> str:
+    """统一 YYDS Mail API 基址，确保以 /v1 结尾。
+
+    接受 https://host 或 https://host/v1。真实接口是 /v1/domains、/v1/accounts；
+    只填站点根时会打到前端 HTML，resp.json() 变成 Expecting value...。
+    """
+    base = str(raw or "").strip().rstrip("/")
+    if not base:
+        return "https://maliapi.215.im/v1"
+    # 去掉重复 /v1 后缀后再补一次，避免 /v1/v1
+    while base.lower().endswith("/v1"):
+        base = base[:-3].rstrip("/")
+    if not base:
+        return "https://maliapi.215.im/v1"
+    return f"{base}/v1"
+
+
 class YydsMailProvider(BaseMailProvider):
     name = "yyds_mail"
 
     def __init__(self, entry: dict, conf: dict):
         super().__init__(conf, str(entry.get("provider_ref") or ""))
-        self.api_base = str(entry.get("api_base") or "https://maliapi.215.im/v1").rstrip("/")
-        self.api_key = str(entry["api_key"]).strip()
+        self.api_base = _normalize_yyds_api_base(str(entry.get("api_base") or ""))
+        self.api_key = str(entry.get("api_key") or "").strip()
+        if not self.api_key:
+            raise RuntimeError("YYDSMail 需要配置 api_key")
         self.domain = [str(item).strip() for item in (entry.get("domain") or []) if str(item).strip()]
         self.subdomain = str(entry.get("subdomain") or "").strip()
         self.wildcard = bool(entry.get("wildcard"))
@@ -2123,7 +2142,15 @@ class YydsMailProvider(BaseMailProvider):
             raise RuntimeError(f"YYDSMail 请求失败: {method} {path}, HTTP {resp.status_code}, body={resp.text[:300]}")
         if resp.status_code == 204:
             return {}
-        data = resp.json()
+        try:
+            data = resp.json()
+        except Exception as exc:
+            preview = (resp.text or "")[:200].replace("\n", " ")
+            raise RuntimeError(
+                f"YYDSMail {method} {path} 返回非 JSON；"
+                f"请确认类型选 YYDS 且 api_base 指向 YYDS 的 /v1（当前 {self.api_base}），"
+                f"body={preview}"
+            ) from exc
         if isinstance(data, dict) and data.get("success") is False:
             raise RuntimeError(f"YYDSMail 请求失败: {data.get('errorCode') or data.get('error')}")
         return data.get("data") if isinstance(data, dict) and isinstance(data.get("data"), (dict, list)) else data
@@ -2137,9 +2164,15 @@ class YydsMailProvider(BaseMailProvider):
         if self._remote_domains is not None:
             return self._remote_domains
         data = self._request("GET", "/domains")
-        items = data if isinstance(data, list) else []
+        if not isinstance(data, list):
+            preview = str(data)[:200]
+            raise RuntimeError(
+                "YYDSMail /domains 响应不是域名列表；"
+                f"请确认 api_base 指向 YYDS 的 /v1（当前 {self.api_base}），body={preview}。"
+                "若站点实际是 AHEM，请改用类型 ahem"
+            )
         domains: list[str] = []
-        for item in items:
+        for item in data:
             if not isinstance(item, dict):
                 continue
             if not item.get("isVerified") or not item.get("isMxValid"):
@@ -2168,11 +2201,17 @@ class YydsMailProvider(BaseMailProvider):
         else:
             remote = self._fetch_remote_domains()
             if not remote:
-                raise RuntimeError("YYDSMail 未配置 domain 且 /domains 无可用域名")
+                raise RuntimeError(
+                    "YYDSMail 未配置 domain 且 /domains 无可用公共域；"
+                    f"api_base={self.api_base}。"
+                    "可在「允许域名」手动填写，或检查 API Key / 服务类型是否为 YYDS"
+                )
             payload["domain"] = _next_domain(remote, self.provider_ref)
         if self.subdomain:
             payload["subdomain"] = self.subdomain
         data = self._request("POST", "/accounts/wildcard" if self.wildcard else "/accounts", payload=payload)
+        if not isinstance(data, dict):
+            raise RuntimeError(f"YYDSMail 建箱返回结构异常: {str(data)[:200]}")
         address = str(data.get("address") or data.get("email") or "").strip()
         token = str(data.get("token") or data.get("temp_token") or data.get("tempToken") or data.get("access_token") or "").strip()
         if not address or not token:
