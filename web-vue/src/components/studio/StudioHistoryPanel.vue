@@ -335,10 +335,16 @@ function formatConversationTime(conversation: StudioConversation) {
   align-items: center;
   gap: 0.5rem;
   border: 1px solid hsl(var(--border));
-  border-radius: 0.25rem;
+  border-radius: var(--radius);
   background: hsl(var(--background));
   padding: 0 0.75rem;
   color: hsl(var(--muted-foreground));
+}
+
+.studio-history-search:focus-within {
+  border-color: var(--bauhaus-blue);
+  outline: 2px solid color-mix(in srgb, var(--bauhaus-blue) 28%, transparent);
+  outline-offset: 0;
 }
 
 .studio-history-search input {
@@ -501,31 +507,31 @@ function formatConversationTime(conversation: StudioConversation) {
 }
 
 .studio-history-icon.is-danger:hover {
-  background: rgb(254 242 242);
-  color: rgb(225 29 72);
+  background: hsl(var(--tone-error-bg));
+  color: hsl(var(--tone-error-strong));
 }
 
 .studio-history-badge {
   width: fit-content;
-  border-radius: 999px;
+  border-radius: var(--radius);
   padding: 0.125rem 0.5rem;
   font-size: 0.6875rem;
   font-weight: 650;
 }
 
 .studio-history-badge.is-running {
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: hsl(var(--tone-info-bg));
+  color: hsl(var(--tone-info-foreground));
 }
 
 .studio-history-badge.is-done {
-  background: #ecfdf5;
-  color: #047857;
+  background: hsl(var(--tone-success-bg));
+  color: hsl(var(--tone-success-foreground));
 }
 
 .studio-history-badge.is-error {
-  background: #fef2f2;
-  color: #dc2626;
+  background: hsl(var(--tone-error-bg));
+  color: hsl(var(--tone-error-foreground));
 }
 
 .studio-history-empty {

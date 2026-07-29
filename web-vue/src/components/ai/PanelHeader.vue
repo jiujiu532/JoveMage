@@ -43,10 +43,11 @@ withDefaults(defineProps<{
 
 .panel-header-title {
   font-family: var(--font-display);
-  font-size: 1.05rem;
+  /* 与 style.css 页面主标题层级对齐；全局规则会再抬一级 */
+  font-size: clamp(1.35rem, 1.2rem + 0.45vw, 1.625rem);
   font-weight: 700;
-  letter-spacing: -0.03em;
-  line-height: 1.25;
+  letter-spacing: -0.045em;
+  line-height: 1.15;
   color: hsl(var(--foreground));
 }
 

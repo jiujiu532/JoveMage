@@ -54,7 +54,7 @@ function handleBackdropClick() {
   position: fixed;
   inset: 0;
   overflow-y: auto;
-  background: rgb(0 0 0 / 0.4);
+  background: var(--overlay-backdrop);
   padding: 16px 12px;
 }
 
@@ -83,10 +83,15 @@ function handleBackdropClick() {
 .modal-shell__panel {
   width: 100%;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, hsl(var(--border)) 55%, white 45%);
+  border: 2px solid var(--bauhaus-ink);
   border-radius: var(--radius);
-  background: hsl(var(--card));
-  box-shadow: var(--shadow-floating);
+  background: var(--bauhaus-card);
+  box-shadow: 4px 4px 0 0 var(--bauhaus-ink);
+}
+
+/* 深色 ink 近白，硬阴影会变白框 → 柔和深色投影 */
+:global(html[data-theme='dark']) .modal-shell__panel {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
 }
 
 @media (max-width: 640px) {

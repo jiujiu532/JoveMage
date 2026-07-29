@@ -219,7 +219,7 @@ async function handleLogin() {
 }
 
 .login-manifesto__word--offset {
-  color: #fff9c4;
+  color: var(--bauhaus-postit);
   padding-left: 12%;
 }
 
@@ -229,7 +229,7 @@ async function handleLogin() {
 }
 
 html[data-theme='dark'] .login-page {
-  background-color: #141414;
+  background-color: var(--bauhaus-paper);
   background-image:
     linear-gradient(to right, rgba(250, 250, 250, 0.04) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(250, 250, 250, 0.04) 1px, transparent 1px);

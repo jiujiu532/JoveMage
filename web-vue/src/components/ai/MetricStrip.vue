@@ -115,12 +115,17 @@ function isSvgPathIcon(item: MetricStripItem) {
   border: 2px solid var(--bauhaus-ink, #2d2d2d);
   border-radius: var(--radius);
   background: hsl(var(--card));
-  box-shadow: none;
+  box-shadow: var(--shadow-card, 3px 3px 0 0 var(--bauhaus-ink));
   overflow: hidden;
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
 }
 
 html[data-theme='dark'] .metric-strip-card {
   border-color: hsl(var(--border));
+  box-shadow: var(--shadow-card-soft, 0 4px 14px rgba(0, 0, 0, 0.45));
 }
 
 /* 顶边功能色条：轮换三原色 + 墨色 */
@@ -239,6 +244,8 @@ html[data-theme='dark'] .metric-strip-card {
   font-size: 22px;
   font-weight: 700;
   letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
   color: hsl(var(--foreground));
   text-overflow: ellipsis;
   white-space: nowrap;

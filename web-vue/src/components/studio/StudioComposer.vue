@@ -658,7 +658,7 @@ onBeforeUnmount(() => {
   gap: 0.3125rem;
   overflow: hidden;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius);
   background: hsl(var(--secondary) / 0.58);
   color: hsl(var(--muted-foreground));
   padding: 0.3rem 0.7rem;
@@ -729,7 +729,7 @@ onBeforeUnmount(() => {
 .chat-input-count {
   flex: 0 0 auto;
   border: 1px solid hsl(var(--border) / 0.64);
-  border-radius: 999px;
+  border-radius: var(--radius);
   background: hsl(var(--secondary) / 0.48);
   padding: 0.125rem 0.5rem;
   color: hsl(var(--muted-foreground));
@@ -833,8 +833,8 @@ onBeforeUnmount(() => {
   height: 1.5rem;
   align-items: center;
   justify-content: center;
-  border-radius: 0.25rem;
-  background: rgb(15 23 42 / 0.72);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bauhaus-ink) 72%, transparent);
   color: white;
   opacity: 0;
   box-shadow: none;
@@ -847,7 +847,7 @@ onBeforeUnmount(() => {
 }
 
 .chat-attachment-remove:hover {
-  background: rgb(220 38 38);
+  background: var(--bauhaus-red);
 }
 
 .chat-input-send {
@@ -858,7 +858,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius);
   padding: 0;
   font: inherit;
   font-size: 0.75rem;
@@ -894,9 +894,9 @@ onBeforeUnmount(() => {
 }
 
 .chat-input-send-danger {
-  border-color: rgb(248 113 113 / 0.32);
-  background: rgb(254 242 242);
-  color: rgb(220 38 38);
+  border-color: hsl(var(--tone-error-border) / 0.45);
+  background: hsl(var(--tone-error-bg));
+  color: hsl(var(--tone-error-strong));
 }
 
 .chat-input-send-label {
@@ -942,7 +942,7 @@ onBeforeUnmount(() => {
 .studio-choice-button {
   min-height: 2.125rem;
   border: 1px solid hsl(var(--border));
-  border-radius: 999px;
+  border-radius: var(--radius);
   background: hsl(var(--background));
   color: hsl(var(--muted-foreground));
   font-size: 0.8125rem;
@@ -981,11 +981,11 @@ onBeforeUnmount(() => {
 .studio-composer-error {
   width: min(100%, 48rem);
   margin: 0.625rem auto 0;
-  border: 1px solid rgb(244 63 94 / 0.28);
-  border-radius: 0.25rem;
-  background: rgb(244 63 94 / 0.08);
+  border: 1px solid hsl(var(--tone-error-border) / 0.45);
+  border-radius: var(--radius);
+  background: hsl(var(--tone-error-bg));
   padding: 0.55rem 0.75rem;
-  color: rgb(190 18 60);
+  color: hsl(var(--tone-error-foreground));
   font-size: 0.8125rem;
   line-height: 1.55;
   pointer-events: auto;

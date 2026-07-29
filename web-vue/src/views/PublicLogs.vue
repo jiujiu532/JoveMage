@@ -174,12 +174,13 @@ const statusLabel = (status: PublicLogStatus) => {
   return '进行中'
 }
 
+const badgeBaseClass = 'public-log-badge'
+
 const statusBadgeClass = (status: PublicLogStatus) => {
-  const base = 'rounded-md px-2 py-0.5 text-[11px] font-semibold'
-  if (status === 'success') return `${base} bg-emerald-100 text-emerald-700`
-  if (status === 'error') return `${base} bg-rose-100 text-rose-700`
-  if (status === 'timeout') return `${base} bg-amber-100 text-amber-700`
-  return `${base} bg-amber-100 text-amber-700`
+  if (status === 'success') return `${badgeBaseClass} public-log-badge--success`
+  if (status === 'error') return `${badgeBaseClass} public-log-badge--danger`
+  if (status === 'timeout') return `${badgeBaseClass} public-log-badge--warning`
+  return `${badgeBaseClass} public-log-badge--warning`
 }
 
 const eventLabel = (event: PublicLogEvent) => {
@@ -197,17 +198,16 @@ const eventLabel = (event: PublicLogEvent) => {
 }
 
 const eventBadgeClass = (event: PublicLogEvent) => {
-  const base = 'rounded-md px-2 py-0.5 text-[11px] font-semibold'
-  if (event.type === 'start') return `${base} bg-blue-100 text-blue-700`
-  if (event.type === 'select') return `${base} bg-violet-100 text-violet-700`
-  if (event.type === 'retry') return `${base} bg-amber-100 text-amber-700`
-  if (event.type === 'switch') return `${base} bg-cyan-100 text-cyan-700`
+  if (event.type === 'start') return `${badgeBaseClass} public-log-badge--info`
+  if (event.type === 'select') return `${badgeBaseClass} public-log-badge--select`
+  if (event.type === 'retry') return `${badgeBaseClass} public-log-badge--warning`
+  if (event.type === 'switch') return `${badgeBaseClass} public-log-badge--info`
   if (event.type === 'complete') {
-    if (event.status === 'success') return `${base} bg-emerald-100 text-emerald-700`
-    if (event.status === 'error') return `${base} bg-rose-100 text-rose-700`
-    if (event.status === 'timeout') return `${base} bg-amber-100 text-amber-700`
+    if (event.status === 'success') return `${badgeBaseClass} public-log-badge--success`
+    if (event.status === 'error') return `${badgeBaseClass} public-log-badge--danger`
+    if (event.status === 'timeout') return `${badgeBaseClass} public-log-badge--warning`
   }
-  return `${base} bg-slate-100 text-slate-600`
+  return `${badgeBaseClass} public-log-badge--muted`
 }
 
 const loadCollapseState = () => {
@@ -296,3 +296,74 @@ onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 </script>
+
+<style>
+/* 非 scoped：class 挂在子组件内部节点上 */
+/* Bauhaus tone badges：直边 + 令牌色，深浅两模式可读 */
+.public-log-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  padding: 0.125rem 0.5rem;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.public-log-badge--success {
+  border-color: color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 40%, transparent);
+  background: color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 12%, transparent);
+  color: var(--bauhaus-blue, #2d5da1);
+}
+
+.public-log-badge--danger {
+  border-color: hsl(var(--tone-error-border) / 0.45);
+  background: hsl(var(--tone-error-bg));
+  color: hsl(var(--tone-error-foreground));
+}
+
+.public-log-badge--warning {
+  border-color: hsl(var(--tone-warning-border) / 0.45);
+  background: hsl(var(--tone-warning-bg));
+  color: hsl(var(--tone-warning-foreground));
+}
+
+.public-log-badge--info {
+  border-color: hsl(var(--tone-info-border) / 0.45);
+  background: hsl(var(--tone-info-bg));
+  color: hsl(var(--tone-info-foreground));
+}
+
+/* select 用 postit 黄，区别于 warning 语义但同属 Bauhaus 高亮 */
+.public-log-badge--select {
+  border-color: var(--bauhaus-ink, #2d2d2d);
+  background: var(--bauhaus-postit, #fff9c4);
+  color: var(--bauhaus-ink, #2d2d2d);
+}
+
+.public-log-badge--muted {
+  border-color: hsl(var(--border));
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+}
+
+html[data-theme='dark'] .public-log-badge--success {
+  border-color: color-mix(in srgb, var(--bauhaus-blue, #3d8fd9) 45%, transparent);
+  background: color-mix(in srgb, var(--bauhaus-blue, #3d8fd9) 18%, transparent);
+  color: var(--bauhaus-blue, #3d8fd9);
+}
+
+html[data-theme='dark'] .public-log-badge--select {
+  border-color: var(--bauhaus-ink, #f2f2f2);
+  background: var(--bauhaus-postit, #3a3420);
+  color: var(--bauhaus-ink, #f2f2f2);
+}
+
+html[data-theme='dark'] .public-log-badge--muted {
+  border-color: var(--bauhaus-line-soft, #3d3d3d);
+  color: var(--bauhaus-grey, #a3a3a3);
+}
+</style>
+

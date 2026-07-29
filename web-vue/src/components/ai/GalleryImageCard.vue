@@ -103,8 +103,8 @@ defineEmits<{
 .gallery-item {
   --gallery-card-bg: hsl(var(--card));
   --gallery-card-border: hsl(var(--border));
-  --gallery-card-hover-border: hsl(var(--primary) / 0.35);
-  --gallery-card-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  --gallery-card-hover-border: var(--bauhaus-ink);
+  --gallery-card-shadow: 3px 3px 0 0 var(--bauhaus-ink);
   --gallery-media-bg: hsl(var(--muted));
   --gallery-badge-bg: rgba(255, 255, 255, 0.92);
   --gallery-badge-fg: hsl(var(--foreground));
@@ -118,20 +118,21 @@ defineEmits<{
   height: 100%;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--gallery-card-border);
-  border-radius: var(--gallery-radius, 16px);
+  border: 2px solid var(--gallery-card-border);
+  border-radius: var(--radius);
   background: var(--gallery-card-bg);
-  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  transition: border-color 0.12s, box-shadow 0.08s, transform 0.08s;
 }
 
 .gallery-item:hover {
   border-color: var(--gallery-card-hover-border);
   box-shadow: var(--gallery-card-shadow);
+  transform: translate(-1px, -1px);
 }
 
 .gallery-item.is-selected {
-  border-color: hsl(var(--primary) / 0.7);
-  box-shadow: 0 0 0 2px hsl(var(--primary) / 0.16);
+  border-color: var(--bauhaus-blue);
+  box-shadow: 3px 3px 0 0 var(--bauhaus-blue);
 }
 
 .gallery-item.is-expired {
@@ -324,10 +325,11 @@ defineEmits<{
 
 <style>
 html[data-theme="dark"] .gallery-image-card.gallery-item {
-  --gallery-card-bg: hsl(0 0% 12%);
-  --gallery-card-border: hsl(0 0% 31%);
-  --gallery-card-hover-border: hsl(0 0% 48%);
-  --gallery-card-shadow: 0 12px 28px rgba(0, 0, 0, 0.36);
+  --gallery-card-bg: var(--bauhaus-card);
+  --gallery-card-border: var(--bauhaus-line-soft);
+  --gallery-card-hover-border: var(--bauhaus-ink);
+  /* 深色 ink 近白，硬阴影变白框；用柔和深色投影 */
+  --gallery-card-shadow: 0 3px 9px rgba(0, 0, 0, 0.55);
   --gallery-media-bg: hsl(0 0% 14%);
   --gallery-badge-bg: rgba(22, 22, 22, 0.72);
   --gallery-badge-fg: rgba(255, 255, 255, 0.88);
@@ -336,5 +338,9 @@ html[data-theme="dark"] .gallery-image-card.gallery-item {
   --gallery-float-fg: rgba(255, 255, 255, 0.9);
   --gallery-float-hover-bg: rgba(255, 255, 255, 0.9);
   --gallery-float-hover-fg: hsl(0 0% 8%);
+}
+
+html[data-theme="dark"] .gallery-image-card.gallery-item.is-selected {
+  box-shadow: 0 3px 9px rgba(0, 0, 0, 0.55);
 }
 </style>

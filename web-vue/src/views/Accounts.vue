@@ -93,7 +93,7 @@
 
       <TableShell v-else-if="viewMode === 'list'">
         <table class="min-w-[980px] w-full text-left text-sm">
-          <thead class="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+          <thead>
             <tr>
               <th class="w-12 py-3 pr-4">
                 <Checkbox
@@ -105,10 +105,10 @@
               <th class="py-3 pr-5">类型 / 来源</th>
               <th class="py-3 pr-5">状态</th>
               <th class="py-3 pr-5">账户信息</th>
-              <th class="py-3 pr-5">创建时间</th>
-              <th class="py-3 pr-5">图片额度</th>
-              <th class="py-3 pr-5">恢复时间</th>
-              <th class="py-3 pr-5">成功 / 失败</th>
+              <th class="py-3 pr-5 table-num">创建时间</th>
+              <th class="py-3 pr-5 table-num">图片额度</th>
+              <th class="py-3 pr-5 table-num">恢复时间</th>
+              <th class="py-3 pr-5 table-num">成功 / 失败</th>
               <th class="py-3 text-right">操作</th>
             </tr>
           </thead>
@@ -125,8 +125,8 @@
             <tr
               v-for="item in pagedAccounts"
               :key="item.id"
-              class="border-t border-border transition-colors"
-              :class="[rowClass(item), isSelected(item.id) ? 'bg-primary/5' : '']"
+              class="border-t border-border"
+              :class="[rowClass(item), isSelected(item.id) ? 'is-selected' : '']"
             >
               <td class="py-4 pr-4 align-middle">
                 <Checkbox
@@ -172,16 +172,16 @@
                 <p class="max-w-[16rem] truncate text-sm font-medium text-foreground">{{ accountPrimaryText(item) }}</p>
                 <p class="mt-1 max-w-[16rem] truncate font-mono text-xs text-muted-foreground">{{ accountSecondaryText(item) }}</p>
               </td>
-              <td class="py-4 pr-5 align-middle text-xs text-muted-foreground">
+              <td class="py-4 pr-5 align-middle text-xs text-muted-foreground table-num">
                 {{ accountCreatedText(item) }}
               </td>
-              <td class="py-4 pr-5 align-middle">
+              <td class="py-4 pr-5 align-middle table-num">
                 <QuotaBadge :account="item" />
               </td>
-              <td class="py-4 pr-5 align-middle text-xs text-muted-foreground">
+              <td class="py-4 pr-5 align-middle text-xs text-muted-foreground table-num">
                 {{ accountRestoreText(item) }}
               </td>
-              <td class="py-4 pr-5 align-middle">
+              <td class="py-4 pr-5 align-middle table-num">
                 <div class="font-mono text-sm tabular-nums">
                   <span class="text-emerald-600">{{ item.success_count || 0 }}</span>
                   <span class="mx-1 text-muted-foreground/60">/</span>
@@ -221,7 +221,7 @@
           v-for="item in pagedAccounts"
           :key="`${item.id}-card`"
           class="ui-card flex h-full flex-col gap-4 transition-all"
-          :class="[rowClass(item), isSelected(item.id) ? 'ring-2 ring-primary/30' : 'hover:border-primary/30']"
+          :class="[rowClass(item), isSelected(item.id) ? 'is-selected-anchor ring-2 ring-primary/30' : 'hover:border-primary/30']"
         >
           <div class="flex items-start justify-between gap-3">
             <div class="flex min-w-0 items-start gap-3">

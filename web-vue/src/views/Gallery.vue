@@ -1022,15 +1022,15 @@ onBeforeUnmount(() => {
 }
 
 .gallery-storage-alert.is-error {
-  border: 1px solid rgb(244 63 94 / 0.28);
-  background: rgb(244 63 94 / 0.08);
-  color: rgb(190 18 60);
+  border: 1px solid hsl(var(--tone-error-border) / 0.45);
+  background: hsl(var(--tone-error-bg));
+  color: hsl(var(--tone-error-foreground));
 }
 
 .gallery-storage-alert.is-success {
-  border: 1px solid rgb(16 185 129 / 0.24);
-  background: rgb(16 185 129 / 0.08);
-  color: rgb(4 120 87);
+  border: 1px solid hsl(var(--tone-success-border) / 0.45);
+  background: hsl(var(--tone-success-bg));
+  color: hsl(var(--tone-success-foreground));
 }
 
 .gallery-storage-grid {

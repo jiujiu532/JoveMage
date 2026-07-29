@@ -67,12 +67,13 @@ defineProps<{
   border-radius: var(--radius);
   padding: 14px 14px 12px;
   background: hsl(var(--card));
-  box-shadow: none;
+  box-shadow: var(--shadow-card, 3px 3px 0 0 var(--bauhaus-ink));
   overflow: hidden;
 }
 
 html[data-theme='dark'] .monitor-card {
   border-color: hsl(var(--border));
+  box-shadow: var(--shadow-card-soft, 0 4px 14px rgba(0, 0, 0, 0.45));
 }
 
 .monitor-card::before {
@@ -123,7 +124,11 @@ html[data-theme='dark'] .monitor-card {
 .monitor-card__value {
   margin-left: 4px;
   color: hsl(var(--foreground));
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  letter-spacing: -0.03em;
 }
 
 .monitor-card__beats {
@@ -138,13 +143,23 @@ html[data-theme='dark'] .monitor-card {
   min-width: 4px;
   max-width: 8px;
   border-radius: 2px;
-  transition: all 0.2s;
+  transition: opacity 0.2s, transform 0.2s;
   position: relative;
 }
 
 .monitor-beat:hover {
   opacity: 0.8;
   transform: scaleY(1.1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .monitor-beat {
+    transition: none;
+  }
+
+  .monitor-beat:hover {
+    transform: none;
+  }
 }
 
 .monitor-beat--up {

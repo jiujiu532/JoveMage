@@ -87,12 +87,12 @@ withDefaults(defineProps<{
 }
 
 .state-badge--tone-warning {
-  background: var(--bauhaus-yellow, #fff9c4);
+  background: var(--bauhaus-postit, #fff9c4);
   color: var(--bauhaus-ink, #2d2d2d);
 }
 
 .state-badge--bordered.state-badge--tone-warning {
-  border-color: var(--bauhaus-yellow, #fff9c4);
+  border-color: var(--bauhaus-ink, #2d2d2d);
 }
 
 .state-badge--tone-info {
@@ -106,14 +106,33 @@ withDefaults(defineProps<{
 
 .state-badge--tone-muted {
   background: hsl(var(--muted));
-  color: var(--bauhaus-grey, #9e9e9e);
+  color: var(--bauhaus-grey, #6b6560);
 }
 
 .state-badge--bordered.state-badge--tone-muted {
   border-color: hsl(var(--border));
 }
 
+/* 深色：warning 贴 postit 底 + ink 字/边；muted 拉高边对比；info 淡蓝底 */
+html[data-theme='dark'] .state-badge--tone-warning {
+  background: var(--bauhaus-postit, #3a3420);
+  color: var(--bauhaus-ink, #f2f2f2);
+}
+
+html[data-theme='dark'] .state-badge--bordered.state-badge--tone-warning {
+  border-color: var(--bauhaus-ink, #f2f2f2);
+}
+
+html[data-theme='dark'] .state-badge--tone-muted {
+  color: var(--bauhaus-grey, #a3a3a3);
+}
+
+html[data-theme='dark'] .state-badge--bordered.state-badge--tone-muted {
+  border-color: var(--bauhaus-line-soft, #3d3d3d);
+}
+
 html[data-theme='dark'] .state-badge--tone-info {
-  background: color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 22%, transparent);
+  background: color-mix(in srgb, var(--bauhaus-blue, #3d8fd9) 22%, transparent);
+  color: var(--bauhaus-blue, #3d8fd9);
 }
 </style>

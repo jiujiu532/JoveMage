@@ -132,7 +132,7 @@ defineEmits<{
   align-items: center;
   padding: 3px 8px;
   border: 1px solid hsl(var(--border));
-  border-radius: 999px;
+  border-radius: var(--radius);
   background: hsl(var(--background));
   color: hsl(var(--muted-foreground));
   font-size: 11px;

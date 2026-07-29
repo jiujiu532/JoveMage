@@ -159,7 +159,7 @@ function setPageSize(value: string | string[]) {
 }
 
 .nb-pager__btn--pill {
-  border-radius: 999px;
+  border-radius: var(--radius, 2px);
   padding: 0.4rem 0.9rem;
   font-size: 0.78rem;
   letter-spacing: 0.02em;
@@ -169,7 +169,7 @@ function setPageSize(value: string | string[]) {
   width: 2rem;
   height: 2rem;
   min-width: 2rem;
-  border-radius: 999px;
+  border-radius: var(--radius, 2px);
   font-size: 0.8rem;
   font-variant-numeric: tabular-nums;
 }
@@ -238,10 +238,10 @@ function setPageSize(value: string | string[]) {
   flex: 0 0 auto;
 }
 
-/* 让触发器也变成粗野风小药丸（作用于 GroupedSelectMenu 内部类，需深选） */
+/* 让触发器也变成粗野风直边小块（作用于 GroupedSelectMenu 内部类，需深选） */
 .nb-pager__size-trigger :deep(.grouped-select-trigger) {
   border: 2px solid var(--nb-ink) !important;
-  border-radius: 999px !important;
+  border-radius: var(--radius, 2px) !important;
   background: hsl(var(--card)) !important;
   box-shadow: 2px 2px 0 0 var(--nb-ink) !important;
   font-weight: 700 !important;
@@ -261,6 +261,14 @@ function setPageSize(value: string | string[]) {
 html[data-theme="dark"] .nb-pager__btn,
 html[data-theme="dark"] .nb-pager__dot {
   background: var(--bauhaus-card);
+  /* 深色 ink 是近白，硬阴影会变成白框；改用柔和深色投影 */
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5) !important;
+}
+
+html[data-theme="dark"] .nb-pager__btn:hover:not(:disabled),
+html[data-theme="dark"] .nb-pager__dot:hover:not(:disabled) {
+  box-shadow: 0 3px 9px rgba(0, 0, 0, 0.55) !important;
+  transform: translate(-1px, -1px);
 }
 
 html[data-theme="dark"] .nb-pager__dot--active,
@@ -268,5 +276,13 @@ html[data-theme="dark"] .nb-pager__btn:hover:not(:disabled),
 html[data-theme="dark"] .nb-pager__dot:hover:not(:disabled) {
   background: var(--bauhaus-postit) !important;
   color: var(--nb-ink) !important;
+}
+
+html[data-theme="dark"] .nb-pager__size-trigger :deep(.grouped-select-trigger) {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5) !important;
+}
+
+html[data-theme="dark"] .nb-pager__size-trigger :deep(.grouped-select-trigger:hover) {
+  box-shadow: 0 3px 9px rgba(0, 0, 0, 0.55) !important;
 }
 </style>

@@ -2,12 +2,12 @@
   <Teleport to="body">
     <div
       v-if="open"
-      class="fixed inset-0 z-[300] overflow-y-auto bg-black/40 px-3 py-4"
+      class="confirm-dialog"
       @click.self="$emit('cancel')"
     >
-      <div class="flex min-h-full items-center justify-center">
+      <div class="confirm-dialog__stage">
         <div
-          class="w-full max-w-sm rounded-sm border border-border bg-card shadow-[var(--shadow-floating)]"
+          class="confirm-dialog__panel"
           role="dialog"
           aria-modal="true"
         >
@@ -57,3 +57,34 @@ defineEmits<{
   cancel: []
 }>()
 </script>
+
+<style scoped>
+.confirm-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  overflow-y: auto;
+  background: var(--overlay-backdrop);
+  padding: 16px 12px;
+}
+
+.confirm-dialog__stage {
+  display: flex;
+  min-height: 100%;
+  align-items: center;
+  justify-content: center;
+}
+
+.confirm-dialog__panel {
+  width: 100%;
+  max-width: 24rem;
+  border: 2px solid var(--bauhaus-ink);
+  border-radius: var(--radius);
+  background: var(--bauhaus-card);
+  box-shadow: 4px 4px 0 0 var(--bauhaus-ink);
+}
+
+:global(html[data-theme='dark']) .confirm-dialog__panel {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
+}
+</style>

@@ -317,6 +317,9 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 8px;
   color: hsl(var(--foreground));
+  border-width: 2px !important;
+  border-color: var(--bauhaus-line-soft) !important;
+  transition: border-color 0.12s ease, box-shadow 0.08s ease;
 }
 
 .grouped-select-trigger--block {
@@ -324,7 +327,26 @@ onBeforeUnmount(() => {
 }
 
 .grouped-select-trigger:hover {
-  border-color: hsl(var(--primary));
+  border-color: var(--bauhaus-ink) !important;
+}
+
+.grouped-select-trigger:focus-visible {
+  border-color: var(--bauhaus-blue) !important;
+  outline: none !important;
+  box-shadow: 3px 3px 0 0 color-mix(in srgb, var(--bauhaus-blue) 45%, transparent) !important;
+}
+
+html[data-theme="dark"] .grouped-select-trigger {
+  border-color: hsl(var(--foreground) / 0.28) !important;
+}
+
+html[data-theme="dark"] .grouped-select-trigger:hover {
+  border-color: hsl(var(--foreground) / 0.55) !important;
+}
+
+html[data-theme="dark"] .grouped-select-trigger:focus-visible {
+  border-color: var(--bauhaus-blue) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bauhaus-blue) 30%, transparent) !important;
 }
 
 .grouped-select-menu {

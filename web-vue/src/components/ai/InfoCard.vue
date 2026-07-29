@@ -43,12 +43,23 @@ withDefaults(defineProps<{
   position: relative;
   border: 2px solid var(--bauhaus-ink, #2d2d2d);
   border-radius: var(--radius);
-  box-shadow: none;
+  box-shadow: var(--shadow-card, 3px 3px 0 0 var(--bauhaus-ink));
   overflow: hidden;
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
 }
 
 html[data-theme='dark'] .info-card {
   border-color: hsl(var(--border));
+  box-shadow: var(--shadow-card-soft, 0 4px 14px rgba(0, 0, 0, 0.45));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .info-card {
+    transition: none;
+  }
 }
 
 .info-card::before {

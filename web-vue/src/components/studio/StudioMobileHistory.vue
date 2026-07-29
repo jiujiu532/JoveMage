@@ -178,24 +178,24 @@ function formatTime(value: string) {
 
 .studio-mobile-history-badge {
   width: fit-content;
-  border-radius: 999px;
+  border-radius: var(--radius);
   padding: 0.125rem 0.5rem;
   font-size: 0.6875rem;
   font-weight: 650;
 }
 
 .studio-mobile-history-badge.is-running {
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: hsl(var(--tone-info-bg));
+  color: hsl(var(--tone-info-foreground));
 }
 
 .studio-mobile-history-badge.is-done {
-  background: #ecfdf5;
-  color: #047857;
+  background: hsl(var(--tone-success-bg));
+  color: hsl(var(--tone-success-foreground));
 }
 
 .studio-mobile-history-badge.is-error {
-  background: #fef2f2;
-  color: #dc2626;
+  background: hsl(var(--tone-error-bg));
+  color: hsl(var(--tone-error-foreground));
 }
 </style>

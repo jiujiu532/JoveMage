@@ -172,7 +172,7 @@
             <col class="w-[16%]" />
             <col class="w-[16rem]" />
           </colgroup>
-          <thead class="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+          <thead>
             <tr>
               <th class="py-3 pr-4">代理组</th>
               <th class="py-3 pr-4">状态</th>
@@ -186,7 +186,7 @@
             <tr
               v-for="group in filteredGroups"
               :key="group.id"
-              class="border-t border-border transition-colors hover:bg-muted/20"
+              class="border-t border-border"
               :class="group.enabled ? '' : 'bg-muted/30'"
             >
               <td class="py-3 pr-4 align-top">

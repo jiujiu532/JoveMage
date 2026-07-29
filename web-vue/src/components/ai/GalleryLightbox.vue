@@ -79,8 +79,7 @@ function emitFile(event: 'download' | 'copy' | 'edit-tags') {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(0, 0, 0, 0.62);
-  backdrop-filter: blur(10px);
+  background: var(--overlay-backdrop);
 }
 
 .lightbox-content {
@@ -102,7 +101,7 @@ function emitFile(event: 'download' | 'copy' | 'edit-tags') {
   align-items: center;
   justify-content: center;
   border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 999px;
+  border-radius: var(--radius);
   background: rgba(255, 255, 255, 0.14);
   color: white;
   cursor: pointer;
@@ -116,7 +115,7 @@ function emitFile(event: 'download' | 'copy' | 'edit-tags') {
 .lightbox-media {
   max-width: 100%;
   max-height: 80vh;
-  border-radius: var(--gallery-radius, 16px);
+  border-radius: var(--gallery-radius, var(--radius));
   object-fit: contain;
 }
 
@@ -137,7 +136,7 @@ function emitFile(event: 'download' | 'copy' | 'edit-tags') {
   gap: 5px;
   padding: 5px 10px;
   border: 1px solid rgba(255, 255, 255, 0.35);
-  border-radius: 999px;
+  border-radius: var(--radius);
   background: transparent;
   color: white;
   font-size: 11px;

@@ -24,7 +24,7 @@
       <ProgressBar :value="progressValue" :aria-label="title" />
 
       <p v-if="message" class="text-sm text-muted-foreground">{{ message }}</p>
-      <p v-if="error" class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+      <p v-if="error" class="operation-progress-error">
         {{ error }}
       </p>
     </div>
@@ -99,5 +99,14 @@ const progressValue = computed(() => {
   color: hsl(var(--foreground));
   font-size: 18px;
   font-weight: 700;
+}
+
+.operation-progress-error {
+  border: 1px solid hsl(var(--tone-error-border) / 0.45);
+  border-radius: var(--radius);
+  background: hsl(var(--tone-error-bg));
+  padding: 8px 12px;
+  font-size: 12px;
+  color: hsl(var(--tone-error-foreground));
 }
 </style>

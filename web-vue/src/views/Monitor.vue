@@ -110,8 +110,8 @@
               <th>请求</th>
               <th>模型</th>
               <th>阶段</th>
-              <th>已耗时</th>
-              <th>关键耗时</th>
+              <th class="table-num">已耗时</th>
+              <th class="table-num">关键耗时</th>
               <th>出口</th>
               <th>账号</th>
             </tr>
@@ -130,8 +130,8 @@
                   {{ row.stage_label || row.stage || '运行中' }}
                 </StateBadge>
               </td>
-              <td>{{ formatMs(row.elapsed_ms) }}</td>
-              <td>{{ metricDigest(row) }}</td>
+              <td class="table-num">{{ formatMs(row.elapsed_ms) }}</td>
+              <td class="table-num">{{ metricDigest(row) }}</td>
               <td>
                 <MetaChip size="xs" tone="muted">{{ egressText(row) }}</MetaChip>
               </td>
@@ -166,8 +166,8 @@
                   <th>请求</th>
                   <th>状态</th>
                   <th>模型</th>
-                  <th>总耗时</th>
-                  <th>入口等待</th>
+                  <th class="table-num">总耗时</th>
+                  <th class="table-num">入口等待</th>
                   <th>账号 / 出口</th>
                 </tr>
               </thead>
@@ -183,8 +183,8 @@
                     </StateBadge>
                   </td>
                   <td class="max-w-[12rem] truncate">{{ row.model || '-' }}</td>
-                  <td>{{ formatMs(row.duration_ms) }}</td>
-                  <td>{{ formatMs(metricValue(row, 'handler_queue_ms')) }}</td>
+                  <td class="table-num">{{ formatMs(row.duration_ms) }}</td>
+                  <td class="table-num">{{ formatMs(metricValue(row, 'handler_queue_ms')) }}</td>
                   <td>{{ accountEgressDigest(row) }}</td>
                 </tr>
               </tbody>
@@ -264,20 +264,20 @@
         <table class="monitor-table">
           <thead>
             <tr>
-              <th>时间</th>
+              <th class="table-num">时间</th>
               <th>请求</th>
               <th>模型</th>
               <th>阶段</th>
-              <th>耗时</th>
+              <th class="table-num">耗时</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="(row, index) in eventRows" :key="`${row.call_id}-${row.event}-${index}`">
-              <td>{{ row.time || '-' }}</td>
+              <td class="table-num">{{ row.time || '-' }}</td>
               <td class="font-mono text-xs">{{ shortCallId(row.call_id) }}</td>
               <td class="max-w-[14rem] truncate">{{ row.model || '-' }}</td>
               <td>{{ row.label || row.event }}</td>
-              <td>{{ eventMetricText(row) }}</td>
+              <td class="table-num">{{ eventMetricText(row) }}</td>
             </tr>
           </tbody>
         </table>
@@ -811,18 +811,15 @@ onBeforeUnmount(() => {
 .monitor-table {
   width: 100%;
   min-width: 840px;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   text-align: left;
   font-size: 13px;
 }
 
+/* 表头/行 hover 走全局 style.css；本地只保留单元格间距与底边 */
 .monitor-table th {
-  border-bottom: 1px solid hsl(var(--border));
-  background: hsl(var(--muted) / 0.42);
   padding: 10px 14px;
-  color: hsl(var(--muted-foreground));
-  font-size: 11px;
-  font-weight: 600;
 }
 
 .monitor-table td {
@@ -830,10 +827,6 @@ onBeforeUnmount(() => {
   padding: 12px 14px;
   vertical-align: middle;
   color: hsl(var(--foreground));
-}
-
-.monitor-table tbody tr:hover td {
-  background: hsl(var(--muted) / 0.28);
 }
 
 .monitor-metric-group {

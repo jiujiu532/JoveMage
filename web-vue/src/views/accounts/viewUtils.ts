@@ -40,12 +40,13 @@ export const quotaOrder: QuotaKey[] = ['fast', 'thinking', 'pro', 'image', 'musi
 
 const laneOrder: AccountLane[] = ['fast', 'thinking', 'pro']
 
+/* 成功=蓝（对齐 StateBadge）；字色走 bauhaus/tone 令牌，避免 *-700 深色糊 */
 const PILL_TONE_CLASS = {
-  success: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-500',
-  warning: 'border-amber-500/40 bg-amber-500/10 text-amber-500',
-  danger: 'border-rose-500/40 bg-rose-500/10 text-rose-500',
-  info: 'border-cyan-500/40 bg-cyan-500/10 text-cyan-500',
-  neutral: 'border-muted bg-muted/20 text-muted-foreground',
+  success: 'border-[color-mix(in_srgb,var(--bauhaus-blue)_40%,transparent)] bg-[color-mix(in_srgb,var(--bauhaus-blue)_12%,transparent)] text-[var(--bauhaus-blue)]',
+  warning: 'border-[hsl(var(--tone-warning-border)/0.45)] bg-[hsl(var(--tone-warning-bg))] text-[hsl(var(--tone-warning-foreground))]',
+  danger: 'border-[hsl(var(--tone-error-border)/0.45)] bg-[hsl(var(--tone-error-bg))] text-[hsl(var(--tone-error-foreground))]',
+  info: 'border-[hsl(var(--tone-info-border)/0.45)] bg-[hsl(var(--tone-info-bg))] text-[hsl(var(--tone-info-foreground))]',
+  neutral: 'border-border bg-muted/20 text-muted-foreground',
 } as const
 
 const IMAGE_UNAVAILABLE_HINTS = [
@@ -485,9 +486,14 @@ export function laneSummaryText(lanes: AccountLane[]): string {
 
 export function laneLineClass(lane: AccountLane, lanes: AccountLane[]): string {
   if (!laneEnabled(lanes, lane)) return 'text-muted-foreground'
-  if (lane === 'fast') return 'bg-emerald-500/10 text-emerald-700'
-  if (lane === 'thinking') return 'bg-cyan-500/10 text-cyan-700'
-  return 'bg-blue-500/10 text-blue-700'
+  // 成功语义=蓝；thinking 用 info 令牌，避免 emerald/cyan-700 深色糊
+  if (lane === 'fast') {
+    return 'bg-[color-mix(in_srgb,var(--bauhaus-blue)_12%,transparent)] text-[var(--bauhaus-blue)]'
+  }
+  if (lane === 'thinking') {
+    return 'bg-[hsl(var(--tone-info-bg))] text-[hsl(var(--tone-info-foreground))]'
+  }
+  return 'bg-[color-mix(in_srgb,var(--bauhaus-blue)_12%,transparent)] text-[var(--bauhaus-blue)]'
 }
 
 export function accountPrimaryText(item: Account): string {

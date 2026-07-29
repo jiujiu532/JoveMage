@@ -133,7 +133,7 @@
             <col />
             <col class="w-36" />
           </colgroup>
-          <thead class="bg-muted/40 text-xs text-muted-foreground">
+          <thead>
             <tr>
               <th class="py-3 pl-4 pr-2">
                 <Checkbox
@@ -147,7 +147,7 @@
               <th class="py-3 pr-5">时间</th>
               <th class="py-3 pr-5">类型</th>
               <th class="py-3 pr-5">令牌名称</th>
-              <th class="py-3 pr-5">调用耗时</th>
+              <th class="py-3 pr-5 table-num">调用耗时</th>
               <th class="py-3 pr-5">状态</th>
               <th class="py-3 pr-5">图片</th>
               <th class="py-3 pr-5">简述</th>
@@ -167,8 +167,8 @@
             <tr
               v-for="item in visibleLogs"
               :key="item.id"
-              class="border-t border-border transition-colors hover:bg-muted/30"
-              :class="{ 'bg-primary/5': isLogSelected(item.id) }"
+              class="border-t border-border"
+              :class="{ 'is-selected': isLogSelected(item.id) }"
             >
               <td class="py-4 pl-4 pr-2 align-middle">
                 <Checkbox
@@ -189,7 +189,7 @@
                   {{ tokenLabel(item) || '-' }}
                 </p>
               </td>
-              <td class="py-4 pr-5 align-middle text-xs text-muted-foreground">
+              <td class="py-4 pr-5 align-middle text-xs text-muted-foreground table-num">
                 {{ formatDuration(item.durationMs) || '-' }}
               </td>
               <td class="py-4 pr-5 align-middle">

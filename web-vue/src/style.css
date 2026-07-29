@@ -82,6 +82,15 @@
   --shadow-floating: none;
   --shadow-toast: 2px 2px 0 0 #2d2d2d;
   --overlay-backdrop: rgba(45, 45, 45, 0.45);
+  /* 新粗野主义硬阴影（浅色用 ink 实色块；深色另见 dark 段改柔和） */
+  --shadow-hard-sm: 2px 2px 0 0 var(--bauhaus-ink);
+  --shadow-hard: 3px 3px 0 0 var(--bauhaus-ink);
+  --shadow-hard-lg: 4px 4px 0 0 var(--bauhaus-ink);
+  --shadow-hard-soft: 0 3px 9px rgba(0, 0, 0, 0.55);
+  --shadow-hard-soft-lg: 0 4px 14px rgba(0, 0, 0, 0.55);
+  /* 主卡片纸面层次：映射硬阴影令牌 */
+  --shadow-card: var(--shadow-hard);
+  --shadow-card-soft: var(--shadow-hard-soft-lg);
 
   /* 笔记本点阵纸纹 */
   --paper-dots: radial-gradient(#c9c2b4 1px, transparent 1px);
@@ -152,6 +161,14 @@ html[data-theme="dark"] {
   --shadow-floating: none;
   --shadow-toast: 0 2px 0 rgba(0, 0, 0, 0.45);
   --overlay-backdrop: rgba(0, 0, 0, 0.72);
+  /* 深色 ink 近白，硬阴影变白框；统一改用柔和深色投影 */
+  --shadow-hard-sm: 0 2px 6px rgba(0, 0, 0, 0.5);
+  --shadow-hard: 0 3px 9px rgba(0, 0, 0, 0.55);
+  --shadow-hard-lg: 0 4px 14px rgba(0, 0, 0, 0.55);
+  --shadow-hard-soft: 0 3px 9px rgba(0, 0, 0, 0.55);
+  --shadow-hard-soft-lg: 0 4px 14px rgba(0, 0, 0, 0.55);
+  --shadow-card: var(--shadow-hard);
+  --shadow-card-soft: var(--shadow-hard-soft-lg);
 }
 
 @layer base {
@@ -352,16 +369,36 @@ body::-webkit-scrollbar-thumb,
 .ui-btn {
   font-family: var(--font-display) !important;
   font-weight: 600 !important;
-  letter-spacing: 0.04em !important;
-  text-transform: uppercase !important;
+  letter-spacing: 0.02em !important;
   font-size: 0.75rem !important;
   border-radius: var(--radius) !important;
-  box-shadow: none !important;
-  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease !important;
+  border-width: 2px !important;
+  /* CJK 文本在窄按钮里易因 uppercase+字距换行；强制单行 */
+  white-space: nowrap !important;
+  transition:
+    transform 0.08s ease,
+    box-shadow 0.08s ease,
+    background-color 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease !important;
+}
+
+.ui-btn:not(:disabled) {
+  box-shadow: 2px 2px 0 0 var(--bauhaus-ink) !important;
+}
+
+.ui-btn:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 0 var(--bauhaus-ink) !important;
 }
 
 .ui-btn:active:not(:disabled) {
-  transform: translateY(1px);
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 0 var(--bauhaus-ink) !important;
+}
+
+.ui-btn:disabled {
+  box-shadow: none !important;
 }
 
 .ui-btn-primary {
@@ -425,6 +462,45 @@ html[data-theme="dark"] .ui-btn-outline:hover:not(:disabled) {
 .ui-btn-danger:hover:not(:disabled) {
   background-color: var(--bauhaus-red) !important;
   color: #ffffff !important;
+}
+
+html[data-theme="dark"] .ui-btn-danger {
+  border-color: var(--bauhaus-red) !important;
+  color: var(--bauhaus-red) !important;
+}
+
+html[data-theme="dark"] .ui-btn-danger:hover:not(:disabled) {
+  background-color: var(--bauhaus-red) !important;
+  color: #ffffff !important;
+}
+
+/* 深色：ink 近白，硬阴影变白框；改用柔和深色投影 */
+html[data-theme="dark"] .ui-btn:not(:disabled) {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5) !important;
+}
+
+html[data-theme="dark"] .ui-btn:hover:not(:disabled) {
+  box-shadow: 0 3px 9px rgba(0, 0, 0, 0.55) !important;
+}
+
+html[data-theme="dark"] .ui-btn:active:not(:disabled) {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55) !important;
+}
+
+/* ========== 状态徽标 / Chip / Pill：锐边 + 细描边，弃胶囊与 700 深色糊字 ========== */
+.ui-meta-chip,
+.ui-pill,
+.ui-chip,
+.ui-badge {
+  border-radius: var(--radius) !important;
+  font-weight: 600 !important;
+}
+
+/* nanocat tone 默认 emerald-700/rose-700 等深色对比差；统一压到 token 文字色 */
+html[data-theme="dark"] .ui-meta-chip,
+html[data-theme="dark"] .ui-pill,
+html[data-theme="dark"] .ui-chip {
+  color: hsl(var(--foreground)) !important;
 }
 
 /* ========== Tab / Segmented：激活态 = 纯色色块 ========== */
@@ -504,19 +580,19 @@ html[data-theme="dark"] .ui-segmented-btn-active .ui-segmented-count {
 }
 
 /* ========== 下拉菜单 / 浮动面板：新粗野主义，呼应分页器 ========== */
-/* 容器：白卡 + 黑粗边 + 硬偏移阴影 */
+/* 容器：白卡 + 黑粗边 + 硬偏移阴影（直边，对齐全局锐利几何） */
 .ui-floating-panel,
 .ui-overlay-panel {
   border: 2px solid var(--bauhaus-ink) !important;
-  border-radius: 14px !important;
+  border-radius: var(--radius) !important;
   background: var(--bauhaus-card, #ffffff) !important;
   box-shadow: 4px 4px 0 0 var(--bauhaus-ink) !important;
   padding: 6px !important;
 }
 
-/* 菜单项：默认近黑文本、圆角块；悬浮米色，选中米色高亮 */
+/* 菜单项：默认近黑文本、直边块；悬浮米色，选中米色高亮 */
 .ui-menu-item {
-  border-radius: 10px !important;
+  border-radius: var(--radius) !important;
   color: var(--bauhaus-ink) !important;
   font-weight: 500 !important;
   background: transparent !important;
@@ -542,6 +618,8 @@ html[data-theme="dark"] .ui-segmented-btn-active .ui-segmented-count {
 html[data-theme="dark"] .ui-floating-panel,
 html[data-theme="dark"] .ui-overlay-panel {
   background: var(--bauhaus-card, #212121) !important;
+  /* 深色 ink 是近白，硬阴影会变成白框；改用柔和深色投影 */
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55) !important;
 }
 
 html[data-theme="dark"] .ui-menu-item {
@@ -561,16 +639,150 @@ html[data-theme="dark"] .ui-menu-item.text-accent-foreground {
 .ui-textarea-sm {
   border-radius: var(--radius) !important;
   font-family: var(--font-body) !important;
-  border-color: hsl(var(--border)) !important;
+  border-width: 2px !important;
+  border-color: var(--bauhaus-line-soft) !important;
+  background: hsl(var(--card)) !important;
+  transition: border-color 0.12s ease, box-shadow 0.08s ease, background-color 0.12s ease !important;
+}
+
+.ui-input-sm:hover:not(:disabled),
+.ui-input-md:hover:not(:disabled),
+.ui-textarea-sm:hover:not(:disabled) {
+  border-color: var(--bauhaus-ink) !important;
 }
 
 .ui-input-sm:focus,
 .ui-input-md:focus,
 .ui-textarea-sm:focus {
   border-color: var(--bauhaus-blue) !important;
-  outline: 2px solid color-mix(in srgb, var(--bauhaus-blue) 28%, transparent);
-  outline-offset: 0;
-  box-shadow: none !important;
+  outline: none !important;
+  box-shadow: 3px 3px 0 0 color-mix(in srgb, var(--bauhaus-blue) 45%, transparent) !important;
+}
+
+.ui-input-sm::placeholder,
+.ui-input-md::placeholder,
+.ui-textarea-sm::placeholder {
+  color: var(--bauhaus-grey) !important;
+  opacity: 1;
+}
+
+/* 深色：提高输入边框对比，占位用 grey */
+html[data-theme="dark"] .ui-input-sm,
+html[data-theme="dark"] .ui-input-md,
+html[data-theme="dark"] .ui-textarea-sm {
+  border-color: hsl(var(--foreground) / 0.28) !important;
+  background: var(--bauhaus-card) !important;
+}
+
+html[data-theme="dark"] .ui-input-sm:hover:not(:disabled),
+html[data-theme="dark"] .ui-input-md:hover:not(:disabled),
+html[data-theme="dark"] .ui-textarea-sm:hover:not(:disabled) {
+  border-color: hsl(var(--foreground) / 0.55) !important;
+}
+
+html[data-theme="dark"] .ui-input-sm:focus,
+html[data-theme="dark"] .ui-input-md:focus,
+html[data-theme="dark"] .ui-textarea-sm:focus {
+  border-color: var(--bauhaus-blue) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bauhaus-blue) 30%, transparent) !important;
+}
+
+html[data-theme="dark"] .ui-input-sm::placeholder,
+html[data-theme="dark"] .ui-input-md::placeholder,
+html[data-theme="dark"] .ui-textarea-sm::placeholder {
+  color: var(--bauhaus-grey) !important;
+}
+
+/* 深色：日期/日历指示器反白，否则深底发黑 */
+html[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator,
+html[data-theme="dark"] input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+html[data-theme="dark"] input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.85);
+  opacity: 0.8;
+}
+
+/* ========== 表格：sticky 表头 + 数字列 + 行 hover/选中锚点 ========== */
+table thead th,
+.table-shell thead th,
+.monitor-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  font-weight: 700 !important;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.6875rem !important;
+  color: hsl(var(--foreground) / 0.72) !important;
+  background: var(--bauhaus-paper-2, #f5f0e6) !important;
+  border-bottom: 2px solid var(--bauhaus-ink, #2d2d2d) !important;
+  box-shadow: none;
+}
+
+html[data-theme="dark"] table thead th,
+html[data-theme="dark"] .table-shell thead th,
+html[data-theme="dark"] .monitor-table thead th {
+  color: hsl(var(--foreground) / 0.78) !important;
+  background: var(--bauhaus-paper-2, #222222) !important;
+  border-bottom-color: hsl(var(--border)) !important;
+}
+
+table tbody tr,
+.monitor-table tbody tr {
+  transition: background-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+/* 行 hover：muted / postit 极浅，比默认更明确 */
+table tbody tr:hover,
+.table-shell tbody tr:hover,
+.monitor-table tbody tr:hover {
+  background-color: color-mix(in srgb, var(--bauhaus-postit) 32%, transparent) !important;
+}
+
+html[data-theme="dark"] table tbody tr:hover,
+html[data-theme="dark"] .table-shell tbody tr:hover,
+html[data-theme="dark"] .monitor-table tbody tr:hover {
+  background-color: hsl(var(--muted) / 0.62) !important;
+}
+
+/* 选中行：ink 左边 3px 锚点 + 浅 postit/blue 高亮（对齐侧栏语言） */
+table tbody tr.is-selected,
+.table-shell tbody tr.is-selected,
+.monitor-table tbody tr.is-selected {
+  background-color: color-mix(in srgb, var(--bauhaus-postit) 48%, transparent) !important;
+  box-shadow: inset 3px 0 0 0 var(--bauhaus-ink);
+}
+
+html[data-theme="dark"] table tbody tr.is-selected,
+html[data-theme="dark"] .table-shell tbody tr.is-selected,
+html[data-theme="dark"] .monitor-table tbody tr.is-selected {
+  background-color: color-mix(in srgb, var(--bauhaus-blue) 16%, transparent) !important;
+  box-shadow: inset 3px 0 0 0 var(--bauhaus-blue);
+}
+
+/* 数字列：等宽数字 */
+.table-num,
+td.table-num,
+th.table-num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* 卡片/列表选中锚点：与表格/侧栏统一 */
+.is-selected-anchor {
+  box-shadow: inset 3px 0 0 0 var(--bauhaus-ink);
+  background-color: color-mix(in srgb, var(--bauhaus-postit) 40%, transparent);
+}
+
+html[data-theme="dark"] .is-selected-anchor {
+  box-shadow: inset 3px 0 0 0 var(--bauhaus-blue);
+  background-color: color-mix(in srgb, var(--bauhaus-blue) 14%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  table tbody tr,
+  .monitor-table tbody tr {
+    transition: none;
+  }
 }
 
 /*
@@ -618,8 +830,8 @@ html[data-theme="dark"] label:has(> input[type="checkbox"].sr-only.peer) > span:
 }
 
 html[data-theme="dark"] label:has(> input[type="checkbox"].sr-only.peer:checked) > span:first-of-type {
-  border-color: hsl(var(--primary)) !important;
-  background: hsl(var(--primary)) !important;
+  border-color: var(--bauhaus-blue) !important;
+  background: var(--bauhaus-blue) !important;
   color: #ffffff !important;
   box-shadow: none;
 }
@@ -760,4 +972,222 @@ html[data-theme="dark"] .shell-header {
 
 .shell-sidebar .ui-section-title {
   font-size: 1rem !important;
+}
+
+/* ========== Toast：nanocat .toast-card 新粗野主义覆盖 ========== */
+/* 组件实际类是 toast-card（非 ui-toast-card）；scoped 属性不影响全局选择器 + !important */
+.toast-card {
+  border: 2px solid var(--bauhaus-ink) !important;
+  border-radius: var(--radius) !important;
+  background: var(--bauhaus-card) !important;
+  box-shadow: 4px 4px 0 0 var(--bauhaus-ink) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+.toast-card--success,
+.toast-card--error,
+.toast-card--warning,
+.toast-card--info {
+  background: var(--bauhaus-card) !important;
+  border-color: var(--bauhaus-ink) !important;
+  /* 去掉 nanocat 的 linear-gradient 渐变底 */
+  background-image: none !important;
+}
+
+.toast-card--success {
+  border-color: hsl(var(--tone-success-border)) !important;
+  background: hsl(var(--tone-success-bg)) !important;
+}
+
+.toast-card--error {
+  border-color: hsl(var(--tone-error-border)) !important;
+  background: hsl(var(--tone-error-bg)) !important;
+}
+
+.toast-card--warning {
+  border-color: hsl(var(--tone-warning-border)) !important;
+  background: hsl(var(--tone-warning-bg)) !important;
+}
+
+.toast-card--info {
+  border-color: hsl(var(--tone-info-border)) !important;
+  background: hsl(var(--tone-info-bg)) !important;
+}
+
+/* 深色 ink 近白，硬阴影会变白框 → 柔和深色投影 */
+html[data-theme="dark"] .toast-card {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55) !important;
+}
+
+/* ========== 页面级排版 / 微交互（视觉升级，仅追加） ========== */
+
+/* --- 1. 排版层级：主标题 --- */
+/* page-panel 顶部标题：display、更大字阶、更紧字距，与正文拉开 */
+.page-panel__body > h1:first-child,
+.page-panel__body > .ui-section-title:first-child,
+.page-panel__body > :first-child > .ui-section-title:first-of-type,
+.page-panel__body > :first-child > :first-child > .ui-section-title:first-of-type,
+.page-panel .panel-header-title {
+  font-family: var(--font-display) !important;
+  font-size: clamp(1.35rem, 1.2rem + 0.45vw, 1.625rem) !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.045em !important;
+  line-height: 1.15 !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+/* 侧栏品牌字保持小一级，不被上面规则波及（侧栏不在 page-panel 内） */
+.shell-sidebar .ui-section-title {
+  font-size: 1rem !important;
+  letter-spacing: -0.03em !important;
+}
+
+/* --- 1b. 统计大数字 --- */
+.metric-strip-value,
+.dashboard-metric-value,
+.dashboard-stat-value,
+.dashboard-kpi-value,
+.monitor-card__value {
+  font-family: var(--font-display) !important;
+  font-weight: 700 !important;
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: -0.04em;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+/* --- 1c. 面板小标签 / kicker：保持大写小字，与标题层级分明 --- */
+.ui-section-kicker,
+.ui-field-label,
+.bh-kicker,
+.metric-strip-label {
+  font-family: var(--font-display) !important;
+  font-size: 0.6875rem !important;
+  font-weight: 600 !important;
+  line-height: 1.2 !important;
+  letter-spacing: 0.16em !important;
+  text-transform: uppercase !important;
+  color: var(--bauhaus-grey) !important;
+}
+
+/* --- 2. 微交互：卡片 hover 上浮 + 描边加深（克制，无大阴影） --- */
+.ui-panel,
+.ui-card,
+.ui-card-sm,
+.metric-strip-card,
+.info-card {
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    background-color 0.16s ease;
+}
+
+.ui-panel:hover,
+.ui-card:hover,
+.ui-card-sm:hover,
+.metric-strip-card:hover,
+.info-card:hover {
+  transform: translate(-1px, -1px);
+  border-color: var(--bauhaus-ink) !important;
+}
+
+/* 深色：描边提高对比，投影改柔和深色（ink 近白时硬阴影会发白框） */
+html[data-theme="dark"] .ui-panel:hover,
+html[data-theme="dark"] .ui-card:hover,
+html[data-theme="dark"] .ui-card-sm:hover,
+html[data-theme="dark"] .metric-strip-card:hover,
+html[data-theme="dark"] .info-card:hover {
+  border-color: hsl(var(--foreground) / 0.55) !important;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* --- 2b. 表格行：更顺滑的 hover transition --- */
+table tbody tr,
+.table-shell tbody tr {
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+/* --- 2c. focus-visible：统一蓝色 ring（对齐 --bauhaus-blue） --- */
+:where(
+  a,
+  button,
+  .ui-btn,
+  [role="button"],
+  summary,
+  .ui-menu-item,
+  .ui-segmented-btn,
+  .ui-chip,
+  .ui-pill
+):focus-visible {
+  outline: 2px solid var(--bauhaus-blue) !important;
+  outline-offset: 2px;
+}
+
+/* 输入框已有自定义 focus，避免双环；仅保证键盘可见性时保留 outline */
+:where(
+  .ui-input-sm,
+  .ui-input-md,
+  .ui-textarea-sm,
+  input:not([type="checkbox"]):not([type="radio"]),
+  textarea,
+  select
+):focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--bauhaus-blue) 70%, transparent);
+  outline-offset: 1px;
+}
+
+/* --- 2d. 链接 hover：过渡到 bauhaus-blue --- */
+a:not(.ui-btn):not([class*="ui-btn"]) {
+  transition: color 0.15s ease, opacity 0.15s ease;
+}
+
+a:not(.ui-btn):not([class*="ui-btn"]):hover {
+  color: var(--bauhaus-blue);
+}
+
+/* --- 3. 面板进入动画：轻量淡入上移（仅 no-preference） --- */
+@keyframes page-panel-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .page-panel {
+    animation: page-panel-enter 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+}
+
+/* --- 4. reduced-motion 降级：所有动效收束 --- */
+@media (prefers-reduced-motion: reduce) {
+  .ui-panel,
+  .ui-card,
+  .ui-card-sm,
+  .metric-strip-card,
+  .info-card,
+  .page-panel,
+  table tbody tr,
+  .table-shell tbody tr,
+  a:not(.ui-btn):not([class*="ui-btn"]) {
+    transition: none !important;
+    animation: none !important;
+  }
+
+  .ui-panel:hover,
+  .ui-card:hover,
+  .ui-card-sm:hover,
+  .metric-strip-card:hover,
+  .info-card:hover,
+  .page-panel {
+    transform: none !important;
+  }
 }

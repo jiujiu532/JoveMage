@@ -26,8 +26,10 @@ withDefaults(defineProps<{
   min-width: 0;
 }
 
+/* 滚动容器：sticky 表头相对此容器吸顶；短表不强制高度 */
 .table-shell__scroll {
-  overflow-x: auto;
+  overflow: auto;
+  max-height: var(--table-shell-max-height, min(70vh, 720px));
 }
 
 .table-shell__footer {
