@@ -384,8 +384,11 @@ def _next_domain(domains: list[str], provider_ref: str = "") -> str:
             from services.register.domain_blacklist import filter_domains
 
             domains = filter_domains(provider_ref, domains)
-        except Exception:
-            pass
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            # 黑名单不可用时 fail-closed：本 provider 跳过，交给上层换号
+            raise RuntimeError(f"域名已拉黑: 黑名单检查失败 ({exc})") from exc
     if not domains:
         # 文案含「域名已拉黑」，供 create_mailbox 软切换下一 provider
         raise RuntimeError("域名已拉黑: mail.domain 为空或该服务域名均已拉黑")
@@ -412,8 +415,8 @@ def _assert_domain_not_banned(provider_ref: str, domain: str, provider_type: str
             raise RuntimeError(f"域名已拉黑: {dom}")
     except RuntimeError:
         raise
-    except Exception:
-        pass
+    except Exception as exc:
+        raise RuntimeError(f"域名已拉黑: 黑名单检查失败 ({exc})") from exc
 
 
 def _normalize_string_list(value: Any) -> list[str]:
@@ -1184,8 +1187,10 @@ class TempMailLolProvider(BaseMailProvider):
                 from services.register.domain_blacklist import filter_domains
 
                 domains = filter_domains(self.provider_ref, domains)
-            except Exception:
-                pass
+            except RuntimeError:
+                raise
+            except Exception as exc:
+                raise RuntimeError(f"域名已拉黑: 黑名单检查失败 ({exc})") from exc
             if not domains:
                 raise RuntimeError("域名已拉黑: mail.domain 为空或该服务域名均已拉黑")
             domain, force_random_prefix = self._resolve_domain(random.choice(domains))
@@ -2609,6 +2614,56 @@ class OutlookTokenProvider(BaseMailProvider):
         return None
 
 
+def _provider_content_fingerprint(item: dict) -> str:
+    """无稳定 id 时按内容指纹生成 provider_ref，避免列表重排导致 ban 键漂移。"""
+    domains = item.get("domain") if item.get("domain") is not None else item.get("cf_domain")
+    if isinstance(domains, str):
+        domain_list = [domains]
+    elif isinstance(domains, list):
+        domain_list = domains
+    else:
+        domain_list = []
+    dom_s = ",".join(sorted(str(d).strip().lower() for d in domain_list if str(d).strip()))
+
+    sub = item.get("subdomain")
+    if isinstance(sub, str):
+        sub_list = [sub]
+    elif isinstance(sub, list):
+        sub_list = sub
+    else:
+        sub_list = []
+    sub_s = ",".join(sorted(str(s).strip().lower() for s in sub_list if str(s).strip()))
+
+    parts = [
+        str(item.get("type") or "").strip().lower(),
+        str(item.get("label") or "").strip().lower(),
+        str(item.get("api_base") or item.get("cf_api_base") or "").strip().lower().rstrip("/"),
+        str(item.get("default_domain") or "").strip().lower(),
+        dom_s,
+        sub_s,
+        str(item.get("admin_email") or "").strip().lower(),
+        str(item.get("key_mode") or "").strip().lower(),
+        str(item.get("email_prefix") or "").strip().lower(),
+        str(item.get("cf_auth_mode") or "").strip().lower(),
+    ]
+    return hashlib.sha1("\n".join(parts).encode("utf-8")).hexdigest()[:12]
+
+
+def build_provider_ref(item: dict, idx: int | None = None) -> str:
+    """
+    构造 provider_ref：
+    - 有 id/provider_id → type:id
+    - 否则 → type~content_fingerprint（与列表下标无关）
+    idx 仅保留兼容旧调用签名，不再参与键生成。
+    """
+    del idx  # 兼容旧签名，显式不使用下标
+    ptype = str(item.get("type") or "").strip() or "unknown"
+    stable_id = str(item.get("id") or item.get("provider_id") or "").strip()
+    if stable_id:
+        return f"{ptype}:{stable_id}"
+    return f"{ptype}~{_provider_content_fingerprint(item)}"
+
+
 def _entries(mail_config: dict) -> list[dict]:
     result: list[dict] = []
     counters: dict[str, int] = {}
@@ -2618,8 +2673,7 @@ def _entries(mail_config: dict) -> list[dict]:
         cnt = counters.get(t, 0) + 1
         counters[t] = cnt
         label = f"DDG-{cnt}" if t == "ddg_mail" else f"{t}#{idx}"
-        stable_id = str(item.get("id") or item.get("provider_id") or "").strip()
-        provider_ref = f"{item['type']}:{stable_id}" if stable_id else f"{item['type']}#{idx}"
+        provider_ref = build_provider_ref(item, idx)
         result.append({**item, "provider_ref": provider_ref, "label": label})
     return result
 
@@ -2708,8 +2762,14 @@ def create_mailbox(mail_config: dict, username: str | None = None, purpose: str 
                     ):
                         last_error = f"域名已拉黑: {domain}"
                         continue
-                except Exception:
-                    pass
+                except RuntimeError as ban_err:
+                    last_error = str(ban_err)
+                    if "域名已拉黑" in last_error:
+                        continue
+                    raise
+                except Exception as exc:
+                    last_error = f"域名已拉黑: 黑名单检查失败 ({exc})"
+                    continue
             mailbox["_code_not_before"] = datetime.now(timezone.utc)
             return mailbox
         except RuntimeError as error:

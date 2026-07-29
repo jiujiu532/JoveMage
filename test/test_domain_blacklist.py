@@ -303,6 +303,68 @@ class DomainBlacklistTests(unittest.TestCase):
             self.assertTrue(rule.get("label") or rule.get("description"))
             self.assertNotEqual(rule.get("match"), "invalid_request_error")
 
+    def test_idn_domain_normalize_and_ban(self) -> None:
+        pref = "gptmail:idn"
+        # 中文域名 → punycode
+        puny = db.normalize_domain("例子.com")
+        self.assertTrue(puny.startswith("xn--"))
+        self.assertEqual(puny, "xn--fsqu00a.com")
+        # 邮箱右侧
+        self.assertEqual(db.normalize_domain("user@例子.com"), "xn--fsqu00a.com")
+        # 通配 + IDN
+        self.assertEqual(db.normalize_domain("*.例子.com"), "*.xn--fsqu00a.com")
+
+        db.ban(pref, "例子.com", source="manual")
+        self.assertTrue(db.is_banned(pref, "xn--fsqu00a.com"))
+        self.assertTrue(db.is_banned(pref, "例子.com"))
+        self.assertTrue(db.is_banned(pref, "a.例子.com"))
+        kept = db.filter_domains(pref, ["例子.com", "ok.com", "*.例子.com"])
+        self.assertEqual(kept, ["ok.com"])
+
+    def test_excluded_provider_fingerprint_ref(self) -> None:
+        self.assertTrue(db.is_excluded_provider("", "outlook_token~abc123def456"))
+        self.assertTrue(db.is_excluded_provider("", "outlook_email_api~deadbeefcafe"))
+        self.assertFalse(db.is_excluded_provider("", "gptmail~abc123def456"))
+
+
+class ProviderRefStabilityTests(unittest.TestCase):
+    def test_build_provider_ref_stable_without_id(self) -> None:
+        from services.register.mail_provider import _entries, build_provider_ref
+
+        a = {
+            "type": "gptmail",
+            "label": "primary",
+            "api_base": "https://mail.example/",
+            "domain": ["b.com", "a.com"],
+            "enable": True,
+        }
+        b = {
+            "type": "gptmail",
+            "label": "primary",
+            "api_base": "https://mail.example",
+            "domain": ["a.com", "b.com"],  # 顺序不同
+            "enable": True,
+        }
+        ref_a = build_provider_ref(a, 1)
+        ref_b = build_provider_ref(b, 99)
+        self.assertTrue(ref_a.startswith("gptmail~"))
+        self.assertEqual(ref_a, ref_b)
+
+        # 有 id 时优先
+        with_id = {**a, "id": "stable-1"}
+        self.assertEqual(build_provider_ref(with_id), "gptmail:stable-1")
+
+        # 重排 providers 后 ref 不变
+        mail = {"providers": [a, {"type": "tempmail_lol", "domain": ["x.com"], "enable": True}]}
+        refs1 = [e["provider_ref"] for e in _entries(mail)]
+        mail2 = {"providers": [{"type": "tempmail_lol", "domain": ["x.com"], "enable": True}, a]}
+        refs2 = [e["provider_ref"] for e in _entries(mail2)]
+        self.assertIn(ref_a, refs1)
+        self.assertIn(ref_a, refs2)
+        # 内容不同 → ref 不同
+        other = {**a, "label": "secondary"}
+        self.assertNotEqual(build_provider_ref(a), build_provider_ref(other))
+
 
 if __name__ == "__main__":
     unittest.main()

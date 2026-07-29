@@ -49,8 +49,29 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _idna_encode_host(raw: str) -> str:
+    """将可能含非 ASCII 的主机名转为 punycode（小写）；非法抛 ValueError。"""
+    text = str(raw or "").strip().lower()
+    if not text:
+        raise ValueError("domain is empty")
+    labels = text.split(".")
+    out: list[str] = []
+    for lab in labels:
+        if not lab:
+            raise ValueError("invalid domain label")
+        try:
+            lab.encode("ascii")
+            out.append(lab)
+        except UnicodeEncodeError:
+            try:
+                out.append(lab.encode("idna").decode("ascii").lower())
+            except Exception as exc:
+                raise ValueError(f"invalid idn label: {lab!r}") from exc
+    return ".".join(out)
+
+
 def normalize_domain(value: str) -> str:
-    """小写；若是邮箱取 @ 右侧；支持 *.example.com 通配；非法抛 ValueError。"""
+    """小写；若是邮箱取 @ 右侧；支持 *.example.com 通配；IDN 转 punycode；非法抛 ValueError。"""
     raw = str(value or "").strip().lower()
     if not raw:
         raise ValueError("domain is empty")
@@ -65,6 +86,10 @@ def normalize_domain(value: str) -> str:
     if raw.startswith("*.") and len(raw) > 2:
         wildcard = True
         raw = raw[2:].strip().rstrip(".")
+    try:
+        raw = _idna_encode_host(raw)
+    except ValueError as exc:
+        raise ValueError(f"invalid domain: {value!r}") from exc
     if not raw or not _DOMAIN_RE.match(raw):
         raise ValueError(f"invalid domain: {value!r}")
     return f"*.{raw}" if wildcard else raw
@@ -165,12 +190,9 @@ def is_excluded_provider(provider_type: str = "", provider_ref: str = "") -> boo
     pref_l = pref.lower()
     if ptype in EXCLUDED_PROVIDER_TYPES:
         return True
-    if pref_l.startswith("outlook_token:") or pref_l.startswith("outlook_email_api:"):
-        return True
-    if "outlook_token#" in pref_l:
-        return True
-    if pref_l.startswith("outlook_token#") or pref_l.startswith("outlook_email_api#"):
-        return True
+    for excluded in EXCLUDED_PROVIDER_TYPES:
+        if pref_l.startswith(f"{excluded}:") or pref_l.startswith(f"{excluded}#") or pref_l.startswith(f"{excluded}~"):
+            return True
     return False
 
 

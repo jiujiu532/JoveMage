@@ -466,16 +466,26 @@ def _maybe_ban_domain_from_error(mailbox: dict | None, error: Exception | str | 
     if not ok:
         return
 
-    ban(
-        provider_ref,
-        domain,
-        reason=reason or "auto",
-        source="auto",
-        sample_email=email,
-        raw_hint=error_text[:500],
-        provider_type=provider_type,
-        provider_label=str(mailbox.get("label") or ""),
-    )
+    try:
+        ban(
+            provider_ref,
+            domain,
+            reason=reason or "auto",
+            source="auto",
+            sample_email=email,
+            raw_hint=error_text[:500],
+            provider_type=provider_type,
+            provider_label=str(mailbox.get("label") or ""),
+        )
+    except Exception as ban_exc:
+        # 自动拉黑失败不得打断注册失败收尾
+        msg = f"自动拉黑失败: {domain} ({ban_exc})"
+        if index is not None:
+            step(index, msg, "yellow")
+        else:
+            log(msg, "yellow")
+        return
+
     msg = f"域名已拉黑: {domain} ({reason})"
     if index is not None:
         step(index, msg, "yellow")
