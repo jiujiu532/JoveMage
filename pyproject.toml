@@ -1,6 +1,6 @@
 [project]
 name = "jovemage"
-version = "0.0.2"
+version = "0.3.0"
 description = "JoveMage — ChatGPT web reverse-engineered as OpenAI/Anthropic compatible API"
 readme = "README.md"
 requires-python = ">=3.13"
