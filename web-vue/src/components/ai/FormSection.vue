@@ -96,20 +96,22 @@ withDefaults(defineProps<{
 
 .form-section__title {
   font-family: var(--font-display);
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 700;
-  line-height: 1.25;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+  text-transform: none;
   color: hsl(var(--foreground));
 }
 
 .form-section__subtitle {
-  margin-top: 4px;
+  margin-top: 5px;
   max-width: 62ch;
-  font-size: 12px;
+  font-size: 11.5px;
+  font-weight: 400;
   line-height: 1.5;
-  color: hsl(var(--muted-foreground));
+  letter-spacing: 0.01em;
+  color: hsl(var(--muted-foreground) / 0.92);
 }
 
 .form-section__actions {
@@ -137,10 +139,10 @@ html[data-theme='dark'] .form-section {
 }
 
 html[data-theme='dark'] .form-section__title {
-  color: hsl(var(--foreground) / 0.96);
+  color: hsl(var(--foreground));
 }
 
 html[data-theme='dark'] .form-section__subtitle {
-  color: hsl(var(--muted-foreground));
+  color: hsl(var(--muted-foreground) / 0.88);
 }
 </style>

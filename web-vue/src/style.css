@@ -371,9 +371,28 @@ body::-webkit-scrollbar-thumb,
 }
 
 .ui-btn-primary:hover:not(:disabled) {
+  /* 浅色：压深到墨色；深色另有覆盖，避免 ink 近白导致白字看不见 */
   background-color: var(--bauhaus-ink) !important;
   border-color: var(--bauhaus-ink) !important;
+  color: #ffffff !important;
   opacity: 1 !important;
+}
+
+html[data-theme="dark"] .ui-btn-primary {
+  border-color: var(--bauhaus-blue) !important;
+  color: #ffffff !important;
+}
+
+html[data-theme="dark"] .ui-btn-primary:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--bauhaus-blue) 78%, #ffffff) !important;
+  border-color: color-mix(in srgb, var(--bauhaus-blue) 78%, #ffffff) !important;
+  color: #0a0a0a !important;
+}
+
+html[data-theme="dark"] .ui-btn-primary:active:not(:disabled) {
+  background-color: color-mix(in srgb, var(--bauhaus-blue) 88%, #ffffff) !important;
+  border-color: color-mix(in srgb, var(--bauhaus-blue) 88%, #ffffff) !important;
+  color: #0a0a0a !important;
 }
 
 .ui-btn-outline {

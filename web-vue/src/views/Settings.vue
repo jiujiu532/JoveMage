@@ -2759,18 +2759,19 @@ const handleSave = async () => {
 
 .settings-block__title {
   font-family: var(--font-display);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  letter-spacing: -0.01em;
+  text-transform: none;
   color: hsl(var(--foreground));
 }
 
 .settings-block__desc {
   margin-top: 3px;
   font-size: 11px;
+  font-weight: 400;
   line-height: 1.45;
-  color: hsl(var(--muted-foreground));
+  color: hsl(var(--muted-foreground) / 0.9);
 }
 
 .settings-block__note {
