@@ -1210,18 +1210,10 @@ class TempMailLolProvider(BaseMailProvider):
     def create_mailbox(self, username: str | None = None) -> dict[str, Any]:
         payload: dict[str, Any] = {}
         if self.domain:
-            domains = list(self.domain)
-            try:
-                from services.register.domain_blacklist import filter_domains
-
-                domains = filter_domains(self.provider_ref, domains)
-            except RuntimeError:
-                raise
-            except Exception as exc:
-                raise RuntimeError(f"域名已拉黑: 黑名单检查失败 ({exc})") from exc
-            if not domains:
-                raise RuntimeError("域名已拉黑: mail.domain 为空或该服务域名均已拉黑")
-            domain, force_random_prefix = self._resolve_domain(random.choice(domains))
+            # 官方无 list-domains；配置列表走轮询+黑名单（与其它 provider 一致）
+            domain, force_random_prefix = self._resolve_domain(
+                _next_domain(self.domain, self.provider_ref)
+            )
             payload["domain"] = domain
             if force_random_prefix:
                 payload["prefix"] = _random_mailbox_name()
@@ -1232,6 +1224,11 @@ class TempMailLolProvider(BaseMailProvider):
         token = str(data.get("token") or "").strip()
         if not address or not token:
             raise RuntimeError("TempMail.lol 缺少 address 或 token")
+        # 留空时由服务端分配域名：建箱后校验黑名单（无 list API 时的兜底）
+        if not self.domain:
+            host = address.partition("@")[2].strip()
+            if host:
+                _assert_domain_not_banned(self.provider_ref, host, provider_type=self.name)
         return {"provider": self.name, "provider_ref": self.provider_ref, "address": address, "token": token}
 
     def fetch_latest_message(self, mailbox: dict[str, Any]) -> dict[str, Any] | None:
@@ -1560,10 +1557,20 @@ class AhemMailProvider(BaseMailProvider):
             raw = data.get("allowedDomains") or data.get("allowed_domains") or []
             if isinstance(raw, list):
                 domains = [str(item).strip() for item in raw if str(item).strip()]
-        self._remote_domains = domains
-        return domains
+        # 去重保序
+        seen: set[str] = set()
+        unique: list[str] = []
+        for item in domains:
+            key = item.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(item)
+        self._remote_domains = unique
+        return unique
 
     def _resolve_domain(self) -> str:
+        # 配置列表或远端允许域 → 黑名单过滤 + 轮询
         if self.domain:
             return _next_domain(self.domain, self.provider_ref)
         remote = self._fetch_remote_domains()
@@ -1712,6 +1719,7 @@ class JoveMailProvider(BaseMailProvider):
             self.domain = [str(item).strip() for item in raw_domains if str(item).strip()]
         else:
             self.domain = [str(raw_domains).strip()] if str(raw_domains).strip() else []
+        self._remote_domains: list[str] | None = None
         self.session = _create_session(conf)
         self.session.headers.update({
             "User-Agent": conf["user_agent"],
@@ -1756,12 +1764,64 @@ class JoveMailProvider(BaseMailProvider):
                 return data["data"]
         return data
 
+    def _fetch_available_domains(self) -> list[str]:
+        """GET /api/domains/available：公共+私有可用域，供留空选域。"""
+        if self._remote_domains is not None:
+            return self._remote_domains
+        data = self._request("GET", "/api/domains/available")
+        domains: list[str] = []
+        if isinstance(data, dict):
+            legacy = data.get("domains") or []
+            if isinstance(legacy, list):
+                for item in legacy:
+                    text = str(item).strip() if not isinstance(item, dict) else str(item.get("domain") or "").strip()
+                    if text:
+                        domains.append(text)
+            for key in ("public_domains", "private_domains"):
+                items = data.get(key) or []
+                if not isinstance(items, list):
+                    continue
+                for item in items:
+                    if isinstance(item, dict):
+                        # root_ready=False 时仍可能有 wildcard；注册机默认要根邮箱
+                        if item.get("root_ready") is False and "root_mailbox" not in (
+                            item.get("capabilities") or []
+                        ):
+                            continue
+                        text = str(item.get("domain") or "").strip()
+                    else:
+                        text = str(item or "").strip()
+                    if text:
+                        domains.append(text)
+        elif isinstance(data, list):
+            for item in data:
+                text = str(item.get("domain") if isinstance(item, dict) else item or "").strip()
+                if text:
+                    domains.append(text)
+        seen: set[str] = set()
+        unique: list[str] = []
+        for item in domains:
+            key = item.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(item)
+        self._remote_domains = unique
+        return unique
+
     def create_mailbox(self, username: str | None = None) -> dict[str, Any]:
         payload: dict[str, Any] = {"share": False}
         if username:
             payload["prefix"] = str(username).strip()
         if self.domain:
             payload["domain"] = _next_domain(self.domain, self.provider_ref)
+        else:
+            remote = self._fetch_available_domains()
+            if not remote:
+                raise RuntimeError(
+                    "JoveMail 未配置 domain 且 /api/domains/available 无可用域名"
+                )
+            payload["domain"] = _next_domain(remote, self.provider_ref)
         data = self._request("POST", "/api/generate-email", payload=payload, expected=(200, 201))
         if not isinstance(data, dict):
             raise RuntimeError("JoveMail 生成邮箱返回结构异常")
@@ -2026,6 +2086,7 @@ class YydsMailProvider(BaseMailProvider):
         self.domain = [str(item).strip() for item in (entry.get("domain") or []) if str(item).strip()]
         self.subdomain = str(entry.get("subdomain") or "").strip()
         self.wildcard = bool(entry.get("wildcard"))
+        self._remote_domains: list[str] | None = None
         self.session = _create_session(conf)
         self.session.headers.update({"User-Agent": conf["user_agent"], "Accept": "application/json", "Content-Type": "application/json"})
 
@@ -2045,10 +2106,44 @@ class YydsMailProvider(BaseMailProvider):
     def _items(data):
         return data if isinstance(data, list) else data.get("items") or data.get("messages") or data.get("data") or []
 
+    def _fetch_remote_domains(self) -> list[str]:
+        """GET /domains：取已验证且 MX 可用的公共域。"""
+        if self._remote_domains is not None:
+            return self._remote_domains
+        data = self._request("GET", "/domains")
+        items = data if isinstance(data, list) else []
+        domains: list[str] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if not item.get("isVerified") or not item.get("isMxValid"):
+                continue
+            # 有 isPublic 字段时只取公共域（API Key 场景）
+            if "isPublic" in item and not item.get("isPublic"):
+                continue
+            text = str(item.get("domain") or "").strip()
+            if text:
+                domains.append(text)
+        seen: set[str] = set()
+        unique: list[str] = []
+        for item in domains:
+            key = item.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(item)
+        self._remote_domains = unique
+        return unique
+
     def create_mailbox(self, username: str | None = None) -> dict[str, Any]:
         payload = {"localPart": username or _random_mailbox_name()}
         if self.domain:
             payload["domain"] = _next_domain(self.domain, self.provider_ref)
+        else:
+            remote = self._fetch_remote_domains()
+            if not remote:
+                raise RuntimeError("YYDSMail 未配置 domain 且 /domains 无可用域名")
+            payload["domain"] = _next_domain(remote, self.provider_ref)
         if self.subdomain:
             payload["subdomain"] = self.subdomain
         data = self._request("POST", "/accounts/wildcard" if self.wildcard else "/accounts", payload=payload)

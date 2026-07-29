@@ -1572,13 +1572,13 @@ function domainLabel(provider: RegisterProvider) {
 function domainPlaceholder(provider: RegisterProvider) {
   const type = providerType(provider)
   if (type === 'inbucket') return '每行一个基础域名，可配合随机子域名'
-  if (type === 'ahem') return '每行一个允许域名；可留空，运行时从 /properties 拉取'
-  if (type === 'jovemail') return '每行一个优先域名；可留空，由 JoveMail 选择可用公共域'
+  if (type === 'ahem') return '每行一个允许域名；可留空，运行时拉取可用域名并排除拉黑后轮询'
+  if (type === 'jovemail') return '每行一个优先域名；可留空，运行时拉取可用域名并排除拉黑后轮询'
   if (type === 'cloudmail_gen') return '每行一个邮箱域名'
   if (type === 'cloudflare_temp_email') return '每行一个域名'
   if (type === 'moemail') return '每行一个域名'
-  if (type === 'tempmail_lol') return '每行一个域名，可留空使用服务默认'
-  if (type === 'yyds_mail') return '每行一个域名，可留空'
+  if (type === 'tempmail_lol') return '每行一个域名；可留空则服务端分配，建箱后校验黑名单'
+  if (type === 'yyds_mail') return '每行一个域名；可留空，运行时拉取可用域名并排除拉黑后轮询'
   return '每行一个域名'
 }
 

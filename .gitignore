@@ -62,6 +62,7 @@ tests/
 !/test/test_proxy_runtime_promote.py
 !/test/test_config_secrets.py
 !/test/test_mail_provider_fixes.py
+!/test/test_mail_remote_domains.py
 !/test/test_sse_framing_fixes.py
 !/test/test_conversation_fixes.py
 docs/*.md
