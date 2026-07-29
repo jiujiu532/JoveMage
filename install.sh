@@ -164,58 +164,81 @@ wait_healthy() {
     return 1
 }
 
-# 从 GitHub Releases latest 拉取最新版本；缓存到 /tmp/jovemage-latest-version，60 秒内复用
+REPO_RAW_BASE="https://raw.githubusercontent.com/jiujiu532/JoveMage/main"
+REPO_RELEASES_LATEST_API="https://api.github.com/repos/jiujiu532/JoveMage/releases/latest"
+
+# 拉取仓库根 VERSION（curl 一键装时最稳，不依赖 API）
+fetch_repo_version_file() {
+    curl -fsS --max-time 5 \
+        -H "User-Agent: jovemage-install" \
+        "$REPO_RAW_BASE/VERSION" 2>/dev/null \
+        | tr -d '[:space:]' || true
+}
+
+# 远端最新版本：Release latest → 回退 main/VERSION；缓存 60 秒
 get_latest_version() {
     local cache="/tmp/jovemage-latest-version"
     if [ -f "$cache" ]; then
-        local age
+        local age cached
         age=$(( $(date +%s) - $(stat -c %Y "$cache" 2>/dev/null || stat -f %m "$cache" 2>/dev/null || echo 0) ))
-        if [ $age -lt 60 ]; then
-            cat "$cache"
+        cached=$(tr -d '[:space:]' < "$cache" 2>/dev/null || true)
+        if [ $age -lt 60 ] && [ -n "$cached" ]; then
+            echo "$cached"
             return 0
         fi
     fi
-    local raw v
+    local raw v=""
     raw=$(curl -fsS --max-time 5 \
         -H "Accept: application/vnd.github+json" \
         -H "User-Agent: jovemage-install" \
-        https://api.github.com/repos/jiujiu532/JoveMage/releases/latest 2>/dev/null || true)
-    if [ -z "$raw" ]; then
-        return 0
-    fi
-    if command -v jq >/dev/null 2>&1; then
-        v=$(printf '%s' "$raw" | jq -r '.tag_name // empty' 2>/dev/null || true)
-    else
-        v=$(printf '%s' "$raw" \
-            | grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"[^"]+"' \
-            | head -1 \
-            | sed -E 's/.*"([^"]+)"[[:space:]]*$/\1/')
-    fi
-    if [ -n "$v" ] && [ "$v" != "null" ]; then
-        # 去掉 v 前缀（v0.1.0 → 0.1.0）
+        "$REPO_RELEASES_LATEST_API" 2>/dev/null || true)
+    if [ -n "$raw" ]; then
+        if command -v jq >/dev/null 2>&1; then
+            v=$(printf '%s' "$raw" | jq -r '.tag_name // empty' 2>/dev/null || true)
+        else
+            v=$(printf '%s' "$raw" \
+                | grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"[^"]+"' \
+                | head -1 \
+                | sed -E 's/.*"([^"]+)"[[:space:]]*$/\1/')
+        fi
+        [ "$v" = "null" ] && v=""
         v="${v#v}"
+    fi
+    # API 不通时用仓库 VERSION，避免回退到服务器里过期的 .install-version
+    if [ -z "$v" ]; then
+        v=$(fetch_repo_version_file)
+        v="${v#v}"
+    fi
+    if [ -n "$v" ]; then
         echo "$v" > "$cache" 2>/dev/null || true
         echo "$v"
     fi
 }
 
-# 管理工具自身版本：不硬编码
-# 1) 脚本同目录 VERSION（仓库/发布包）
-# 2) GitHub Release latest（curl 单文件安装时）
-# 3) 安装目录 .install-version / VERSION（离线回退）
+# 管理工具自身版本：永不硬编码
+# 1) 脚本同目录真实 VERSION（忽略 bash <(curl) 的 /dev/fd）
+# 2) 仓库 main/VERSION（一键 curl 主路径）
+# 3) GitHub Release latest
+# 4) 安装目录戳记（仅离线回退）
 get_script_version() {
     local v=""
-    if [ -n "${SCRIPT_DIR:-}" ] && [ -f "$SCRIPT_DIR/VERSION" ]; then
+    if [ -n "${SCRIPT_DIR:-}" ] \
+        && [ -f "$SCRIPT_DIR/VERSION" ] \
+        && [[ "$SCRIPT_DIR" != /dev/fd* ]] \
+        && [[ "$SCRIPT_DIR" != /proc/*/fd* ]]; then
         v=$(tr -d '[:space:]' < "$SCRIPT_DIR/VERSION" 2>/dev/null || true)
+    fi
+    if [ -z "$v" ]; then
+        v=$(fetch_repo_version_file)
     fi
     if [ -z "$v" ]; then
         v=$(get_latest_version || true)
     fi
-    if [ -z "$v" ] && [ -f "$INSTALL_DIR/.install-version" ]; then
-        v=$(tr -d '[:space:]' < "$INSTALL_DIR/.install-version" 2>/dev/null || true)
-    fi
     if [ -z "$v" ] && [ -f "$INSTALL_DIR/VERSION" ]; then
         v=$(tr -d '[:space:]' < "$INSTALL_DIR/VERSION" 2>/dev/null || true)
+    fi
+    if [ -z "$v" ] && [ -f "$INSTALL_DIR/.install-version" ]; then
+        v=$(tr -d '[:space:]' < "$INSTALL_DIR/.install-version" 2>/dev/null || true)
     fi
     if [ -n "$v" ]; then
         echo "${v#v}"
