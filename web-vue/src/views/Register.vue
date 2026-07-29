@@ -228,22 +228,36 @@
                 v-for="(provider, index) in registerProviders"
                 :key="providerKey(provider, index)"
                 class="register-provider-card"
+                :class="{ 'is-collapsed': !isProviderExpanded(provider, index) }"
                 surface="background"
                 density="normal"
               >
                 <div class="register-provider-head">
-                  <div class="min-w-0">
-                    <div class="register-provider-title">
-                      <span>{{ providerTitle(provider, index) }}</span>
-                      <MetaChip size="xs" tone="muted">{{ providerTypeLabel(providerType(provider)) }}</MetaChip>
-                      <MetaChip v-if="provider.enable === false" size="xs" tone="warning">未启用</MetaChip>
-                      <MetaChip v-else-if="providerRequirementMessages(provider).length" size="xs" tone="danger">
-                        缺 {{ providerRequirementMessages(provider).length }} 项
-                      </MetaChip>
-                      <MetaChip v-else size="xs" tone="success">可启动</MetaChip>
+                  <button
+                    type="button"
+                    class="register-provider-toggle"
+                    :aria-expanded="isProviderExpanded(provider, index)"
+                    :aria-label="isProviderExpanded(provider, index) ? '收起邮箱来源' : '展开邮箱来源'"
+                    @click="toggleProviderExpanded(provider, index)"
+                  >
+                    <span
+                      class="register-provider-chevron"
+                      :class="{ 'is-open': isProviderExpanded(provider, index) }"
+                      aria-hidden="true"
+                    />
+                    <div class="min-w-0">
+                      <div class="register-provider-title">
+                        <span>{{ providerTitle(provider, index) }}</span>
+                        <MetaChip size="xs" tone="muted">{{ providerTypeLabel(providerType(provider)) }}</MetaChip>
+                        <MetaChip v-if="provider.enable === false" size="xs" tone="warning">未启用</MetaChip>
+                        <MetaChip v-else-if="providerRequirementMessages(provider).length" size="xs" tone="danger">
+                          缺 {{ providerRequirementMessages(provider).length }} 项
+                        </MetaChip>
+                        <MetaChip v-else size="xs" tone="success">可启动</MetaChip>
+                      </div>
                     </div>
-                  </div>
-                  <div class="register-provider-actions">
+                  </button>
+                  <div class="register-provider-actions" @click.stop>
                     <Checkbox v-model="provider.enable" :disabled="registerConfig.enabled">
                       启用
                     </Checkbox>
@@ -258,6 +272,7 @@
                   </div>
                 </div>
 
+                <div v-show="isProviderExpanded(provider, index)" class="register-provider-body">
                 <SurfaceBox
                   v-if="provider.enable !== false && providerRequirementMessages(provider).length"
                   class="register-provider-message"
@@ -649,6 +664,7 @@
                     </div>
                   </details>
                 </div>
+                </div>
               </FormSection>
             </div>
           </FormSection>
@@ -759,6 +775,7 @@ const gptMailClockNow = ref(Date.now())
 const gptMailRefreshTimers = new Map<number, number[]>()
 const gptMailClockTimer = ref<number | null>(null)
 const gptMailResetFallbackSeconds = 5 * 60
+const expandedProviderKeys = ref<Set<string>>(new Set())
 
 const defaultRegisterConfig: LegacyRegisterConfig = {
   mail: {
@@ -815,6 +832,7 @@ const providerTypeOptions = [
   { value: 'tempmail_lol', label: 'TempMail.lol' },
   { value: 'moemail', label: 'MoEmail' },
   { value: 'inbucket', label: 'Inbucket' },
+  { value: 'ahem', label: 'AHEM' },
   { value: 'duckmail', label: 'DuckMail' },
   { value: 'gptmail', label: 'GPTMail' },
   { value: 'yyds_mail', label: 'YYDS Mail' },
@@ -856,6 +874,7 @@ const providerTypeKeys: Record<string, string[]> = {
   tempmail_lol: ['api_key', 'domain'],
   moemail: ['api_base', 'api_key', 'domain', 'expiry_time'],
   inbucket: ['api_base', 'domain', 'random_subdomain'],
+  ahem: ['api_base', 'domain'],
   duckmail: ['api_key', 'default_domain'],
   gptmail: ['key_mode', 'api_key', 'default_domain', 'local_compose'],
   yyds_mail: ['api_base', 'api_key', 'domain', 'subdomain', 'wildcard'],
@@ -980,6 +999,8 @@ function defaultProvider(type = 'cloudmail_gen'): RegisterProvider {
       return { ...base, api_base: '', api_key: '', domain: [], expiry_time: 0 }
     case 'inbucket':
       return { ...base, api_base: '', domain: [], random_subdomain: true }
+    case 'ahem':
+      return { ...base, api_base: '', domain: [] }
     case 'duckmail':
       return { ...base, api_key: '', default_domain: 'duckmail.sbs' }
     case 'gptmail':
@@ -1028,6 +1049,38 @@ function createProviderId(type = 'provider') {
 
 function providerKey(provider: RegisterProvider, index: number) {
   return String(provider.id || provider.provider_id || '').trim() || `${providerType(provider)}-${index}`
+}
+
+function isProviderExpanded(provider: RegisterProvider, index: number) {
+  return expandedProviderKeys.value.has(providerKey(provider, index))
+}
+
+function setProviderExpanded(key: string, open: boolean) {
+  const next = new Set(expandedProviderKeys.value)
+  if (open) next.add(key)
+  else next.delete(key)
+  expandedProviderKeys.value = next
+}
+
+function toggleProviderExpanded(provider: RegisterProvider, index: number) {
+  const key = providerKey(provider, index)
+  setProviderExpanded(key, !expandedProviderKeys.value.has(key))
+}
+
+function pruneExpandedProviderKeys(providers: RegisterProvider[] = registerProviders.value) {
+  const valid = new Set(providers.map((item, index) => providerKey(item, index)))
+  const next = new Set<string>()
+  for (const key of expandedProviderKeys.value) {
+    if (valid.has(key)) next.add(key)
+  }
+  // 缺配置的启用项默认展开，避免漏看必填
+  providers.forEach((item, index) => {
+    if (item.enable === false) return
+    if (providerRequirementMessages(item).length) {
+      next.add(providerKey(item, index))
+    }
+  })
+  expandedProviderKeys.value = next
 }
 
 function providerTitle(provider: RegisterProvider, index: number) {
@@ -1130,6 +1183,9 @@ function providerRequirementMessages(provider: RegisterProvider) {
       requireValue(provider.api_base, 'API Base')
       requireList(provider.domain, '基础域名')
       break
+    case 'ahem':
+      requireValue(provider.api_base, 'API Base')
+      break
     case 'duckmail':
       requireValue(provider.api_key, 'API Key')
       break
@@ -1173,7 +1229,7 @@ function updateProviderField(index: number, key: string, value: unknown) {
 }
 
 function providerUsesApiBase(provider: RegisterProvider) {
-  return ['cloudmail_gen', 'cloudflare_temp_email', 'moemail', 'inbucket', 'yyds_mail', 'ddg_mail'].includes(providerType(provider))
+  return ['cloudmail_gen', 'cloudflare_temp_email', 'moemail', 'inbucket', 'ahem', 'yyds_mail', 'ddg_mail'].includes(providerType(provider))
 }
 
 function providerUsesApiKey(provider: RegisterProvider) {
@@ -1193,7 +1249,7 @@ function providerUsesDefaultDomain(provider: RegisterProvider) {
 }
 
 function providerUsesDomainList(provider: RegisterProvider) {
-  return ['cloudmail_gen', 'tempmail_lol', 'cloudflare_temp_email', 'moemail', 'inbucket', 'yyds_mail'].includes(providerType(provider))
+  return ['cloudmail_gen', 'tempmail_lol', 'cloudflare_temp_email', 'moemail', 'inbucket', 'ahem', 'yyds_mail'].includes(providerType(provider))
 }
 
 function apiBaseLabel(provider: RegisterProvider) {
@@ -1206,12 +1262,14 @@ function apiBaseLabel(provider: RegisterProvider) {
 function apiBasePlaceholder(provider: RegisterProvider) {
   const type = providerType(provider)
   if (type === 'yyds_mail') return 'https://maliapi.215.im/v1'
+  if (type === 'ahem') return 'https://your-ahem-host/api'
   return ''
 }
 
 function domainLabel(provider: RegisterProvider) {
   const type = providerType(provider)
   if (type === 'inbucket') return '基础域名'
+  if (type === 'ahem') return '允许域名'
   if (type === 'cloudmail_gen') return '邮箱域名'
   return '域名'
 }
@@ -1219,6 +1277,7 @@ function domainLabel(provider: RegisterProvider) {
 function domainPlaceholder(provider: RegisterProvider) {
   const type = providerType(provider)
   if (type === 'inbucket') return '每行一个基础域名，可配合随机子域名'
+  if (type === 'ahem') return '每行一个允许域名；可留空，运行时从 /properties 拉取'
   if (type === 'cloudmail_gen') return '每行一个邮箱域名'
   if (type === 'cloudflare_temp_email') return '每行一个域名'
   if (type === 'moemail') return '每行一个域名'
@@ -1545,7 +1604,10 @@ function handleOutlookPoolAction(key: string) {
 
 function addProvider() {
   if (!registerConfig.value) return
-  registerConfig.value.mail.providers = [...registerProviders.value, defaultProvider()]
+  const next = [...registerProviders.value, defaultProvider()]
+  registerConfig.value.mail.providers = next
+  const index = next.length - 1
+  setProviderExpanded(providerKey(next[index], index), true)
 }
 
 async function deleteProvider(index: number) {
@@ -1558,7 +1620,9 @@ async function deleteProvider(index: number) {
   if (!ok) return
   clearAllGptMailRefreshTimers()
   gptMailStatusStates.value = {}
-  registerConfig.value.mail.providers = registerProviders.value.filter((_, itemIndex) => itemIndex !== index)
+  const next = registerProviders.value.filter((_, itemIndex) => itemIndex !== index)
+  registerConfig.value.mail.providers = next
+  pruneExpandedProviderKeys(next)
 }
 
 function arrayText(value: unknown) {
@@ -1575,6 +1639,7 @@ function applyRegisterConfig(config: LegacyRegisterConfig) {
   registerConfig.value = normalizeRegisterConfig(config)
   syncRegisterProxyControlsFromValue(registerConfig.value.proxy)
   pruneGptMailStates()
+  pruneExpandedProviderKeys(registerConfig.value.mail.providers || [])
 }
 
 function syncRegisterProxyControlsFromValue(value: unknown) {
@@ -2040,11 +2105,51 @@ onBeforeUnmount(() => {
   gap: 14px;
 }
 
+.register-provider-card.is-collapsed {
+  gap: 0;
+}
+
 .register-provider-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.register-provider-toggle {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+.register-provider-toggle:focus-visible {
+  outline: 2px solid hsl(var(--ring) / 0.55);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.register-provider-chevron {
+  flex: 0 0 auto;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-right: 1.5px solid hsl(var(--muted-foreground));
+  border-bottom: 1.5px solid hsl(var(--muted-foreground));
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+
+.register-provider-chevron.is-open {
+  transform: rotate(45deg);
+  margin-top: -2px;
 }
 
 .register-provider-title {
@@ -2055,6 +2160,11 @@ onBeforeUnmount(() => {
   font-size: 14px;
   font-weight: 650;
   color: hsl(var(--foreground));
+}
+
+.register-provider-body {
+  display: grid;
+  gap: 14px;
 }
 
 .register-provider-message {

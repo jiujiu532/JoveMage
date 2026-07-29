@@ -51,6 +51,7 @@ tests/
 !/test/test_register_passwordless.py
 !/test/test_sentinel_turnstile.py
 !/test/test_register_pool_metrics.py
+!/test/test_ahem_mail_provider.py
 docs/*.md
 scripts/test_*.py
 web/

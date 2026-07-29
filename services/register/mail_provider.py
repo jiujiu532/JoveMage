@@ -1368,6 +1368,187 @@ class InbucketMailProvider(BaseMailProvider):
         self.session.close()
 
 
+class AhemMailProvider(BaseMailProvider):
+    """AHEM (Ad-Hoc Email Server) 临时邮箱。
+
+    无认证、无需创建邮箱：任意 prefix@allowedDomain 即可收信。
+    api_base / domain 均由用户配置，不内置任何部署地址。
+    """
+
+    name = "ahem"
+
+    def __init__(self, entry: dict, conf: dict):
+        super().__init__(conf, str(entry.get("provider_ref") or ""))
+        self.api_base = str(entry.get("api_base") or "").strip().rstrip("/")
+        if not self.api_base:
+            raise RuntimeError("AHEM 需要配置 api_base")
+        raw_domains = entry.get("domain") or []
+        if isinstance(raw_domains, list):
+            self.domain = [str(item).strip() for item in raw_domains if str(item).strip()]
+        else:
+            self.domain = [str(raw_domains).strip()] if str(raw_domains).strip() else []
+        self._remote_domains: list[str] | None = None
+        self.session = _create_session(conf)
+        self.session.headers.update({
+            "User-Agent": conf["user_agent"],
+            "Accept": "application/json",
+        })
+
+    def _request(self, method: str, path: str, expected: tuple[int, ...] = (200,)):
+        resp = self.session.request(
+            method.upper(),
+            f"{self.api_base}{path}",
+            timeout=self.conf["request_timeout"],
+        )
+        if resp.status_code not in expected:
+            raise RuntimeError(
+                f"AHEM 请求失败: {method} {path}, HTTP {resp.status_code}, body={resp.text[:300]}"
+            )
+        if resp.status_code == 204:
+            return {}
+        content_type = str(resp.headers.get("content-type") or "").lower()
+        if "application/json" in content_type:
+            return resp.json()
+        text = (resp.text or "").strip()
+        if not text:
+            return {}
+        try:
+            return resp.json()
+        except Exception:
+            return text
+
+    def _fetch_remote_domains(self) -> list[str]:
+        if self._remote_domains is not None:
+            return self._remote_domains
+        data = self._request("GET", "/properties")
+        domains: list[str] = []
+        if isinstance(data, dict):
+            raw = data.get("allowedDomains") or data.get("allowed_domains") or []
+            if isinstance(raw, list):
+                domains = [str(item).strip() for item in raw if str(item).strip()]
+        self._remote_domains = domains
+        return domains
+
+    def _resolve_domain(self) -> str:
+        if self.domain:
+            return _next_domain(self.domain)
+        remote = self._fetch_remote_domains()
+        if remote:
+            return _next_domain(remote)
+        raise RuntimeError("AHEM 需要至少配置一个 domain，或保证 /properties 返回 allowedDomains")
+
+    @staticmethod
+    def _mailbox_prefix(address: str) -> str:
+        local_part, _, _ = str(address or "").partition("@")
+        return local_part.strip()
+
+    @staticmethod
+    def _parse_timestamp(value: Any) -> datetime | None:
+        # AHEM 列表/详情时间戳为毫秒
+        if isinstance(value, (int, float)):
+            number = float(value)
+            if number > 1e12:
+                number /= 1000.0
+            try:
+                return datetime.fromtimestamp(number, tz=timezone.utc)
+            except Exception:
+                return None
+        return _parse_received_at(value)
+
+    @staticmethod
+    def _body_text_html(detail: dict[str, Any]) -> tuple[str, str]:
+        text = detail.get("text")
+        text_content = str(text) if isinstance(text, str) else ""
+        html = detail.get("html")
+        if isinstance(html, str):
+            html_content = html
+        else:
+            # 无 HTML 时接口返回 false
+            html_content = ""
+        if not text_content and not html_content:
+            text_as_html = detail.get("textAsHtml")
+            if isinstance(text_as_html, str) and text_as_html.strip():
+                html_content = text_as_html
+        return text_content, html_content
+
+    @staticmethod
+    def _sender_text(detail: dict[str, Any], item: dict[str, Any] | None = None) -> str:
+        from_obj = detail.get("from")
+        if isinstance(from_obj, dict):
+            text = str(from_obj.get("text") or "").strip()
+            if text:
+                return text
+            value = from_obj.get("value")
+            if isinstance(value, list) and value:
+                first = value[0]
+                if isinstance(first, dict):
+                    return str(first.get("address") or first.get("email") or "").strip()
+        if item:
+            sender = item.get("sender")
+            if isinstance(sender, dict):
+                return str(sender.get("address") or sender.get("email") or sender.get("name") or "").strip()
+            if sender:
+                return str(sender).strip()
+        return ""
+
+    def create_mailbox(self, username: str | None = None) -> dict[str, Any]:
+        prefix = username or _random_mailbox_name()
+        domain = self._resolve_domain()
+        address = f"{prefix}@{domain}"
+        return {
+            "provider": self.name,
+            "provider_ref": self.provider_ref,
+            "address": address,
+            "mailbox_name": prefix,
+            "domain": domain,
+        }
+
+    def fetch_latest_message(self, mailbox: dict[str, Any]) -> dict[str, Any] | None:
+        prefix = str(mailbox.get("mailbox_name") or self._mailbox_prefix(str(mailbox.get("address") or ""))).strip()
+        if not prefix:
+            raise RuntimeError("AHEM 缺少 mailbox 前缀")
+        data = self._request("GET", f"/mailbox/{prefix}/email")
+        items = [item for item in data if isinstance(item, dict)] if isinstance(data, list) else []
+        if not items:
+            return None
+        items.sort(
+            key=lambda value: (
+                (self._parse_timestamp(value.get("timestamp")) or datetime.fromtimestamp(0, tz=timezone.utc)).timestamp(),
+                str(value.get("emailId") or value.get("_id") or ""),
+            ),
+            reverse=True,
+        )
+        address = str(mailbox.get("address") or "").strip()
+        for item in items:
+            message_id = str(item.get("emailId") or item.get("_id") or "").strip()
+            if not message_id:
+                continue
+            detail = self._request("GET", f"/mailbox/{prefix}/email/{message_id}")
+            if not isinstance(detail, dict):
+                continue
+            text_content, html_content = self._body_text_html(detail)
+            to_obj = detail.get("to")
+            to_value = to_obj.get("text") if isinstance(to_obj, dict) else to_obj
+            normalized = {
+                "provider": self.name,
+                "mailbox": address or prefix,
+                "message_id": message_id,
+                "subject": str(detail.get("subject") or item.get("subject") or ""),
+                "sender": self._sender_text(detail, item),
+                "text_content": text_content,
+                "html_content": html_content,
+                "received_at": self._parse_timestamp(detail.get("timestamp") or item.get("timestamp")),
+                "to": to_value,
+                "raw": detail,
+            }
+            if not address or _message_matches_email(normalized, address):
+                return normalized
+        return None
+
+    def close(self) -> None:
+        self.session.close()
+
+
 class YydsMailProvider(BaseMailProvider):
     name = "yyds_mail"
 
@@ -2047,6 +2228,8 @@ def _create_provider(mail_config: dict, provider: str = "", provider_ref: str = 
         return MoEmailProvider(entry, conf)
     if entry["type"] == "inbucket":
         return InbucketMailProvider(entry, conf)
+    if entry["type"] == "ahem":
+        return AhemMailProvider(entry, conf)
     if entry["type"] == "yyds_mail":
         return YydsMailProvider(entry, conf)
     if entry["type"] == "outlook_token":
