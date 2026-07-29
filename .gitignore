@@ -52,6 +52,7 @@ tests/
 !/test/test_sentinel_turnstile.py
 !/test/test_register_pool_metrics.py
 !/test/test_ahem_mail_provider.py
+!/test/test_outlook_email_api_provider.py
 docs/*.md
 scripts/test_*.py
 web/

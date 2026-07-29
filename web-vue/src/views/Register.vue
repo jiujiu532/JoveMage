@@ -469,6 +469,58 @@
                         已知域名本地拼接
                       </Checkbox>
                     </label>
+
+                    <label v-if="providerType(provider) === 'outlook_email_api'" class="register-field">
+                      <span class="register-label">分组 ID</span>
+                      <Input
+                        v-model.trim="provider.group_id"
+                        block
+                        root-class="font-mono"
+                        :disabled="registerConfig.enabled"
+                        placeholder="可选，对应 group_id"
+                      />
+                    </label>
+
+                    <label v-if="providerType(provider) === 'outlook_email_api'" class="register-field">
+                      <span class="register-label">标签 ID</span>
+                      <Input
+                        v-model.trim="provider.tag_ids"
+                        block
+                        root-class="font-mono"
+                        :disabled="registerConfig.enabled"
+                        placeholder="可选，逗号分隔"
+                      />
+                    </label>
+
+                    <label v-if="providerType(provider) === 'outlook_email_api'" class="register-field">
+                      <span class="register-label">邮件文件夹</span>
+                      <GroupedSelectMenu
+                        v-model="provider.folder"
+                        :groups="outlookEmailFolderGroups"
+                        selected-indicator="none"
+                        :disabled="registerConfig.enabled"
+                        block
+                      />
+                    </label>
+
+                    <label v-if="providerType(provider) === 'outlook_email_api'" class="register-field">
+                      <span class="register-label">拉取数量</span>
+                      <Input
+                        v-model.number="provider.message_limit"
+                        type="number"
+                        min="1"
+                        max="50"
+                        block
+                        :disabled="registerConfig.enabled"
+                        placeholder="默认 10"
+                      />
+                    </label>
+
+                    <label v-if="providerType(provider) === 'outlook_email_api'" class="register-checkbox-field register-checkbox-field--compact register-field--full">
+                      <Checkbox v-model="provider.include_untagged" :disabled="registerConfig.enabled">
+                        含未打标签账号（配合标签 ID）
+                      </Checkbox>
+                    </label>
                   </div>
                 </div>
 
@@ -838,6 +890,7 @@ const providerTypeOptions = [
   { value: 'yyds_mail', label: 'YYDS Mail' },
   { value: 'ddg_mail', label: 'DDG + CF 收件箱' },
   { value: 'outlook_token', label: 'Microsoft 邮箱凭据池' },
+  { value: 'outlook_email_api', label: 'OutlookEmail 管理端 API' },
 ]
 const providerTypeGroups = [{ options: providerTypeOptions }]
 
@@ -860,6 +913,11 @@ const outlookModeOptions = [
   { value: 'auto', label: '自动兜底' },
 ]
 const outlookModeGroups = [{ options: outlookModeOptions }]
+const outlookEmailFolderOptions = [
+  { value: 'inbox', label: '收件箱' },
+  { value: 'junkemail', label: '垃圾邮件' },
+]
+const outlookEmailFolderGroups = [{ options: outlookEmailFolderOptions }]
 const outlookPoolActionItems: ActionMenuItem[] = [
   { key: 'retry_failed', label: '重试临时失败' },
   { key: 'retryable', label: '释放占用/失败' },
@@ -880,6 +938,7 @@ const providerTypeKeys: Record<string, string[]> = {
   yyds_mail: ['api_base', 'api_key', 'domain', 'subdomain', 'wildcard'],
   ddg_mail: ['api_base', 'ddg_token', 'cf_inbox_jwt', 'admin_password', 'cf_api_key', 'cf_auth_mode', 'cf_create_path', 'cf_messages_path'],
   outlook_token: ['mailboxes', 'mode', 'imap_host', 'message_limit', 'alias_enabled', 'alias_per_email', 'alias_prefix', 'alias_include_original'],
+  outlook_email_api: ['api_base', 'api_key', 'group_id', 'tag_ids', 'folder', 'message_limit', 'include_untagged'],
 }
 const providerLocalOnlyKeys: Record<string, string[]> = {
   outlook_token: ['mailboxes_count', 'mailboxes_base_count', 'mailboxes_alias_count', 'mailboxes_preview', 'mailboxes_stats', 'mailboxes_parse_stats'],
@@ -1030,6 +1089,17 @@ function defaultProvider(type = 'cloudmail_gen'): RegisterProvider {
         alias_per_email: 5,
         alias_prefix: 'c2api',
         alias_include_original: true,
+      }
+    case 'outlook_email_api':
+      return {
+        ...base,
+        api_base: '',
+        api_key: '',
+        group_id: '',
+        tag_ids: '',
+        folder: 'inbox',
+        message_limit: 10,
+        include_untagged: false,
       }
     default:
       return base
@@ -1206,6 +1276,10 @@ function providerRequirementMessages(provider: RegisterProvider) {
       if (savedCount <= 0 && pendingOutlookCount(provider) <= 0) missing.push('Microsoft 邮箱凭据池')
       break
     }
+    case 'outlook_email_api':
+      requireValue(provider.api_base, '服务地址')
+      requireValue(provider.api_key, 'API Key')
+      break
     default:
       break
   }
@@ -1229,11 +1303,11 @@ function updateProviderField(index: number, key: string, value: unknown) {
 }
 
 function providerUsesApiBase(provider: RegisterProvider) {
-  return ['cloudmail_gen', 'cloudflare_temp_email', 'moemail', 'inbucket', 'ahem', 'yyds_mail', 'ddg_mail'].includes(providerType(provider))
+  return ['cloudmail_gen', 'cloudflare_temp_email', 'moemail', 'inbucket', 'ahem', 'yyds_mail', 'ddg_mail', 'outlook_email_api'].includes(providerType(provider))
 }
 
 function providerUsesApiKey(provider: RegisterProvider) {
-  return ['tempmail_lol', 'moemail', 'duckmail', 'gptmail', 'yyds_mail'].includes(providerType(provider))
+  return ['tempmail_lol', 'moemail', 'duckmail', 'gptmail', 'yyds_mail', 'outlook_email_api'].includes(providerType(provider))
 }
 
 function providerUsesPublicGptMailKey(provider: RegisterProvider) {
@@ -1256,6 +1330,7 @@ function apiBaseLabel(provider: RegisterProvider) {
   const type = providerType(provider)
   if (type === 'cloudmail_gen') return 'CloudMail URL'
   if (type === 'ddg_mail') return 'CF API Base'
+  if (type === 'outlook_email_api') return '服务地址'
   return 'API Base'
 }
 
@@ -1263,6 +1338,7 @@ function apiBasePlaceholder(provider: RegisterProvider) {
   const type = providerType(provider)
   if (type === 'yyds_mail') return 'https://maliapi.215.im/v1'
   if (type === 'ahem') return 'https://your-ahem-host/api'
+  if (type === 'outlook_email_api') return 'https://your-outlook-email-host'
   return ''
 }
 

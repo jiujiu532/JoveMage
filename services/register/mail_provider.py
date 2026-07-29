@@ -25,7 +25,9 @@ DDG_ALIASES_FILE = DATA_DIR / "ddg_aliases.json"
 _ddg_aliases_lock = Lock()
 
 OUTLOOK_TOKEN_USED_FILE = DATA_DIR / "outlook_token_used.json"
+OUTLOOK_EMAIL_API_STATE_FILE = DATA_DIR / "outlook_email_api_state.json"
 _outlook_token_state_lock = Lock()
+_outlook_email_api_state_lock = Lock()
 # in_use 超过该秒数视为陈旧（注册进程崩溃残留），可被重新领用
 OUTLOOK_IN_USE_STALE_SECONDS = 3600
 OUTLOOK_RECORDED_STATES = {"used", "in_use", "login_required", "token_invalid", "failed"}
@@ -160,6 +162,66 @@ def _set_outlook_token_state(address: str, state: str, reason: str = "") -> None
         store = _load_outlook_token_state()
         store[target] = {"state": str(state), "reason": str(reason or ""), "updated_at": datetime.now(timezone.utc).isoformat()}
         _save_outlook_token_state(store)
+
+
+def _load_outlook_email_api_state() -> dict[str, dict[str, Any]]:
+    data = read_json_file(
+        OUTLOOK_EMAIL_API_STATE_FILE,
+        name="outlook_email_api_state.json",
+        default_factory=dict,
+        expected_types=(dict, list),
+    )
+    state: dict[str, dict[str, Any]] = {}
+    if isinstance(data, list):
+        for item in data:
+            key = str(item).strip().lower()
+            if key:
+                state[key] = {"state": "used", "reason": "", "updated_at": ""}
+    elif isinstance(data, dict):
+        for key, value in data.items():
+            email = str(key).strip().lower()
+            if not email:
+                continue
+            if isinstance(value, dict):
+                state[email] = {
+                    "state": str(value.get("state") or "used").strip() or "used",
+                    "reason": str(value.get("reason") or ""),
+                    "updated_at": str(value.get("updated_at") or ""),
+                }
+            else:
+                state[email] = {"state": str(value or "used").strip() or "used", "reason": "", "updated_at": ""}
+    return state
+
+
+def _save_outlook_email_api_state(state: dict[str, dict[str, Any]]) -> None:
+    OUTLOOK_EMAIL_API_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    ordered = {key: state[key] for key in sorted(state)}
+    write_json_file(OUTLOOK_EMAIL_API_STATE_FILE, ordered)
+
+
+def _set_outlook_email_api_state(address: str, state: str, reason: str = "") -> None:
+    target = str(address or "").strip().lower()
+    if not target:
+        return
+    with _outlook_email_api_state_lock:
+        store = _load_outlook_email_api_state()
+        store[target] = {"state": str(state), "reason": str(reason or ""), "updated_at": datetime.now(timezone.utc).isoformat()}
+        _save_outlook_email_api_state(store)
+
+
+def _release_outlook_email_api_state(address: str) -> None:
+    target = str(address or "").strip().lower()
+    if not target:
+        return
+    with _outlook_email_api_state_lock:
+        store = _load_outlook_email_api_state()
+        entry = store.get(target)
+        if not isinstance(entry, dict):
+            return
+        if str(entry.get("state") or "") != "in_use":
+            return
+        del store[target]
+        _save_outlook_email_api_state(store)
 
 
 def _release_outlook_token_state(address: str) -> None:
@@ -1549,6 +1611,209 @@ class AhemMailProvider(BaseMailProvider):
         self.session.close()
 
 
+class OutlookEmailApiProvider(BaseMailProvider):
+    """对接 outlookEmail 管理端的对外 API。
+
+    - GET /api/external/accounts  领取邮箱
+    - GET /api/external/emails    拉取邮件（body_preview 足够提取验证码）
+    配置项：api_base、api_key；可选 group_id / tag_ids / folder / message_limit。
+    不内置任何部署地址。
+    """
+
+    name = "outlook_email_api"
+
+    def __init__(self, entry: dict, conf: dict):
+        super().__init__(conf, str(entry.get("provider_ref") or ""))
+        self.label = str(entry.get("label") or self.provider_ref)
+        raw_base = str(entry.get("api_base") or "").strip().rstrip("/")
+        if not raw_base:
+            raise RuntimeError("OutlookEmail API 需要配置 api_base")
+        # 允许用户填根地址或 /api 结尾
+        if raw_base.lower().endswith("/api"):
+            self.api_base = raw_base
+        else:
+            self.api_base = f"{raw_base}/api"
+        self.api_key = str(entry.get("api_key") or "").strip()
+        if not self.api_key:
+            raise RuntimeError("OutlookEmail API 需要配置 api_key")
+        self.group_id = str(entry.get("group_id") or "").strip()
+        raw_tags = entry.get("tag_ids")
+        if isinstance(raw_tags, list):
+            self.tag_ids = [str(item).strip() for item in raw_tags if str(item).strip()]
+        else:
+            text = str(raw_tags or "").strip()
+            self.tag_ids = [part.strip() for part in re.split(r"[\s,]+", text) if part.strip()] if text else []
+        self.include_untagged = bool(entry.get("include_untagged"))
+        folder = str(entry.get("folder") or "inbox").strip().lower() or "inbox"
+        if folder not in {"inbox", "junkemail"}:
+            folder = "inbox"
+        self.folder = folder
+        self.message_limit = max(1, min(50, int(entry.get("message_limit") or 10)))
+        self.session = _create_session(conf)
+        self.session.headers.update({
+            "User-Agent": conf["user_agent"],
+            "Accept": "application/json",
+            "X-API-Key": self.api_key,
+        })
+        self._account_cache: list[dict[str, Any]] | None = None
+
+    def _request(self, method: str, path: str, params: dict | None = None, expected: tuple[int, ...] = (200,)):
+        resp = self.session.request(
+            method.upper(),
+            f"{self.api_base}{path}",
+            params=params,
+            timeout=self.conf["request_timeout"],
+        )
+        if resp.status_code not in expected:
+            raise RuntimeError(
+                f"OutlookEmail API 请求失败: {method} {path}, HTTP {resp.status_code}, body={resp.text[:300]}"
+            )
+        try:
+            data = resp.json()
+        except Exception as exc:
+            raise RuntimeError(f"OutlookEmail API 响应不是 JSON: {method} {path}") from exc
+        if isinstance(data, dict) and data.get("success") is False:
+            error = data.get("error") or data.get("message") or "unknown"
+            if isinstance(error, dict):
+                error = error.get("message") or error.get("code") or str(error)
+            raise RuntimeError(f"OutlookEmail API 失败: {error}")
+        return data
+
+    def _list_accounts(self, *, force: bool = False) -> list[dict[str, Any]]:
+        if self._account_cache is not None and not force:
+            return self._account_cache
+        params: dict[str, Any] = {"limit": 10000, "offset": 0, "sort_by": "created_at", "sort_order": "asc"}
+        if self.group_id:
+            params["group_id"] = self.group_id
+        if self.tag_ids:
+            params["tag_ids"] = ",".join(self.tag_ids)
+            if self.include_untagged:
+                params["include_untagged"] = "true"
+        data = self._request("GET", "/external/accounts", params=params)
+        accounts = data.get("accounts") if isinstance(data, dict) else None
+        items = [item for item in accounts if isinstance(item, dict)] if isinstance(accounts, list) else []
+        self._account_cache = items
+        return items
+
+    @staticmethod
+    def _account_addresses(account: dict[str, Any]) -> list[str]:
+        emails: list[str] = []
+        primary = str(account.get("email") or "").strip()
+        if primary:
+            emails.append(primary)
+        aliases = account.get("aliases")
+        if isinstance(aliases, list):
+            for item in aliases:
+                text = str(item).strip()
+                if text:
+                    emails.append(text)
+        return emails
+
+    def create_mailbox(self, username: str | None = None) -> dict[str, Any]:
+        accounts = self._list_accounts()
+        if not accounts:
+            raise RuntimeError(f"[{self.label}] OutlookEmail API 账号列表为空，请先在管理端导入邮箱")
+        preferred = str(username or "").strip().lower()
+        candidates: list[tuple[dict[str, Any], str]] = []
+        for account in accounts:
+            addresses = self._account_addresses(account)
+            if not addresses:
+                continue
+            if preferred:
+                match = next((addr for addr in addresses if addr.lower() == preferred), None)
+                if match:
+                    candidates.append((account, match))
+                continue
+            candidates.append((account, addresses[0]))
+        if not candidates:
+            raise RuntimeError(f"[{self.label}] OutlookEmail API 未找到可用邮箱地址")
+
+        with _outlook_email_api_state_lock:
+            store = _load_outlook_email_api_state()
+            selected: dict[str, Any] | None = None
+            selected_address = ""
+            for account, address in candidates:
+                if not _outlook_entry_available(store.get(address.lower())):
+                    continue
+                selected = account
+                selected_address = address
+                break
+            if not selected or not selected_address:
+                raise RuntimeError(
+                    f"[{self.label}] OutlookEmail API 暂无可用邮箱（远端 {len(accounts)} 个，已用尽或占用），请导入新邮箱或重置池状态"
+                )
+            store[selected_address.strip().lower()] = {
+                "state": "in_use",
+                "reason": "",
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            _save_outlook_email_api_state(store)
+        return {
+            "provider": self.name,
+            "provider_ref": self.provider_ref,
+            "address": selected_address,
+            "login_email": str(selected.get("email") or selected_address),
+            "account_id": selected.get("id"),
+            "label": self.label,
+            "aliases": self._account_addresses(selected),
+        }
+
+    @staticmethod
+    def _normalize_email_item(mailbox: dict[str, Any], item: dict[str, Any]) -> dict[str, Any]:
+        body_preview = str(item.get("body_preview") or item.get("bodyPreview") or item.get("preview") or "")
+        text_content = str(item.get("text") or item.get("text_content") or item.get("body") or body_preview or "")
+        html_raw = item.get("html") or item.get("html_content") or item.get("body_html")
+        html_content = str(html_raw) if isinstance(html_raw, str) else ""
+        sender = item.get("from") or item.get("sender") or ""
+        if isinstance(sender, dict):
+            sender = sender.get("address") or sender.get("email") or sender.get("name") or ""
+        return {
+            "provider": OutlookEmailApiProvider.name,
+            "mailbox": str(mailbox.get("address") or ""),
+            "message_id": str(item.get("id") or item.get("message_id") or ""),
+            "subject": str(item.get("subject") or ""),
+            "sender": str(sender or ""),
+            "text_content": text_content,
+            "html_content": html_content,
+            "received_at": _parse_received_at(item.get("date") or item.get("received_at") or item.get("timestamp")),
+            "folder": str(item.get("folder") or ""),
+            "raw": item,
+        }
+
+    def fetch_latest_message(self, mailbox: dict[str, Any]) -> dict[str, Any] | None:
+        address = str(mailbox.get("address") or mailbox.get("login_email") or "").strip()
+        if not address:
+            raise RuntimeError("OutlookEmail API 缺少邮箱地址")
+        params: dict[str, Any] = {
+            "email": address,
+            "folder": self.folder,
+            "skip": 0,
+            "top": self.message_limit,
+        }
+        data = self._request("GET", "/external/emails", params=params)
+        emails = data.get("emails") if isinstance(data, dict) else None
+        items = [item for item in emails if isinstance(item, dict)] if isinstance(emails, list) else []
+        if not items:
+            return None
+        items.sort(
+            key=lambda value: (
+                (_parse_received_at(value.get("date") or value.get("received_at") or value.get("timestamp"))
+                 or datetime.fromtimestamp(0, tz=timezone.utc)).timestamp(),
+                str(value.get("id") or ""),
+            ),
+            reverse=True,
+        )
+        for item in items:
+            normalized = self._normalize_email_item(mailbox, item)
+            if not normalized["message_id"] and not (normalized["text_content"] or normalized["subject"]):
+                continue
+            return normalized
+        return None
+
+    def close(self) -> None:
+        self.session.close()
+
+
 class YydsMailProvider(BaseMailProvider):
     name = "yyds_mail"
 
@@ -2230,6 +2495,8 @@ def _create_provider(mail_config: dict, provider: str = "", provider_ref: str = 
         return InbucketMailProvider(entry, conf)
     if entry["type"] == "ahem":
         return AhemMailProvider(entry, conf)
+    if entry["type"] == "outlook_email_api":
+        return OutlookEmailApiProvider(entry, conf)
     if entry["type"] == "yyds_mail":
         return YydsMailProvider(entry, conf)
     if entry["type"] == "outlook_token":
@@ -2271,13 +2538,28 @@ def wait_for_code(mail_config: dict, mailbox: dict) -> str | None:
 def mark_mailbox_result(mailbox: dict, *, success: bool, error: Exception | str | None = None) -> None:
     """注册流程结束后更新邮箱池状态。
 
-    仅对 outlook_token 邮箱生效：成功标记 used；失败时若是 token 失效标记 token_invalid，
-    登录态问题标记 login_required，其余失败标记 failed（可重试但不会自动再次领用）。
+    outlook_token / outlook_email_api：成功标记 used；失败时
+    - token 类失效标记 token_invalid
+    - 登录态问题标记 login_required
+    - 其余失败标记 failed（可重试但不会自动再次领用）
     """
-    if str(mailbox.get("provider") or "") != OutlookTokenProvider.name:
-        return
+    provider_name = str(mailbox.get("provider") or "")
     address = str(mailbox.get("address") or "").strip()
     if not address:
+        return
+
+    if provider_name == OutlookEmailApiProvider.name:
+        if success:
+            _set_outlook_email_api_state(address, "used")
+            return
+        reason = redact_auth_diagnostic(error)
+        if "401" in reason or "403" in reason or "API Key" in reason or "api key" in reason.lower():
+            _set_outlook_email_api_state(address, "token_invalid", reason[:300])
+        else:
+            _set_outlook_email_api_state(address, "failed", reason[:300])
+        return
+
+    if provider_name != OutlookTokenProvider.name:
         return
     if success:
         _set_outlook_token_state(address, "used")
@@ -2300,10 +2582,15 @@ def mark_mailbox_result(mailbox: dict, *, success: bool, error: Exception | str 
 
 
 def release_mailbox(mailbox: dict) -> None:
-    """把 outlook_token 邮箱从 in_use 释放回未使用（用于流程主动放弃且未消费验证码时）。"""
-    if str(mailbox.get("provider") or "") != OutlookTokenProvider.name:
+    """把占用中的邮箱释放回未使用（流程主动放弃且未消费验证码时）。"""
+    provider_name = str(mailbox.get("provider") or "")
+    address = str(mailbox.get("address") or "")
+    if provider_name == OutlookEmailApiProvider.name:
+        _release_outlook_email_api_state(address)
         return
-    _release_outlook_token_state(str(mailbox.get("address") or ""))
+    if provider_name != OutlookTokenProvider.name:
+        return
+    _release_outlook_token_state(address)
 
 
 def get_existing_mailbox(mail_config: dict, email: str) -> dict:
