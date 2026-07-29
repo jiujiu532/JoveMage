@@ -98,6 +98,7 @@ const SETTINGS_SAVE_KEYS = [
   'backup',
   'chat_completion_cache',
   'third_party_apps',
+  'domain_ban_rules',
 ] as const
 
 function cleanString(value: unknown): string {
@@ -189,6 +190,23 @@ function normalizeImageErrorMessages(raw: unknown): ImageErrorMessages {
       cleanString(source[key]) || fallback,
     ]),
   ) as ImageErrorMessages
+}
+
+function normalizeDomainBanRules(raw: unknown): Settings['domain_ban_rules'] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((item, index) => {
+      const source = item && typeof item === 'object' ? item as RawSettings : {}
+      const match = cleanString(source.match)
+      if (!match) return null
+      const id = cleanString(source.id) || undefined
+      return {
+        ...(id ? { id } : { id: `rule_${index + 1}` }),
+        match,
+        enabled: boolValue(source.enabled, true),
+      }
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
 }
 
 export function normalizeSettings(raw: RawSettings | null | undefined): Settings {
@@ -317,6 +335,7 @@ export function normalizeSettings(raw: RawSettings | null | undefined): Settings
         url: thirdPartyApps.infinite_canvas.url,
       },
     },
+    domain_ban_rules: normalizeDomainBanRules(source.domain_ban_rules),
     proxy_profiles: Array.isArray(source.proxy_profiles) ? source.proxy_profiles : [],
   } as Settings
 
@@ -362,6 +381,7 @@ function toBackendSettings(settings: Settings): RawSettings {
     backup: cloneRawSettings(normalized.backup),
     chat_completion_cache: cloneRawSettings(normalized.chat_completion_cache),
     third_party_apps: cloneRawSettings(normalized.third_party_apps),
+    domain_ban_rules: normalizeDomainBanRules(normalized.domain_ban_rules),
   }
   payload.image_retention_days = numberValue(
     normalized.image_retention_days,

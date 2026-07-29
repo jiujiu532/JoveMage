@@ -28,6 +28,13 @@ export interface ProxyRuntimeSettings {
   clearance: ProxyRuntimeClearance
 }
 
+/** 域名黑名单自定义规则（随系统设置保存） */
+export interface DomainBanRule {
+  id?: string
+  match: string
+  enabled?: boolean
+}
+
 export interface ProxyRuntimeStatus {
   enabled: boolean
   egress_mode: string
@@ -190,6 +197,8 @@ export interface Settings {
       url: string
     }
   }
+  /** 域名黑名单自定义匹配规则；名单条目本身不走设置保存 */
+  domain_ban_rules?: DomainBanRule[]
   proxy_profiles?: Array<{
     id: string
     name: string

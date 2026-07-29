@@ -16,7 +16,12 @@
         </div>
       </div>
 
-      <ConsoleSegmentedTabs v-model="activeSettingsTab" :options="settingsTabs" aria-label="设置分组" />
+      <ConsoleSegmentedTabs
+        :model-value="activeSettingsTab"
+        :options="settingsTabs"
+        aria-label="设置分组"
+        @update:model-value="handleSettingsTabChange"
+      />
 
       <div v-if="activeSettingsTab === 'basic'" class="space-y-4">
         <SurfaceBox density="compact">
@@ -490,6 +495,12 @@
 
       <SettingsPromptSourcesPanel
         v-else-if="activeSettingsTab === 'prompts'"
+      />
+
+      <SettingsDomainBlacklistPanel
+        v-else-if="activeSettingsTab === 'domain-blacklist' && localSettings"
+        :rules="localSettings.domain_ban_rules || []"
+        @update:rules="onDomainBanRulesUpdate"
       />
 
       <div v-else-if="activeSettingsTab === 'storage'" class="grid gap-4 xl:grid-cols-3">
@@ -1175,6 +1186,7 @@
 
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onActivated, onMounted, ref, watch } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { Button, Checkbox, FormField, FormSection, HelpTip, Input } from 'nanocat-ui'
 import GroupedSelectMenu from '@/components/ui/GroupedSelectMenu.vue'
@@ -1205,10 +1217,11 @@ import PageLoadingState from '@/components/ai/PageLoadingState.vue'
 import PagePanel from '@/components/ai/PagePanel.vue'
 import StateBlock from '@/components/ai/StateBlock.vue'
 import SurfaceBox from '@/components/ai/SurfaceBox.vue'
-import type { Settings } from '@/types/api'
+import type { DomainBanRule, Settings } from '@/types/api'
 
 const RemoteAccountImportPanel = defineAsyncComponent(() => import('@/components/ai/RemoteAccountImportPanel.vue'))
 const SettingsPromptSourcesPanel = defineAsyncComponent(() => import('@/views/settings/SettingsPromptSourcesPanel.vue'))
+const SettingsDomainBlacklistPanel = defineAsyncComponent(() => import('@/views/settings/SettingsDomainBlacklistPanel.vue'))
 
 type NumberFieldBinding = {
   input: ReturnType<typeof ref<string>>
@@ -1290,6 +1303,7 @@ const settingsTabs = [
   { value: 'image-errors', label: '图片错误' },
   { value: 'storage', label: '图片存储与审核' },
   { value: 'prompts', label: '提示词源' },
+  { value: 'domain-blacklist', label: '域名黑名单' },
   { value: 'backup', label: 'R2 备份' },
   { value: 'keys', label: '用户密钥' },
   { value: 'api-docs', label: '接口接入' },
@@ -1564,6 +1578,39 @@ const hasUnsavedSettings = computed(() => {
   if (!localSettings.value || !savedSettingsBaseline.value) return false
   return settingsFingerprint(localSettings.value) !== settingsFingerprint(savedSettingsBaseline.value)
 })
+
+function discardUnsavedSettings() {
+  if (!savedSettingsBaseline.value) return
+  localSettings.value = prepareSettingsForEdit(savedSettingsBaseline.value)
+}
+
+async function confirmDiscardUnsavedSettings(message: string) {
+  if (!hasUnsavedSettings.value) return true
+  const confirmed = await confirmDialog.ask({
+    title: '未保存的更改',
+    message,
+    confirmText: '丢弃并继续',
+    cancelText: '取消',
+  })
+  if (!confirmed) return false
+  discardUnsavedSettings()
+  return true
+}
+
+function onDomainBanRulesUpdate(rules: DomainBanRule[]) {
+  if (!localSettings.value) return
+  localSettings.value.domain_ban_rules = Array.isArray(rules) ? rules : []
+}
+
+async function handleSettingsTabChange(nextTab: string | number) {
+  const target = String(nextTab || '').trim()
+  if (!target || target === activeSettingsTab.value) return
+  const allowed = await confirmDiscardUnsavedSettings(
+    '当前设置有未保存的更改。切换标签将丢弃这些更改，是否继续？',
+  )
+  if (!allowed) return
+  activeSettingsTab.value = target
+}
 
 function requireSavedSettings(actionLabel: string) {
   if (!localSettings.value) return false
@@ -2493,6 +2540,25 @@ onActivated(() => {
 
 watch(activeSettingsTab, () => {
   void loadActiveSettingsTabData()
+})
+
+onBeforeRouteLeave(async (_to, _from, next) => {
+  if (!hasUnsavedSettings.value) {
+    next()
+    return
+  }
+  const confirmed = await confirmDialog.ask({
+    title: '未保存的更改',
+    message: '当前设置有未保存的更改。离开页面将丢弃这些更改，是否继续？',
+    confirmText: '丢弃并离开',
+    cancelText: '取消',
+  })
+  if (confirmed) {
+    discardUnsavedSettings()
+    next()
+    return
+  }
+  next(false)
 })
 
 const handleSave = async () => {

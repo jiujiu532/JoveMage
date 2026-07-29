@@ -166,6 +166,57 @@ export type GptMailStatus = {
   default_domain?: string
 }
 
+/** 域名黑名单条目（即时 API，不走设置保存） */
+export type DomainBlacklistEntry = {
+  provider_ref: string
+  domain: string
+  source?: string
+  reason?: string
+  hit_count?: number
+  last_banned_at?: string
+  sample_email?: string
+  [key: string]: unknown
+}
+
+export type DomainBlacklistProvider = {
+  ref?: string
+  provider_ref?: string
+  id?: string
+  label?: string
+  name?: string
+  type?: string
+  /** Outlook 等排除类不展示分组 */
+  excluded?: boolean
+  [key: string]: unknown
+}
+
+export type DomainBlacklistBuiltinRule = {
+  id?: string
+  match: string
+  enabled?: boolean
+  description?: string
+  [key: string]: unknown
+}
+
+export type DomainBlacklistResponse = {
+  entries: DomainBlacklistEntry[]
+  providers: DomainBlacklistProvider[]
+  builtin_rules: DomainBlacklistBuiltinRule[]
+  custom_rules?: DomainBlacklistBuiltinRule[]
+}
+
+export type DomainBlacklistImportMode = 'merge' | 'replace'
+
+export type DomainBlacklistImportPayload = {
+  payload: unknown
+  mode: DomainBlacklistImportMode
+  provider_ref?: string
+}
+
+function providerRefOf(provider: DomainBlacklistProvider): string {
+  return String(provider.provider_ref || provider.ref || provider.id || '').trim()
+}
+
 export const registerApi = {
   getConfig() {
     return apiClient.get<any, { register: LegacyRegisterConfig }>('/api/register')
@@ -191,4 +242,37 @@ export const registerApi = {
   refreshGptMailKey(provider: RegisterProvider, force = true) {
     return apiClient.post<any, { status: GptMailStatus }>('/api/register/gptmail/refresh-key', { provider, force })
   },
+
+  getDomainBlacklist() {
+    return apiClient.get<never, DomainBlacklistResponse>('/api/register/domain-blacklist')
+  },
+
+  addDomainBlacklist(body: { provider_ref: string; domain: string; reason?: string }) {
+    return apiClient.post<
+      { provider_ref: string; domain: string; reason?: string },
+      DomainBlacklistResponse | { ok?: boolean }
+    >('/api/register/domain-blacklist', body)
+  },
+
+  removeDomainBlacklist(body: { provider_ref: string; domain: string }) {
+    // axios delete 可带 body；若后端不支持再改 POST /remove
+    return apiClient.delete<never, DomainBlacklistResponse | { ok?: boolean }>(
+      '/api/register/domain-blacklist',
+      { data: body },
+    )
+  },
+
+  exportDomainBlacklist(provider_ref?: string) {
+    const params = provider_ref ? { provider_ref } : undefined
+    return apiClient.get<never, unknown>('/api/register/domain-blacklist/export', { params })
+  },
+
+  importDomainBlacklist(body: DomainBlacklistImportPayload) {
+    return apiClient.post<DomainBlacklistImportPayload, DomainBlacklistResponse | { ok?: boolean }>(
+      '/api/register/domain-blacklist/import',
+      body,
+    )
+  },
 }
+
+export { providerRefOf as domainBlacklistProviderRef }
