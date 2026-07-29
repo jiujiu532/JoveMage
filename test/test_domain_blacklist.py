@@ -180,12 +180,21 @@ class DomainBlacklistTests(unittest.TestCase):
                 "create_account_rejected",
             ),
             (
+                "user_register_http_403 cannot create your account with the given information",
+                "create_account_rejected",
+            ),
+            (
+                # 无 HTTP 状态前缀，纯短语仍绝对拉黑
+                "Sorry, we cannot create your account with the given information.",
+                "create_account_rejected",
+            ),
+            (
                 "Failed to create account. Please try again.",
                 "failed_to_create_account",
             ),
             (
                 'invalid_request_error: cannot create your account with the given information',
-                "invalid_request_cannot_create",
+                "create_account_rejected",
             ),
         ]
         for text, expected_reason in samples_true:
@@ -200,6 +209,8 @@ class DomainBlacklistTests(unittest.TestCase):
             "cloudflare challenge failed",
             "create_account_http_500 internal error",
             "connection timeout",
+            # 单独 type 名不再触发 ban
+            "invalid_request_error only",
         ]
         for text in samples_false:
             ok, reason = db.should_ban_from_error(text)
@@ -221,6 +232,59 @@ class DomainBlacklistTests(unittest.TestCase):
         )
         self.assertFalse(ok)
 
+    def test_subdomain_and_wildcard_matching(self) -> None:
+        pref = "tempmail:1"
+        # 父域 ban 覆盖子域
+        db.ban(pref, "example.com", source="manual")
+        self.assertTrue(db.is_banned(pref, "example.com"))
+        self.assertTrue(db.is_banned(pref, "a.example.com"))
+        self.assertTrue(db.is_banned(pref, "x.y.example.com"))
+        self.assertFalse(db.is_banned(pref, "notexample.com"))
+        self.assertFalse(db.is_banned(pref, "example.org"))
+
+        kept = db.filter_domains(
+            pref,
+            ["example.com", "a.example.com", "*.example.com", "keep.org", "other.com"],
+        )
+        self.assertEqual(kept, ["keep.org", "other.com"])
+
+        # 叶子 ban → 基域 / 通配配置停用；兄弟叶子本身未写入时 is_banned 为 False，
+        # 但 filter_domains 会去掉基域与 *.base，避免随机子域再发
+        pref2 = "tempmail:2"
+        db.ban(pref2, "rand.base.mail", source="auto")
+        self.assertTrue(db.is_banned(pref2, "rand.base.mail"))
+        self.assertTrue(db.is_banned(pref2, "base.mail"))
+        self.assertTrue(db.is_banned(pref2, "*.base.mail"))
+        self.assertFalse(db.is_banned(pref2, "other.base.mail"))  # 兄弟叶子未单独写入
+        kept2 = db.filter_domains(pref2, ["base.mail", "*.base.mail", "ok.com", "rand.base.mail", "other.base.mail"])
+        # 基域与通配被拦；兄弟叶子 other.base.mail 仍可能出现在配置列表中（精确条目）
+        self.assertEqual(kept2, ["ok.com", "other.base.mail"])
+
+        # 通配 ban
+        pref3 = "tempmail:3"
+        db.ban(pref3, "*.wild.test", source="manual")
+        self.assertTrue(db.is_banned(pref3, "a.wild.test"))
+        self.assertTrue(db.is_banned(pref3, "wild.test"))
+        self.assertFalse(db.is_banned(pref3, "other.test"))
+        kept3 = db.filter_domains(pref3, ["*.wild.test", "x.wild.test", "safe.com"])
+        self.assertEqual(kept3, ["safe.com"])
+
+        # normalize 支持通配
+        self.assertEqual(db.normalize_domain("*.Example.COM"), "*.example.com")
+
+    def test_import_replace_empty_global_rejected(self) -> None:
+        pref = "gptmail:abc"
+        db.ban(pref, "keep.com", reason="seed")
+        with self.assertRaises(ValueError):
+            db.import_payload({"entries": []}, mode="replace")
+        # 库未被清空
+        self.assertTrue(db.is_banned(pref, "keep.com"))
+
+        # 限定组 replace 空列表允许（清该组）
+        stats = db.import_payload({"entries": []}, mode="replace", provider_ref=pref)
+        self.assertGreaterEqual(stats["removed"], 1)
+        self.assertFalse(db.is_banned(pref, "keep.com"))
+
     def test_export_payload(self) -> None:
         db.ban("gptmail:1", "a.com")
         payload = db.export_payload("gptmail:1")
@@ -232,6 +296,12 @@ class DomainBlacklistTests(unittest.TestCase):
         long_hint = "x" * 800
         item = db.ban("gptmail:1", "z.com", raw_hint=long_hint)
         self.assertEqual(len(item["raw_hint"]), 500)
+
+    def test_builtin_rules_metadata(self) -> None:
+        self.assertTrue(len(db.BUILTIN_BAN_RULES) >= 2)
+        for rule in db.BUILTIN_BAN_RULES:
+            self.assertTrue(rule.get("label") or rule.get("description"))
+            self.assertNotEqual(rule.get("match"), "invalid_request_error")
 
 
 if __name__ == "__main__":

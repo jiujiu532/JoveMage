@@ -387,7 +387,8 @@ def _next_domain(domains: list[str], provider_ref: str = "") -> str:
         except Exception:
             pass
     if not domains:
-        raise RuntimeError("mail.domain 不能为空或域名均已拉黑")
+        # 文案含「域名已拉黑」，供 create_mailbox 软切换下一 provider
+        raise RuntimeError("域名已拉黑: mail.domain 为空或该服务域名均已拉黑")
     if len(domains) == 1:
         return domains[0]
     with domain_lock:
@@ -1186,7 +1187,7 @@ class TempMailLolProvider(BaseMailProvider):
             except Exception:
                 pass
             if not domains:
-                raise RuntimeError("mail.domain 不能为空或域名均已拉黑")
+                raise RuntimeError("域名已拉黑: mail.domain 为空或该服务域名均已拉黑")
             domain, force_random_prefix = self._resolve_domain(random.choice(domains))
             payload["domain"] = domain
             if force_random_prefix:

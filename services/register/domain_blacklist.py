@@ -18,35 +18,26 @@ _SCHEMA_VERSION = 1
 _LOCK = threading.Lock()
 
 # 内置硬规则：只读导出，供 UI / 文档展示；实际判定见 should_ban_from_error
+# match 字段即错误文案子串（忽略大小写）；勿再放仅状态码 / 单独 type 名以免误导
 BUILTIN_BAN_RULES: list[dict[str, Any]] = [
     {
         "id": "create_account_rejected",
-        "label": "OpenAI 拒绝创建账号（400/403 + given information）",
+        "label": "OpenAI 拒绝创建账号（given information）",
+        "description": "错误文案包含 cannot create your account with the given information 时绝对拉黑",
         "match": "cannot create your account with the given information",
         "builtin": True,
     },
     {
         "id": "failed_to_create_account",
-        "label": "Failed to create account. Please try again.",
+        "label": "Failed to create account",
+        "description": "错误文案包含 Failed to create account. Please try again.",
         "match": "Failed to create account. Please try again.",
-        "builtin": True,
-    },
-    {
-        "id": "invalid_request_cannot_create",
-        "label": "invalid_request_error + cannot create account",
-        "match": "invalid_request_error",
         "builtin": True,
     },
 ]
 
-_HTTP_STATUS_HINTS = (
-    "create_account_http_400",
-    "create_account_http_403",
-    "user_register_http_400",
-)
 _CANNOT_CREATE_PHRASE = "cannot create your account with the given information"
 _FAILED_CREATE_PHRASE = "failed to create account. please try again."
-_INVALID_REQUEST = "invalid_request_error"
 
 _DOMAIN_RE = re.compile(
     r"^(?=.{1,253}$)(?!-)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
@@ -59,20 +50,90 @@ def _now_iso() -> str:
 
 
 def normalize_domain(value: str) -> str:
-    """小写；若是邮箱取 @ 右侧；去掉空白；非法抛 ValueError。"""
+    """小写；若是邮箱取 @ 右侧；支持 *.example.com 通配；非法抛 ValueError。"""
     raw = str(value or "").strip().lower()
     if not raw:
         raise ValueError("domain is empty")
     if "@" in raw:
-        local, _, host = raw.rpartition("@")
+        _local, _, host = raw.rpartition("@")
         if not host:
             raise ValueError("invalid email domain")
         raw = host.strip()
     # 去掉可能的尖括号包裹 / 尾随点
     raw = raw.strip("<>").strip().rstrip(".")
+    wildcard = False
+    if raw.startswith("*.") and len(raw) > 2:
+        wildcard = True
+        raw = raw[2:].strip().rstrip(".")
     if not raw or not _DOMAIN_RE.match(raw):
         raise ValueError(f"invalid domain: {value!r}")
-    return raw
+    return f"*.{raw}" if wildcard else raw
+
+
+def _strip_wildcard(domain: str) -> tuple[str, bool]:
+    """返回 (base, is_wildcard)。"""
+    text = str(domain or "").strip().lower()
+    if text.startswith("*.") and len(text) > 2:
+        return text[2:], True
+    return text, False
+
+
+def domain_matches_ban(candidate: str, banned: str) -> bool:
+    """
+    banned 是否覆盖 candidate。
+    - 精确匹配
+    - banned 为父域时覆盖子域（example.com → a.example.com）
+    - banned 为 *.base 时覆盖 base 及其任意子域
+    """
+    try:
+        cand = normalize_domain(candidate)
+        ban = normalize_domain(banned)
+    except ValueError:
+        return False
+    cand_base, cand_wild = _strip_wildcard(cand)
+    ban_base, ban_wild = _strip_wildcard(ban)
+    if cand_wild:
+        # 候选本身是通配配置项：交给 config_domain_blocked
+        return False
+    if ban_wild:
+        return cand_base == ban_base or cand_base.endswith("." + ban_base)
+    if cand_base == ban_base:
+        return True
+    # 父域 ban 覆盖子域
+    return cand_base.endswith("." + ban_base)
+
+
+def config_domain_blocked(config_domain: str, banned: str) -> bool:
+    """
+    配置侧域名（含 *.base）是否因某条 ban 而不可再选。
+    - 配置为 *.base：任意 ban 落在 base / 其子域 → 整池不可用（避免随机子域绕过）
+    - 配置为具体域：被 ban 覆盖，或其子域已被 ban（避免基域继续发叶子）
+    """
+    try:
+        conf = normalize_domain(config_domain)
+        ban = normalize_domain(banned)
+    except ValueError:
+        return False
+    conf_base, conf_wild = _strip_wildcard(conf)
+    ban_base, ban_wild = _strip_wildcard(ban)
+
+    if conf_wild:
+        if ban_wild:
+            # *.a 与 *.b：任一方覆盖另一方 base
+            return (
+                conf_base == ban_base
+                or conf_base.endswith("." + ban_base)
+                or ban_base.endswith("." + conf_base)
+            )
+        return ban_base == conf_base or ban_base.endswith("." + conf_base)
+
+    # 具体配置域
+    if domain_matches_ban(conf_base, ban):
+        return True
+    # 叶子已 ban → 基域配置也停用（防 random_subdomain / 同基域再发）
+    if ban_wild:
+        return conf_base == ban_base or conf_base.endswith("." + ban_base)
+    return ban_base == conf_base or ban_base.endswith("." + conf_base)
 
 
 def mask_email(email: str) -> str:
@@ -129,7 +190,11 @@ def _load_unlocked(path: Path | None = None) -> dict[str, Any]:
     for item in entries:
         if isinstance(item, dict):
             cleaned.append(dict(item))
-    return {"version": int(data.get("version") or _SCHEMA_VERSION), "entries": cleaned}
+    try:
+        version = int(data.get("version") or _SCHEMA_VERSION)
+    except (TypeError, ValueError):
+        version = _SCHEMA_VERSION
+    return {"version": version, "entries": cleaned}
 
 
 def _save_unlocked(store: dict[str, Any], path: Path | None = None) -> None:
@@ -164,7 +229,7 @@ def is_banned(provider_ref: str, domain: str) -> bool:
     if not pref:
         return False
     try:
-        dom = normalize_domain(domain)
+        cand = normalize_domain(domain)
     except ValueError:
         return False
     with _LOCK:
@@ -174,40 +239,42 @@ def is_banned(provider_ref: str, domain: str) -> bool:
                 continue
             if str(item.get("provider_ref") or "").strip() != pref:
                 continue
+            banned_dom = str(item.get("domain") or "")
             try:
-                if normalize_domain(str(item.get("domain") or "")) == dom:
-                    return True
+                ban_n = normalize_domain(banned_dom)
             except ValueError:
                 continue
+            if domain_matches_ban(cand, ban_n) or config_domain_blocked(cand, ban_n):
+                return True
     return False
 
 
 def filter_domains(provider_ref: str, domains: list[str]) -> list[str]:
-    """去掉已 ban 的域名，保持原顺序。"""
+    """去掉已 ban 的域名（含父子域 / 通配），保持原顺序。"""
     pref = str(provider_ref or "").strip()
     if not domains:
         return []
-    # 先规范化能解析的，保留原字符串输出
     with _LOCK:
         store = _load_unlocked()
-        banned: set[str] = set()
+        banned: list[str] = []
         for item in store["entries"]:
             if str(item.get("provider_ref") or "").strip() != pref:
                 continue
             if str(item.get("status") or "active").lower() not in {"", "active"}:
                 continue
             try:
-                banned.add(normalize_domain(str(item.get("domain") or "")))
+                banned.append(normalize_domain(str(item.get("domain") or "")))
             except ValueError:
                 continue
     result: list[str] = []
     for d in domains:
-        try:
-            if normalize_domain(d) in banned:
-                continue
-        except ValueError:
-            # 非法域名原样保留，交给上游处理
-            pass
+        blocked = False
+        for ban_dom in banned:
+            if config_domain_blocked(d, ban_dom) or domain_matches_ban(d, ban_dom):
+                blocked = True
+                break
+        if blocked:
+            continue
         result.append(d)
     return result
 
@@ -370,6 +437,10 @@ def import_payload(
 
     added = updated = removed = skipped = 0
 
+    # 全量 replace 且无有效条目：拒绝整表清空，避免误操作 / 空文件擦库
+    if mode_s == "replace" and scope is None and not incoming:
+        raise ValueError("replace 模式需要非空 entries，已拒绝清空全部黑名单")
+
     with _LOCK:
         store = _load_unlocked()
         entries: list[dict[str, Any]] = list(store["entries"])
@@ -479,23 +550,19 @@ def should_ban_from_error(
 ) -> tuple[bool, str]:
     """
     返回 (是否应 ban, reason_id_or_label)。
-    内置硬规则始终生效；自定义 match 子串包含（忽略大小写），长度 >= 8。
+    内置：cannot-create 短语 / failed-to-create 短语（不依赖 HTTP 状态前缀）。
+    自定义 match 子串包含（忽略大小写），长度 >= 8。
     """
     text = str(error_text or "")
     if not text.strip():
         return False, ""
     lower = text.lower()
 
-    has_status_hint = any(h in lower for h in _HTTP_STATUS_HINTS)
-    has_cannot_create = _CANNOT_CREATE_PHRASE in lower
-    has_invalid_request = _INVALID_REQUEST in lower
-
-    if has_status_hint and has_cannot_create:
+    # 绝对拉黑短语：不要求 create_account_http_xxx 前缀，覆盖 400/403/user_register 等变体
+    if _CANNOT_CREATE_PHRASE in lower:
         return True, "create_account_rejected"
     if _FAILED_CREATE_PHRASE in lower:
         return True, "failed_to_create_account"
-    if has_cannot_create and has_invalid_request:
-        return True, "invalid_request_cannot_create"
 
     for rule in custom_rules or []:
         if not isinstance(rule, dict):

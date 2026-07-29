@@ -194,7 +194,9 @@ export type DomainBlacklistBuiltinRule = {
   id?: string
   match: string
   enabled?: boolean
+  label?: string
   description?: string
+  builtin?: boolean
   [key: string]: unknown
 }
 

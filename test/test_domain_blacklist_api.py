@@ -116,6 +116,16 @@ class DomainBlacklistApiTests(unittest.TestCase):
         self.assertGreaterEqual(result.get("added", 0) + result.get("updated", 0), 1)
         self.assertTrue(domain_blacklist.is_banned("gptmail:p1", "a.example.com"))
 
+    def test_import_replace_empty_global_rejected(self) -> None:
+        domain_blacklist.ban("gptmail:p1", "keep.me", source="manual")
+        resp = self.client.post(
+            "/api/register/domain-blacklist/import",
+            headers=self.headers,
+            json={"payload": {"entries": []}, "mode": "replace"},
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertTrue(domain_blacklist.is_banned("gptmail:p1", "keep.me"))
+
 
 class DomainBanRulesConfigTests(unittest.TestCase):
     def test_normalize_domain_ban_rules(self) -> None:

@@ -16,8 +16,9 @@
             class="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-border bg-card px-3 py-2 text-xs"
           >
             <div class="min-w-0 space-y-0.5">
-              <p class="font-mono text-foreground">{{ rule.match }}</p>
-              <p v-if="rule.description" class="text-muted-foreground">{{ rule.description }}</p>
+              <p class="font-medium text-foreground">{{ rule.label || rule.description || rule.id || '内置规则' }}</p>
+              <p class="font-mono text-muted-foreground">{{ rule.match }}</p>
+              <p v-if="rule.description && rule.label" class="text-muted-foreground">{{ rule.description }}</p>
             </div>
             <MetaChip size="xs" tone="muted" variant="outline">始终生效</MetaChip>
           </div>
@@ -38,13 +39,21 @@
             :key="rule.id || `custom_${index}`"
             class="grid gap-2 rounded-sm border border-border bg-card px-3 py-2 md:grid-cols-[1fr_auto_auto] md:items-center"
           >
-            <Input
-              :model-value="rule.match"
-              block
-              root-class="font-mono"
-              placeholder="例如 *@spam.example 或 bad.domain"
-              @update:model-value="updateCustomRule(index, { match: String($event || '') })"
-            />
+            <div class="min-w-0 space-y-1">
+              <Input
+                :model-value="rule.match"
+                block
+                root-class="font-mono"
+                placeholder="错误文案子串，至少 8 字符，例如 cannot create your account"
+                @update:model-value="updateCustomRule(index, { match: String($event || '') })"
+              />
+              <p
+                v-if="rule.match.trim().length > 0 && rule.match.trim().length < 8"
+                class="text-[11px] text-amber-600 dark:text-amber-400"
+              >
+                匹配串不足 8 字符，保存设置时会被后端丢弃
+              </p>
+            </div>
             <Checkbox
               :model-value="rule.enabled !== false"
               @update:model-value="updateCustomRule(index, { enabled: Boolean($event) })"
@@ -267,6 +276,9 @@ const addDomainDraft = reactive<Record<string, string>>({})
 const addReasonDraft = reactive<Record<string, string>>({})
 const importInputRef = ref<HTMLInputElement | null>(null)
 const pendingImportProviderRef = ref<string | undefined>(undefined)
+/** 并发 load 序号：只应用最后一次响应，避免 loading 短路跳过刷新 */
+let loadSeq = 0
+let pendingReload = false
 
 const LEGACY_GROUP_KEY = '__legacy__'
 
@@ -315,11 +327,18 @@ function applyListResponse(data: {
   const nextBuiltin = Array.isArray(data.builtin_rules)
     ? data.builtin_rules
       .filter((item): item is DomainBlacklistBuiltinRule => Boolean(item && typeof item === 'object'))
-      .map((item) => ({
-        ...item,
-        match: String(item.match || '').trim(),
-      }))
-      .filter((item) => item.match)
+      .map((item) => {
+        const match = String(item.match || '').trim()
+        const label = item.label != null ? String(item.label).trim() : ''
+        const description = item.description != null ? String(item.description).trim() : ''
+        return {
+          ...item,
+          match,
+          label: label || undefined,
+          description: description || undefined,
+        }
+      })
+      .filter((item) => item.match || item.label || item.id)
     : []
 
   entries.value = nextEntries
@@ -441,17 +460,29 @@ function removeCustomRule(index: number) {
 }
 
 async function loadList() {
-  if (loading.value) return
+  if (loading.value) {
+    pendingReload = true
+    return
+  }
   loading.value = true
   loadError.value = ''
+  const seq = ++loadSeq
   try {
     const data = await registerApi.getDomainBlacklist()
+    if (seq !== loadSeq) return
     applyListResponse(data || {})
   } catch (error: any) {
+    if (seq !== loadSeq) return
     loadError.value = error?.message || '域名黑名单加载失败'
     toast.error(loadError.value)
   } finally {
-    loading.value = false
+    if (seq === loadSeq) {
+      loading.value = false
+    }
+    if (pendingReload) {
+      pendingReload = false
+      void loadList()
+    }
   }
 }
 
@@ -569,11 +600,12 @@ async function onImportFileChange(event: Event) {
     return
   }
 
+  // 第一步：合并 or 否（否再问是否替换）；第二步取消 = 中止导入
   const merge = await confirmDialog.ask({
     title: providerRef ? '导入本组黑名单' : '导入全部黑名单',
-    message: '选择导入方式：确定 = 合并（merge），取消后可再选替换。是否先用合并模式？',
+    message: '使用合并模式导入？选「否」可改用替换模式，或在下一步取消。',
     confirmText: '合并导入',
-    cancelText: '选择其它',
+    cancelText: '否，其它方式',
   })
 
   let mode: DomainBlacklistImportMode | null = null
@@ -583,13 +615,14 @@ async function onImportFileChange(event: Event) {
     const replace = await confirmDialog.ask({
       title: '替换导入',
       message: providerRef
-        ? `将以文件内容替换「${providerRef}」分组黑名单，是否继续？`
-        : '将以文件内容替换全部黑名单，是否继续？',
+        ? `将以文件内容替换「${providerRef}」分组黑名单（该组原有条目会被清空后写入）。确定继续？选取消则中止导入。`
+        : '将以文件内容替换全部黑名单（整表清空后写入文件内容）。确定继续？选取消则中止导入。',
       confirmText: '替换导入',
-      cancelText: '取消',
+      cancelText: '取消导入',
     })
     if (!replace) {
       input.value = ''
+      toast.info('已取消导入')
       return
     }
     mode = 'replace'
