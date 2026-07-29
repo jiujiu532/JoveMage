@@ -503,6 +503,59 @@ html[data-theme="dark"] .ui-segmented-btn-active .ui-segmented-count {
   background: hsl(var(--card)) !important;
 }
 
+/* ========== 下拉菜单 / 浮动面板：新粗野主义，呼应分页器 ========== */
+/* 容器：白卡 + 黑粗边 + 硬偏移阴影 */
+.ui-floating-panel,
+.ui-overlay-panel {
+  border: 2px solid var(--bauhaus-ink) !important;
+  border-radius: 14px !important;
+  background: var(--bauhaus-card, #ffffff) !important;
+  box-shadow: 4px 4px 0 0 var(--bauhaus-ink) !important;
+  padding: 6px !important;
+}
+
+/* 菜单项：默认近黑文本、圆角块；悬浮米色，选中米色高亮 */
+.ui-menu-item {
+  border-radius: 10px !important;
+  color: var(--bauhaus-ink) !important;
+  font-weight: 500 !important;
+  background: transparent !important;
+  border: 2px solid transparent !important;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease !important;
+}
+
+.ui-menu-item:hover:not(:disabled):not(.bg-accent) {
+  background: var(--bauhaus-postit, #fff9c4) !important;
+  color: var(--bauhaus-ink) !important;
+}
+
+/* GroupedSelectMenu 选中项用的是 bg-accent/text-accent-foreground（Tailwind 类），
+   覆盖成米色高亮而非默认蓝底 */
+.ui-menu-item.bg-accent,
+.ui-menu-item.text-accent-foreground {
+  background: var(--bauhaus-postit, #fff9c4) !important;
+  border-color: var(--bauhaus-ink) !important;
+  color: var(--bauhaus-ink) !important;
+  font-weight: 700 !important;
+}
+
+html[data-theme="dark"] .ui-floating-panel,
+html[data-theme="dark"] .ui-overlay-panel {
+  background: var(--bauhaus-card, #212121) !important;
+}
+
+html[data-theme="dark"] .ui-menu-item {
+  color: var(--bauhaus-ink, #f2f2f2) !important;
+}
+
+html[data-theme="dark"] .ui-menu-item:hover:not(:disabled):not(.bg-accent),
+html[data-theme="dark"] .ui-menu-item.bg-accent,
+html[data-theme="dark"] .ui-menu-item.text-accent-foreground {
+  background: var(--bauhaus-postit, #3a3420) !important;
+  border-color: var(--bauhaus-ink, #f2f2f2) !important;
+  color: var(--bauhaus-ink, #f2f2f2) !important;
+}
+
 .ui-input-sm,
 .ui-input-md,
 .ui-textarea-sm {
