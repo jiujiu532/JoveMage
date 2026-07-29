@@ -32,338 +32,385 @@
 
         <div class="grid gap-4 xl:grid-cols-3">
           <div class="space-y-4 xl:col-span-2">
-            <FormSection title="基础配置">
-              <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <FormField label="账号刷新间隔">
-                  <template #label-extra>
-                    <HelpTip text="单位分钟，控制账号自动刷新频率。" />
-                  </template>
-                  <Input
-                    :model-value="refreshAccountIntervalField.input.value"
-                    type="number"
-                    block
-                    placeholder="5"
-                    @update:model-value="refreshAccountIntervalField.update"
-                  />
-                </FormField>
+            <FormSection title="基础配置" description="按连接、清理、生图超时拆开，先改常用项。">
+              <div class="settings-block-stack">
+                <section class="settings-block">
+                  <header class="settings-block__header">
+                    <p class="settings-block__title">连接与访问</p>
+                    <p class="settings-block__desc">账号刷新、图片访问前缀与默认出站。</p>
+                  </header>
+                  <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <FormField label="账号刷新间隔">
+                      <template #label-extra>
+                        <HelpTip text="单位分钟，控制账号自动刷新频率。" />
+                      </template>
+                      <Input
+                        :model-value="refreshAccountIntervalField.input.value"
+                        type="number"
+                        block
+                        placeholder="5"
+                        @update:model-value="refreshAccountIntervalField.update"
+                      />
+                    </FormField>
 
-                <FormField label="图片访问地址">
-                  <template #label-extra>
-                    <HelpTip text="用于生成图片结果的访问前缀地址。" />
-                  </template>
-                  <Input
-                    v-model.trim="localSettings.base_url"
-                    block
-                    placeholder="https://example.com"
-                  />
-                </FormField>
+                    <FormField label="图片访问地址">
+                      <template #label-extra>
+                        <HelpTip text="用于生成图片结果的访问前缀地址。" />
+                      </template>
+                      <Input
+                        v-model.trim="localSettings.base_url"
+                        block
+                        placeholder="https://example.com"
+                      />
+                    </FormField>
 
-                <FormField label="默认出口" class="md:col-span-2">
-                  <template #label-extra>
-                    <HelpTip text="账号个人代理、账号组代理优先于默认出口。可填写代理 URL、direct 或 group:代理组ID；完整选择可到代理管理维护。" />
-                  </template>
-                  <div class="flex flex-col gap-2 sm:flex-row">
-                    <Input
-                      v-model.trim="localSettings.proxy"
-                      block
-                      root-class="font-mono"
-                      placeholder="http://127.0.0.1:7890"
-                      @update:model-value="proxyTestResult = null"
-                    />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      root-class="shrink-0"
-                      :disabled="proxyBusy === 'test'"
-                      @click="testDefaultProxy"
-                    >
-                      {{ proxyBusy === 'test' ? '测试中...' : '测试出口' }}
-                    </Button>
+                    <FormField label="默认出口" class="md:col-span-2">
+                      <template #label-extra>
+                        <HelpTip text="账号个人代理、账号组代理优先于默认出口。可填写代理 URL、direct 或 group:代理组ID；完整选择可到代理管理维护。" />
+                      </template>
+                      <div class="flex flex-col gap-2 sm:flex-row">
+                        <Input
+                          v-model.trim="localSettings.proxy"
+                          block
+                          root-class="font-mono"
+                          placeholder="http://127.0.0.1:7890"
+                          @update:model-value="proxyTestResult = null"
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          root-class="shrink-0"
+                          :disabled="proxyBusy === 'test'"
+                          @click="testDefaultProxy"
+                        >
+                          {{ proxyBusy === 'test' ? '测试中...' : '测试出口' }}
+                        </Button>
+                      </div>
+                      <div v-if="proxyTestResult" class="mt-2 rounded-sm border border-border bg-background px-3 py-2 text-xs">
+                        <p :class="proxyTestResult.ok ? 'text-emerald-600' : 'text-rose-600'">
+                          {{ proxyTestResult.ok ? `出口可用：HTTP ${proxyTestResult.status}，${proxyTestResult.latency_ms} ms` : `出口不可用：${proxyTestResult.error || '未知错误'}` }}
+                        </p>
+                      </div>
+                    </FormField>
                   </div>
-                  <div v-if="proxyTestResult" class="mt-2 rounded-sm border border-border bg-background px-3 py-2 text-xs">
-                    <p :class="proxyTestResult.ok ? 'text-emerald-600' : 'text-rose-600'">
-                      {{ proxyTestResult.ok ? `出口可用：HTTP ${proxyTestResult.status}，${proxyTestResult.latency_ms} ms` : `出口不可用：${proxyTestResult.error || '未知错误'}` }}
-                    </p>
+                </section>
+
+                <section class="settings-block">
+                  <header class="settings-block__header">
+                    <p class="settings-block__title">自动清理</p>
+                    <p class="settings-block__desc">按天数清理本地图片与调用日志。</p>
+                  </header>
+                  <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <FormField label="图片自动清理">
+                      <template #label-extra>
+                        <HelpTip text="自动删除多少天前的本地图片。" />
+                      </template>
+                      <Input
+                        :model-value="imageRetentionDaysField.input.value"
+                        type="number"
+                        block
+                        placeholder="15"
+                        @update:model-value="imageRetentionDaysField.update"
+                      />
+                    </FormField>
+
+                    <FormField label="日志自动清理">
+                      <template #label-extra>
+                        <HelpTip text="自动删除多少天前的控制台调用日志，清理对象是 data/logs.jsonl。" />
+                      </template>
+                      <Input
+                        :model-value="logRetentionDaysField.input.value"
+                        type="number"
+                        block
+                        placeholder="30"
+                        @update:model-value="logRetentionDaysField.update"
+                      />
+                    </FormField>
                   </div>
-                </FormField>
+                </section>
 
-                <FormField label="图片自动清理">
-                  <template #label-extra>
-                    <HelpTip text="自动删除多少天前的本地图片。" />
-                  </template>
-                  <Input
-                    :model-value="imageRetentionDaysField.input.value"
-                    type="number"
-                    block
-                    placeholder="15"
-                    @update:model-value="imageRetentionDaysField.update"
-                  />
-                </FormField>
+                <section class="settings-block">
+                  <header class="settings-block__header">
+                    <p class="settings-block__title">图片任务超时</p>
+                    <p class="settings-block__desc">轮询、SSE 流与超时后的额外等待。</p>
+                  </header>
+                  <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <FormField label="图片轮询超时">
+                      <template #label-extra>
+                        <HelpTip text="单位秒，等待上游图片结果的最长时间。" />
+                      </template>
+                      <Input
+                        :model-value="imagePollTimeoutField.input.value"
+                        type="number"
+                        block
+                        placeholder="120"
+                        @update:model-value="imagePollTimeoutField.update"
+                      />
+                    </FormField>
 
-                <FormField label="日志自动清理">
-                  <template #label-extra>
-                    <HelpTip text="自动删除多少天前的控制台调用日志，清理对象是 data/logs.jsonl。" />
-                  </template>
-                  <Input
-                    :model-value="logRetentionDaysField.input.value"
-                    type="number"
-                    block
-                    placeholder="30"
-                    @update:model-value="logRetentionDaysField.update"
-                  />
-                </FormField>
+                    <FormField label="上游流超时">
+                      <template #label-extra>
+                        <HelpTip text="单位秒，限制 ChatGPT 生图 SSE 流最长等待时间。" />
+                      </template>
+                      <Input
+                        :model-value="imageStreamTimeoutField.input.value"
+                        type="number"
+                        block
+                        placeholder="300"
+                        @update:model-value="imageStreamTimeoutField.update"
+                      />
+                    </FormField>
 
-                <FormField label="图片轮询超时">
-                  <template #label-extra>
-                    <HelpTip text="单位秒，等待上游图片结果的最长时间。" />
-                  </template>
-                  <Input
-                    :model-value="imagePollTimeoutField.input.value"
-                    type="number"
-                    block
-                    placeholder="120"
-                    @update:model-value="imagePollTimeoutField.update"
-                  />
-                </FormField>
+                    <FormField label="单账号图片并发">
+                      <template #label-extra>
+                        <HelpTip text="限制每个账号同时处理的图片请求数量。" />
+                      </template>
+                      <Input
+                        :model-value="imageAccountConcurrencyField.input.value"
+                        type="number"
+                        block
+                        placeholder="3"
+                        @update:model-value="imageAccountConcurrencyField.update"
+                      />
+                    </FormField>
 
-                <FormField label="上游流超时">
-                  <template #label-extra>
-                    <HelpTip text="单位秒，限制 ChatGPT 生图 SSE 流最长等待时间。" />
-                  </template>
-                  <Input
-                    :model-value="imageStreamTimeoutField.input.value"
-                    type="number"
-                    block
-                    placeholder="300"
-                    @update:model-value="imageStreamTimeoutField.update"
-                  />
-                </FormField>
-
-                <FormField label="单账号图片并发">
-                  <template #label-extra>
-                    <HelpTip text="限制每个账号同时处理的图片请求数量。" />
-                  </template>
-                  <Input
-                    :model-value="imageAccountConcurrencyField.input.value"
-                    type="number"
-                    block
-                    placeholder="3"
-                    @update:model-value="imageAccountConcurrencyField.update"
-                  />
-                </FormField>
-
-                <FormField label="超时继续等待">
-                  <template #label-extra>
-                    <HelpTip text="单位秒，图片超时后继续等待的额外时间。" />
-                  </template>
-                  <Input
-                    :model-value="imageTimeoutRetryField.input.value"
-                    type="number"
-                    block
-                    placeholder="30"
-                    @update:model-value="imageTimeoutRetryField.update"
-                  />
-                </FormField>
+                    <FormField label="超时继续等待">
+                      <template #label-extra>
+                        <HelpTip text="单位秒，图片超时后继续等待的额外时间。" />
+                      </template>
+                      <Input
+                        :model-value="imageTimeoutRetryField.input.value"
+                        type="number"
+                        block
+                        placeholder="30"
+                        @update:model-value="imageTimeoutRetryField.update"
+                      />
+                    </FormField>
+                  </div>
+                </section>
               </div>
             </FormSection>
 
-            <FormSection title="稳定代理 / Cloudflare 清障">
-              <div class="rounded-sm border border-border bg-background px-3 py-3">
-                <div class="grid grid-cols-2 gap-2 text-xs md:grid-cols-5">
-                  <div
-                    v-for="item in proxyRuntimeSummaryItems"
-                    :key="item.label"
-                    class="min-w-0 rounded-lg border border-border/70 bg-card px-2.5 py-2"
-                  >
-                    <p class="text-muted-foreground">{{ item.label }}</p>
-                    <p class="mt-1 truncate font-medium text-foreground">{{ item.value }}</p>
-                  </div>
-                </div>
-                <p v-if="proxyRuntimeStatus?.cached_clearance_hosts?.length" class="mt-2 break-all text-xs text-muted-foreground">
-                  已缓存：{{ proxyRuntimeStatus.cached_clearance_hosts.join(' / ') }}
-                </p>
-              </div>
-
-              <div class="settings-check-grid">
-                <div class="settings-check-item">
-                  <div class="settings-check-control">
-                    <Checkbox v-model="localSettings.proxy_runtime.enabled">启用稳定代理运行时</Checkbox>
-                    <HelpTip text="关闭时不会接管上游请求。" />
-                  </div>
-                </div>
-                <div class="settings-check-item">
-                  <div class="settings-check-control">
-                    <Checkbox v-model="localSettings.proxy_runtime.clearance.enabled">启用 Cloudflare 清障</Checkbox>
-                    <HelpTip text="只关闭清障时，可保留代理出站但不会注入 clearance。" />
-                  </div>
-                </div>
-                <div class="settings-check-item">
-                  <div class="settings-check-control">
-                    <Checkbox v-model="localSettings.proxy_runtime.skip_ssl_verify">跳过上游 SSL 校验</Checkbox>
-                    <HelpTip text="仅在代理或上游证书链异常时使用。" />
-                  </div>
-                </div>
-                <div class="settings-check-item">
-                  <div class="settings-check-control">
-                    <Checkbox v-model="localSettings.proxy_runtime.clearance.warm_up_on_start">启动后预热 clearance</Checkbox>
-                    <HelpTip text="服务启动后主动获取一次 clearance，减少首个请求等待。" />
-                  </div>
-                </div>
-              </div>
-
-              <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <FormField label="出站方式">
-                  <GroupedSelectMenu
-                    v-model="localSettings.proxy_runtime.egress_mode"
-                    :options="proxyRuntimeEgressOptions"
-                    selected-indicator="none"
-                    aria-label="稳定代理出站方式"
-                    block
-                  />
-                </FormField>
-
-                <FormField label="清障方式">
-                  <GroupedSelectMenu
-                    v-model="localSettings.proxy_runtime.clearance.mode"
-                    :options="proxyClearanceModeOptions"
-                    selected-indicator="none"
-                    aria-label="Cloudflare 清障方式"
-                    block
-                  />
-                </FormField>
-
-                <FormField label="代理地址">
-                  <template #label-extra>
-                    <HelpTip text="Docker 清障编排默认使用 Privoxy HTTP 代理。" />
-                  </template>
-                  <Input
-                    v-model.trim="localSettings.proxy_runtime.proxy_url"
-                    block
-                    root-class="font-mono"
-                    placeholder="http://privoxy:8118"
-                    @update:model-value="clearanceTestResult = null"
-                  />
-                </FormField>
-
-                <FormField label="资源代理地址">
-                  <Input
-                    v-model.trim="localSettings.proxy_runtime.resource_proxy_url"
-                    block
-                    root-class="font-mono"
-                    placeholder="留空则复用代理地址"
-                    @update:model-value="clearanceTestResult = null"
-                  />
-                </FormField>
-
-                <FormField
-                  v-if="localSettings.proxy_runtime.clearance.mode === 'flaresolverr'"
-                  label="FlareSolverr URL"
-                  class="md:col-span-2"
-                >
-                  <Input
-                    v-model.trim="localSettings.proxy_runtime.clearance.flaresolverr_url"
-                    block
-                    root-class="font-mono"
-                    placeholder="http://flaresolverr:8191"
-                    @update:model-value="clearanceTestResult = null"
-                  />
-                </FormField>
-
-                <template v-if="localSettings.proxy_runtime.clearance.mode === 'manual'">
-                  <FormField label="cf_clearance">
-                    <Input
-                      v-model.trim="localSettings.proxy_runtime.clearance.cf_clearance"
-                      block
-                      root-class="font-mono"
-                      :placeholder="localSettings.proxy_runtime.clearance.has_cf_clearance ? '已保存，留空则沿用' : '手动填写 cf_clearance'"
-                      @update:model-value="clearanceTestResult = null"
-                    />
-                  </FormField>
-
-                  <FormField label="Cookie">
-                    <Input
-                      v-model.trim="localSettings.proxy_runtime.clearance.cf_cookies"
-                      block
-                      root-class="font-mono"
-                      :placeholder="localSettings.proxy_runtime.clearance.has_cf_cookies ? '已保存，留空则沿用' : '可粘贴完整 Cookie'"
-                      @update:model-value="clearanceTestResult = null"
-                    />
-                  </FormField>
-                </template>
-
-                <FormField label="User-Agent" class="md:col-span-2">
-                  <Input
-                    v-model.trim="localSettings.proxy_runtime.clearance.user_agent"
-                    block
-                    root-class="font-mono"
-                    placeholder="Mozilla/5.0 ..."
-                    @update:model-value="clearanceTestResult = null"
-                  />
-                </FormField>
-
-                <FormField label="清障超时">
-                  <template #label-extra>
-                    <HelpTip text="单位秒。" />
-                  </template>
-                  <Input
-                    :model-value="clearanceTimeoutField.input.value"
-                    type="number"
-                    block
-                    placeholder="60"
-                    @update:model-value="clearanceTimeoutField.update"
-                  />
-                </FormField>
-
-                <FormField label="缓存刷新间隔">
-                  <template #label-extra>
-                    <HelpTip text="单位秒，最小 60。" />
-                  </template>
-                  <Input
-                    :model-value="clearanceRefreshIntervalField.input.value"
-                    type="number"
-                    block
-                    placeholder="3600"
-                    @update:model-value="clearanceRefreshIntervalField.update"
-                  />
-                </FormField>
-
-                <FormField label="测试目标" class="md:col-span-2">
-                  <div class="flex flex-col gap-2 sm:flex-row">
-                    <Input
-                      v-model.trim="clearanceTestTarget"
-                      block
-                      root-class="font-mono"
-                      placeholder="https://chatgpt.com"
-                    />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      root-class="shrink-0"
-                      :disabled="proxyRuntimeLoading"
-                      @click="loadProxyRuntimeStatus(false)"
+            <FormSection title="稳定代理 / Cloudflare 清障" description="先看运行状态，再改开关与出站参数。">
+              <div class="settings-block-stack">
+                <section class="settings-block settings-block--status">
+                  <header class="settings-block__header">
+                    <p class="settings-block__title">运行状态</p>
+                    <p class="settings-block__desc">只读摘要，保存配置后会刷新。</p>
+                  </header>
+                  <div class="settings-status-grid">
+                    <div
+                      v-for="item in proxyRuntimeSummaryItems"
+                      :key="item.label"
+                      class="settings-status-chip"
                     >
-                      {{ proxyRuntimeLoading ? '刷新中...' : '刷新状态' }}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      root-class="shrink-0"
-                      :disabled="proxyRuntimeTesting"
-                      @click="testProxyClearance"
-                    >
-                      {{ proxyRuntimeTesting ? '测试中...' : '测试清障' }}
-                    </Button>
+                      <p class="settings-status-chip__label">{{ item.label }}</p>
+                      <p class="settings-status-chip__value">{{ item.value }}</p>
+                    </div>
                   </div>
-                </FormField>
-              </div>
+                  <p v-if="proxyRuntimeStatus?.cached_clearance_hosts?.length" class="settings-block__note">
+                    已缓存：{{ proxyRuntimeStatus.cached_clearance_hosts.join(' / ') }}
+                  </p>
+                </section>
 
-              <div v-if="clearanceTestResult" class="rounded-sm border border-border bg-background px-3 py-2 text-xs">
-                <p :class="clearanceTestResult.ok ? 'text-emerald-600' : 'text-rose-600'">
-                  {{ clearanceTestResult.ok ? `清障可用：${clearanceTestResult.latency_ms} ms` : `清障不可用：${clearanceTestResult.error || '未知错误'}` }}
-                </p>
-                <p v-if="clearanceTestResult.user_agent" class="mt-1 break-all text-muted-foreground">
-                  User-Agent：{{ clearanceTestResult.user_agent }}
-                </p>
+                <section class="settings-block">
+                  <header class="settings-block__header">
+                    <p class="settings-block__title">开关</p>
+                    <p class="settings-block__desc">运行时、清障与启动预热。</p>
+                  </header>
+                  <div class="settings-check-grid">
+                    <div class="settings-check-item">
+                      <div class="settings-check-control">
+                        <Checkbox v-model="localSettings.proxy_runtime.enabled">启用稳定代理运行时</Checkbox>
+                        <HelpTip text="关闭时不会接管上游请求。" />
+                      </div>
+                    </div>
+                    <div class="settings-check-item">
+                      <div class="settings-check-control">
+                        <Checkbox v-model="localSettings.proxy_runtime.clearance.enabled">启用 Cloudflare 清障</Checkbox>
+                        <HelpTip text="只关闭清障时，可保留代理出站但不会注入 clearance。" />
+                      </div>
+                    </div>
+                    <div class="settings-check-item">
+                      <div class="settings-check-control">
+                        <Checkbox v-model="localSettings.proxy_runtime.skip_ssl_verify">跳过上游 SSL 校验</Checkbox>
+                        <HelpTip text="仅在代理或上游证书链异常时使用。" />
+                      </div>
+                    </div>
+                    <div class="settings-check-item">
+                      <div class="settings-check-control">
+                        <Checkbox v-model="localSettings.proxy_runtime.clearance.warm_up_on_start">启动后预热 clearance</Checkbox>
+                        <HelpTip text="服务启动后主动获取一次 clearance，减少首个请求等待。" />
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="settings-block">
+                  <header class="settings-block__header">
+                    <p class="settings-block__title">出站与清障</p>
+                    <p class="settings-block__desc">代理地址、清障方式与超时。</p>
+                  </header>
+                  <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <FormField label="出站方式">
+                      <GroupedSelectMenu
+                        v-model="localSettings.proxy_runtime.egress_mode"
+                        :options="proxyRuntimeEgressOptions"
+                        selected-indicator="none"
+                        aria-label="稳定代理出站方式"
+                        block
+                      />
+                    </FormField>
+
+                    <FormField label="清障方式">
+                      <GroupedSelectMenu
+                        v-model="localSettings.proxy_runtime.clearance.mode"
+                        :options="proxyClearanceModeOptions"
+                        selected-indicator="none"
+                        aria-label="Cloudflare 清障方式"
+                        block
+                      />
+                    </FormField>
+
+                    <FormField label="代理地址">
+                      <template #label-extra>
+                        <HelpTip text="Docker 清障编排默认使用 Privoxy HTTP 代理。" />
+                      </template>
+                      <Input
+                        v-model.trim="localSettings.proxy_runtime.proxy_url"
+                        block
+                        root-class="font-mono"
+                        placeholder="http://privoxy:8118"
+                        @update:model-value="clearanceTestResult = null"
+                      />
+                    </FormField>
+
+                    <FormField label="资源代理地址">
+                      <Input
+                        v-model.trim="localSettings.proxy_runtime.resource_proxy_url"
+                        block
+                        root-class="font-mono"
+                        placeholder="留空则复用代理地址"
+                        @update:model-value="clearanceTestResult = null"
+                      />
+                    </FormField>
+
+                    <FormField
+                      v-if="localSettings.proxy_runtime.clearance.mode === 'flaresolverr'"
+                      label="FlareSolverr URL"
+                      class="md:col-span-2"
+                    >
+                      <Input
+                        v-model.trim="localSettings.proxy_runtime.clearance.flaresolverr_url"
+                        block
+                        root-class="font-mono"
+                        placeholder="http://flaresolverr:8191"
+                        @update:model-value="clearanceTestResult = null"
+                      />
+                    </FormField>
+
+                    <template v-if="localSettings.proxy_runtime.clearance.mode === 'manual'">
+                      <FormField label="cf_clearance">
+                        <Input
+                          v-model.trim="localSettings.proxy_runtime.clearance.cf_clearance"
+                          block
+                          root-class="font-mono"
+                          :placeholder="localSettings.proxy_runtime.clearance.has_cf_clearance ? '已保存，留空则沿用' : '手动填写 cf_clearance'"
+                          @update:model-value="clearanceTestResult = null"
+                        />
+                      </FormField>
+
+                      <FormField label="Cookie">
+                        <Input
+                          v-model.trim="localSettings.proxy_runtime.clearance.cf_cookies"
+                          block
+                          root-class="font-mono"
+                          :placeholder="localSettings.proxy_runtime.clearance.has_cf_cookies ? '已保存，留空则沿用' : '可粘贴完整 Cookie'"
+                          @update:model-value="clearanceTestResult = null"
+                        />
+                      </FormField>
+                    </template>
+
+                    <FormField label="User-Agent" class="md:col-span-2">
+                      <Input
+                        v-model.trim="localSettings.proxy_runtime.clearance.user_agent"
+                        block
+                        root-class="font-mono"
+                        placeholder="Mozilla/5.0 ..."
+                        @update:model-value="clearanceTestResult = null"
+                      />
+                    </FormField>
+
+                    <FormField label="清障超时">
+                      <template #label-extra>
+                        <HelpTip text="单位秒。" />
+                      </template>
+                      <Input
+                        :model-value="clearanceTimeoutField.input.value"
+                        type="number"
+                        block
+                        placeholder="60"
+                        @update:model-value="clearanceTimeoutField.update"
+                      />
+                    </FormField>
+
+                    <FormField label="缓存刷新间隔">
+                      <template #label-extra>
+                        <HelpTip text="单位秒，最小 60。" />
+                      </template>
+                      <Input
+                        :model-value="clearanceRefreshIntervalField.input.value"
+                        type="number"
+                        block
+                        placeholder="3600"
+                        @update:model-value="clearanceRefreshIntervalField.update"
+                      />
+                    </FormField>
+                  </div>
+                </section>
+
+                <section class="settings-block">
+                  <header class="settings-block__header">
+                    <p class="settings-block__title">连通性测试</p>
+                    <p class="settings-block__desc">不改配置，仅探测当前清障是否可用。</p>
+                  </header>
+                  <FormField label="测试目标">
+                    <div class="flex flex-col gap-2 sm:flex-row">
+                      <Input
+                        v-model.trim="clearanceTestTarget"
+                        block
+                        root-class="font-mono"
+                        placeholder="https://chatgpt.com"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        root-class="shrink-0"
+                        :disabled="proxyRuntimeLoading"
+                        @click="loadProxyRuntimeStatus(false)"
+                      >
+                        {{ proxyRuntimeLoading ? '刷新中...' : '刷新状态' }}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        root-class="shrink-0"
+                        :disabled="proxyRuntimeTesting"
+                        @click="testProxyClearance"
+                      >
+                        {{ proxyRuntimeTesting ? '测试中...' : '测试清障' }}
+                      </Button>
+                    </div>
+                  </FormField>
+                  <div v-if="clearanceTestResult" class="settings-result-box">
+                    <p :class="clearanceTestResult.ok ? 'text-emerald-600' : 'text-rose-600'">
+                      {{ clearanceTestResult.ok ? `清障可用：${clearanceTestResult.latency_ms} ms` : `清障不可用：${clearanceTestResult.error || '未知错误'}` }}
+                    </p>
+                    <p v-if="clearanceTestResult.user_agent" class="mt-1 break-all text-muted-foreground">
+                      User-Agent：{{ clearanceTestResult.user_agent }}
+                    </p>
+                  </div>
+                </section>
               </div>
             </FormSection>
 
@@ -392,7 +439,7 @@
           </div>
 
           <div class="space-y-4">
-            <FormSection title="账号策略">
+            <FormSection title="账号策略" description="异常与额度耗尽后的账号处理。">
               <div class="settings-check-grid settings-check-grid--single">
                 <div class="settings-check-item">
                   <div class="settings-check-control">
@@ -409,7 +456,7 @@
               </div>
             </FormSection>
 
-            <FormSection title="图片确认">
+            <FormSection title="图片确认" description="结果稳定后再返回，可选清理官网会话。">
               <div class="settings-check-grid settings-check-grid--single">
                 <div class="settings-check-item">
                   <div class="settings-check-control">
@@ -424,20 +471,22 @@
                   </div>
                 </div>
               </div>
-              <FormField label="二次确认等待（秒）">
-                <Input
-                  :model-value="imageSettleSecondsField.input.value"
-                  type="number"
-                  block
-                  placeholder="5"
-                  :disabled="!localSettings.image_settle_enabled"
-                  @update:model-value="imageSettleSecondsField.update"
-                />
-              </FormField>
+              <div class="mt-3">
+                <FormField label="二次确认等待（秒）">
+                  <Input
+                    :model-value="imageSettleSecondsField.input.value"
+                    type="number"
+                    block
+                    placeholder="5"
+                    :disabled="!localSettings.image_settle_enabled"
+                    @update:model-value="imageSettleSecondsField.update"
+                  />
+                </FormField>
+              </div>
             </FormSection>
 
-            <FormSection title="控制台日志级别">
-              <div class="settings-check-grid settings-check-grid--single mt-3">
+            <FormSection title="控制台日志级别" description="至少保留一类级别；全不选时回落默认 info / warning / error。">
+              <div class="settings-check-grid settings-check-grid--single">
                 <div
                   v-for="level in logLevelOptions"
                   :key="level"
@@ -460,35 +509,47 @@
       </div>
 
       <div v-else-if="activeSettingsTab === 'image-errors'" class="space-y-4">
-        <FormSection title="图片错误提示">
-          <div class="settings-check-grid settings-check-grid--single">
-            <div class="settings-check-item">
-              <div class="settings-check-control">
-                <Checkbox v-model="localSettings.image_error_friendly_enabled">启用图片错误提示友好化</Checkbox>
-                <HelpTip text="关闭时保持原始错误返回；开启后按下方文案转换上游断流、轮询超时、额度耗尽等图片错误。" />
+        <FormSection title="图片错误提示" description="先决定是否友好化，再按场景改文案。">
+          <div class="settings-block-stack">
+            <section class="settings-block">
+              <header class="settings-block__header">
+                <p class="settings-block__title">开关</p>
+                <p class="settings-block__desc">关闭时继续返回上游原始错误。</p>
+              </header>
+              <div class="settings-check-grid settings-check-grid--single">
+                <div class="settings-check-item">
+                  <div class="settings-check-control">
+                    <Checkbox v-model="localSettings.image_error_friendly_enabled">启用图片错误提示友好化</Checkbox>
+                    <HelpTip text="关闭时保持原始错误返回；开启后按下方文案转换上游断流、轮询超时、额度耗尽等图片错误。" />
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        </FormSection>
+            </section>
 
-        <FormSection title="自定义错误文案">
-          <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <FormField
-              v-for="item in imageErrorMessageFields"
-              :key="item.key"
-              :label="item.label"
-            >
-              <template v-if="item.help" #label-extra>
-                <HelpTip :text="item.help" />
-              </template>
-              <textarea
-                v-model="localSettings.image_error_messages[item.key]"
-                rows="3"
-                class="ui-textarea-sm"
-                :placeholder="item.placeholder"
-                :disabled="!localSettings.image_error_friendly_enabled"
-              ></textarea>
-            </FormField>
+            <section class="settings-block">
+              <header class="settings-block__header">
+                <p class="settings-block__title">自定义错误文案</p>
+                <p class="settings-block__desc">按错误类型覆盖默认提示。</p>
+              </header>
+              <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <FormField
+                  v-for="item in imageErrorMessageFields"
+                  :key="item.key"
+                  :label="item.label"
+                >
+                  <template v-if="item.help" #label-extra>
+                    <HelpTip :text="item.help" />
+                  </template>
+                  <textarea
+                    v-model="localSettings.image_error_messages[item.key]"
+                    rows="3"
+                    class="ui-textarea-sm"
+                    :placeholder="item.placeholder"
+                    :disabled="!localSettings.image_error_friendly_enabled"
+                  ></textarea>
+                </FormField>
+              </div>
+            </section>
           </div>
         </FormSection>
       </div>
@@ -504,239 +565,293 @@
       />
 
       <div v-else-if="activeSettingsTab === 'storage'" class="grid gap-4 xl:grid-cols-3">
-        <FormSection title="图片存储" class="xl:col-span-2">
-          <div class="settings-check-grid settings-check-grid--single">
-            <div class="settings-check-item">
-              <Checkbox v-model="localSettings.image_storage.enabled">启用 WebDAV 图片存储</Checkbox>
-            </div>
+        <div class="xl:col-span-2">
+          <FormSection title="图片存储" description="WebDAV 远端存储与公开访问前缀。">
+          <div class="settings-block-stack">
+            <section class="settings-block">
+              <header class="settings-block__header">
+                <p class="settings-block__title">开关与模式</p>
+                <p class="settings-block__desc">是否启用远端存储，以及写入策略。</p>
+              </header>
+              <div class="settings-check-grid settings-check-grid--single">
+                <div class="settings-check-item">
+                  <div class="settings-check-control">
+                    <Checkbox v-model="localSettings.image_storage.enabled">启用 WebDAV 图片存储</Checkbox>
+                  </div>
+                </div>
+              </div>
+              <div class="mt-3">
+                <FormField label="存储模式">
+                  <div class="w-full">
+                    <GroupedSelectMenu
+                      v-model="localSettings.image_storage.mode"
+                      :options="imageStorageModeOptions"
+                      selected-indicator="none"
+                      aria-label="图片存储模式"
+                      block
+                    />
+                  </div>
+                </FormField>
+              </div>
+            </section>
+
+            <section class="settings-block">
+              <header class="settings-block__header">
+                <p class="settings-block__title">连接信息</p>
+                <p class="settings-block__desc">WebDAV 地址、账号与路径。</p>
+              </header>
+              <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <FormField label="WebDAV URL" class="md:col-span-2">
+                  <Input v-model.trim="localSettings.image_storage.webdav_url" block placeholder="https://example.com/dav" />
+                </FormField>
+                <FormField label="用户名">
+                  <Input v-model.trim="localSettings.image_storage.webdav_username" block />
+                </FormField>
+                <FormField label="密码">
+                  <Input v-model="localSettings.image_storage.webdav_password" type="password" block />
+                </FormField>
+                <FormField label="根路径">
+                  <Input v-model.trim="localSettings.image_storage.webdav_root_path" block placeholder="jovemage/images" />
+                </FormField>
+                <FormField label="公开访问前缀">
+                  <Input v-model.trim="localSettings.image_storage.public_base_url" block placeholder="https://cdn.example.com/images" />
+                </FormField>
+              </div>
+            </section>
+
+            <section class="settings-block">
+              <header class="settings-block__header">
+                <p class="settings-block__title">连通性</p>
+                <p class="settings-block__desc">测试连接或触发全量同步。</p>
+              </header>
+              <div class="flex flex-wrap items-center gap-2">
+                <Button size="xs" variant="outline" :disabled="imageStorageBusy === 'test'" @click="testImageStorageConnection">
+                  {{ imageStorageBusy === 'test' ? '测试中...' : '测试 WebDAV' }}
+                </Button>
+                <Button size="xs" variant="outline" :disabled="imageStorageBusy === 'sync'" @click="syncImageStorageFiles">
+                  {{ imageStorageBusy === 'sync' ? '同步中...' : '全量同步' }}
+                </Button>
+              </div>
+              <div v-if="imageStorageTestResult" class="settings-result-box">
+                <p :class="imageStorageTestResult.ok ? 'text-emerald-600' : 'text-slate-600'">
+                  {{ imageStorageTestResult.ok ? 'WebDAV 可用' : 'WebDAV 不可用' }}
+                  <span v-if="imageStorageTestResult.status"> · HTTP {{ imageStorageTestResult.status }}</span>
+                </p>
+                <p v-if="imageStorageTestResult.error" class="mt-1 break-all text-slate-600">{{ imageStorageTestResult.error }}</p>
+              </div>
+            </section>
           </div>
+          </FormSection>
+        </div>
 
-          <FormField label="存储模式">
-            <div class="w-full">
-              <GroupedSelectMenu
-                v-model="localSettings.image_storage.mode"
-                :options="imageStorageModeOptions"
-                selected-indicator="none"
-                aria-label="图片存储模式"
-                block
-              />
-            </div>
-          </FormField>
-
-          <FormField label="WebDAV URL">
-            <Input v-model.trim="localSettings.image_storage.webdav_url" block placeholder="https://example.com/dav" />
-          </FormField>
-
-          <div class="grid grid-cols-1 gap-2.5 md:grid-cols-2">
-            <FormField label="用户名">
-              <Input v-model.trim="localSettings.image_storage.webdav_username" block />
-            </FormField>
-
-            <FormField label="密码">
-              <Input v-model="localSettings.image_storage.webdav_password" type="password" block />
-            </FormField>
+        <FormSection title="AI 审核" description="请求前的内容审核接入。">
+          <div class="settings-block-stack">
+            <section class="settings-block">
+              <header class="settings-block__header">
+                <p class="settings-block__title">开关</p>
+              </header>
+              <div class="settings-check-grid settings-check-grid--single">
+                <div class="settings-check-item">
+                  <div class="settings-check-control">
+                    <Checkbox v-model="localSettings.ai_review.enabled">启用 AI 审核</Checkbox>
+                  </div>
+                </div>
+              </div>
+            </section>
+            <section class="settings-block">
+              <header class="settings-block__header">
+                <p class="settings-block__title">模型接入</p>
+              </header>
+              <div class="grid grid-cols-1 gap-3">
+                <FormField label="Base URL">
+                  <Input v-model.trim="localSettings.ai_review.base_url" block placeholder="https://api.openai.com" />
+                </FormField>
+                <FormField label="API Key">
+                  <Input v-model="localSettings.ai_review.api_key" type="password" block placeholder="sk-..." />
+                </FormField>
+                <FormField label="Model">
+                  <Input v-model.trim="localSettings.ai_review.model" block placeholder="gpt-5.4-mini" />
+                </FormField>
+                <FormField label="审核提示词">
+                  <textarea
+                    v-model="localSettings.ai_review.prompt"
+                    rows="5"
+                    class="ui-textarea-sm"
+                    placeholder="判断用户请求是否允许。只回答 ALLOW 或 REJECT。"
+                  ></textarea>
+                </FormField>
+              </div>
+            </section>
           </div>
-
-          <FormField label="根路径">
-            <Input v-model.trim="localSettings.image_storage.webdav_root_path" block placeholder="jovemage/images" />
-          </FormField>
-
-          <FormField label="公开访问前缀">
-            <Input v-model.trim="localSettings.image_storage.public_base_url" block placeholder="https://cdn.example.com/images" />
-          </FormField>
-
-          <div class="flex flex-wrap items-center gap-2">
-            <Button size="xs" variant="outline" :disabled="imageStorageBusy === 'test'" @click="testImageStorageConnection">
-              {{ imageStorageBusy === 'test' ? '测试中...' : '测试 WebDAV' }}
-            </Button>
-            <Button size="xs" variant="outline" :disabled="imageStorageBusy === 'sync'" @click="syncImageStorageFiles">
-              {{ imageStorageBusy === 'sync' ? '同步中...' : '全量同步' }}
-            </Button>
-          </div>
-
-          <div v-if="imageStorageTestResult" class="rounded-sm border border-border bg-background px-3 py-2 text-xs">
-            <p :class="imageStorageTestResult.ok ? 'text-emerald-600' : 'text-slate-600'">
-              {{ imageStorageTestResult.ok ? 'WebDAV 可用' : 'WebDAV 不可用' }}
-              <span v-if="imageStorageTestResult.status"> · HTTP {{ imageStorageTestResult.status }}</span>
-            </p>
-            <p v-if="imageStorageTestResult.error" class="mt-1 break-all text-slate-600">{{ imageStorageTestResult.error }}</p>
-          </div>
-        </FormSection>
-
-        <FormSection title="AI 审核">
-          <div class="settings-check-grid settings-check-grid--single">
-            <div class="settings-check-item">
-              <Checkbox v-model="localSettings.ai_review.enabled">启用 AI 审核</Checkbox>
-            </div>
-          </div>
-
-          <FormField label="Base URL">
-            <Input v-model.trim="localSettings.ai_review.base_url" block placeholder="https://api.openai.com" />
-          </FormField>
-
-          <FormField label="API Key">
-            <Input v-model="localSettings.ai_review.api_key" type="password" block placeholder="sk-..." />
-          </FormField>
-
-          <FormField label="Model">
-            <Input v-model.trim="localSettings.ai_review.model" block placeholder="gpt-5.4-mini" />
-          </FormField>
-
-          <FormField label="审核提示词">
-            <textarea
-              v-model="localSettings.ai_review.prompt"
-              rows="5"
-              class="ui-textarea-sm"
-              placeholder="判断用户请求是否允许。只回答 ALLOW 或 REJECT。"
-            ></textarea>
-          </FormField>
         </FormSection>
       </div>
 
       <div v-else-if="activeSettingsTab === 'backup'" class="space-y-4">
-        <FormSection title="R2 备份管理">
-          <div class="settings-check-grid">
-            <div class="settings-check-item">
-              <Checkbox v-model="localSettings.backup.enabled">启用定时备份</Checkbox>
-            </div>
-            <div class="settings-check-item">
-              <Checkbox v-model="localSettings.backup.encrypt">启用备份加密</Checkbox>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-1 gap-2.5 md:grid-cols-2">
-            <FormField label="Cloudflare Account ID">
-              <Input v-model.trim="localSettings.backup.account_id" block />
-            </FormField>
-
-            <FormField label="Bucket 名称">
-              <Input v-model.trim="localSettings.backup.bucket" block />
-            </FormField>
-          </div>
-
-          <div class="grid grid-cols-1 gap-2.5 md:grid-cols-2">
-            <FormField label="Access Key ID">
-              <Input v-model.trim="localSettings.backup.access_key_id" block />
-            </FormField>
-
-            <FormField label="Secret Access Key">
-              <Input v-model="localSettings.backup.secret_access_key" type="password" block />
-            </FormField>
-          </div>
-
-          <div class="grid grid-cols-1 gap-2.5 md:grid-cols-2">
-            <FormField label="备份前缀">
-              <Input v-model.trim="localSettings.backup.prefix" block placeholder="backups" />
-            </FormField>
-
-            <FormField label="保留份数">
-              <Input
-                :model-value="backupRotationKeepField.input.value"
-                type="number"
-                block
-                @update:model-value="backupRotationKeepField.update"
-              />
-            </FormField>
-          </div>
-
-          <FormField label="备份间隔（分钟）">
-            <Input
-              :model-value="backupIntervalMinutesField.input.value"
-              type="number"
-              block
-              @update:model-value="backupIntervalMinutesField.update"
-            />
-          </FormField>
-
-          <FormField label="加密口令">
-            <Input v-model="localSettings.backup.passphrase" type="password" block placeholder="留空" />
-          </FormField>
-
-          <div class="space-y-2">
-            <p class="text-xs font-medium text-foreground">备份内容</p>
-            <div class="settings-check-grid">
-              <div
-                v-for="item in backupIncludeOptions"
-                :key="item.value"
-                class="settings-check-item"
-              >
-                <Checkbox v-model="localSettings.backup.include[item.value]">{{ item.label }}</Checkbox>
+        <FormSection title="R2 备份管理" description="定时备份到 Cloudflare R2，可加密与轮转。">
+          <div class="settings-block-stack">
+            <section class="settings-block">
+              <header class="settings-block__header">
+                <p class="settings-block__title">开关</p>
+                <p class="settings-block__desc">定时任务与加密是否生效。</p>
+              </header>
+              <div class="settings-check-grid">
+                <div class="settings-check-item">
+                  <div class="settings-check-control">
+                    <Checkbox v-model="localSettings.backup.enabled">启用定时备份</Checkbox>
+                  </div>
+                </div>
+                <div class="settings-check-item">
+                  <div class="settings-check-control">
+                    <Checkbox v-model="localSettings.backup.encrypt">启用备份加密</Checkbox>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            </section>
 
-          <div class="flex flex-wrap items-center gap-2">
-            <Button size="xs" variant="outline" :disabled="backupBusy === 'test'" @click="testBackupConnection">
-              {{ backupBusy === 'test' ? '测试中...' : '测试连接' }}
-            </Button>
-            <Button size="xs" variant="outline" :disabled="backupBusy === 'run' || backupState?.running" @click="runBackupNow">
-              {{ backupBusy === 'run' || backupState?.running ? '备份中...' : '立即备份' }}
-            </Button>
-            <Button size="xs" variant="outline" :disabled="backupLoading" @click="loadBackups">
-              {{ backupLoading ? '加载中...' : '刷新历史' }}
-            </Button>
-          </div>
-
-          <div v-if="backupTestResult" class="rounded-sm border border-border bg-background px-3 py-2 text-xs">
-            <p :class="backupTestResult.ok ? 'text-emerald-600' : 'text-rose-600'">
-              {{ backupTestResult.ok ? '备份连接可用' : '备份连接不可用' }}
-              <span v-if="backupTestResult.status"> · HTTP {{ backupTestResult.status }}</span>
-            </p>
-            <p v-if="backupTestResult.error" class="mt-1 break-all text-rose-600">{{ backupTestResult.error }}</p>
-          </div>
-
-          <div class="rounded-sm border border-border bg-background px-3 py-3 text-xs">
-            <div class="grid grid-cols-2 gap-2 text-muted-foreground">
-              <span>最近状态</span>
-              <span class="text-right text-foreground">{{ backupStatusText }}</span>
-              <span>最近开始</span>
-              <span class="text-right text-foreground">{{ formatDateTime(backupState?.last_started_at) }}</span>
-              <span>最近完成</span>
-              <span class="text-right text-foreground">{{ formatDateTime(backupState?.last_finished_at) }}</span>
-              <span>最近对象</span>
-              <span class="break-all text-right font-mono text-foreground">{{ backupState?.last_object_key || '-' }}</span>
-              <span>最近错误</span>
-              <span class="break-all text-right text-rose-600">{{ backupState?.last_error || '-' }}</span>
-            </div>
-          </div>
-
-          <div v-if="backupItems.length > 0" class="space-y-2">
-            <div
-              v-for="item in backupItems.slice(0, 5)"
-              :key="item.key"
-              class="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-border bg-card px-3 py-2 text-xs"
-            >
-              <div class="min-w-0">
-                <p class="truncate font-medium text-foreground">{{ item.name || item.key }}</p>
-                <p class="mt-1 text-muted-foreground">{{ formatBytes(item.size_bytes ?? item.size ?? 0) }} · {{ item.last_modified || '-' }}</p>
+            <section class="settings-block">
+              <header class="settings-block__header">
+                <p class="settings-block__title">R2 连接</p>
+                <p class="settings-block__desc">账号、桶与访问密钥。</p>
+              </header>
+              <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <FormField label="Cloudflare Account ID">
+                  <Input v-model.trim="localSettings.backup.account_id" block />
+                </FormField>
+                <FormField label="Bucket 名称">
+                  <Input v-model.trim="localSettings.backup.bucket" block />
+                </FormField>
+                <FormField label="Access Key ID">
+                  <Input v-model.trim="localSettings.backup.access_key_id" block />
+                </FormField>
+                <FormField label="Secret Access Key">
+                  <Input v-model="localSettings.backup.secret_access_key" type="password" block />
+                </FormField>
+                <FormField label="备份前缀">
+                  <Input v-model.trim="localSettings.backup.prefix" block placeholder="backups" />
+                </FormField>
+                <FormField label="保留份数">
+                  <Input
+                    :model-value="backupRotationKeepField.input.value"
+                    type="number"
+                    block
+                    @update:model-value="backupRotationKeepField.update"
+                  />
+                </FormField>
+                <FormField label="备份间隔（分钟）">
+                  <Input
+                    :model-value="backupIntervalMinutesField.input.value"
+                    type="number"
+                    block
+                    @update:model-value="backupIntervalMinutesField.update"
+                  />
+                </FormField>
+                <FormField label="加密口令">
+                  <Input v-model="localSettings.backup.passphrase" type="password" block placeholder="留空" />
+                </FormField>
               </div>
-              <Button size="xs" variant="outline" root-class="text-rose-600" :disabled="backupBusy === item.key" @click="deleteBackupItem(item)">
-                删除
-              </Button>
-            </div>
+            </section>
+
+            <section class="settings-block">
+              <header class="settings-block__header">
+                <p class="settings-block__title">备份内容</p>
+                <p class="settings-block__desc">勾选要打进备份包的数据。</p>
+              </header>
+              <div class="settings-check-grid">
+                <div
+                  v-for="item in backupIncludeOptions"
+                  :key="item.value"
+                  class="settings-check-item"
+                >
+                  <div class="settings-check-control">
+                    <Checkbox v-model="localSettings.backup.include[item.value]">{{ item.label }}</Checkbox>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="settings-block">
+              <header class="settings-block__header">
+                <p class="settings-block__title">操作与状态</p>
+              </header>
+
+              <div class="flex flex-wrap items-center gap-2">
+                <Button size="xs" variant="outline" :disabled="backupBusy === 'test'" @click="testBackupConnection">
+                  {{ backupBusy === 'test' ? '测试中...' : '测试连接' }}
+                </Button>
+                <Button size="xs" variant="outline" :disabled="backupBusy === 'run' || backupState?.running" @click="runBackupNow">
+                  {{ backupBusy === 'run' || backupState?.running ? '备份中...' : '立即备份' }}
+                </Button>
+                <Button size="xs" variant="outline" :disabled="backupLoading" @click="loadBackups">
+                  {{ backupLoading ? '加载中...' : '刷新历史' }}
+                </Button>
+              </div>
+
+              <div v-if="backupTestResult" class="settings-result-box">
+                <p :class="backupTestResult.ok ? 'text-emerald-600' : 'text-rose-600'">
+                  {{ backupTestResult.ok ? '备份连接可用' : '备份连接不可用' }}
+                  <span v-if="backupTestResult.status"> · HTTP {{ backupTestResult.status }}</span>
+                </p>
+                <p v-if="backupTestResult.error" class="mt-1 break-all text-rose-600">{{ backupTestResult.error }}</p>
+              </div>
+
+              <div class="settings-result-box">
+                <div class="grid grid-cols-2 gap-2 text-muted-foreground">
+                  <span>最近状态</span>
+                  <span class="text-right text-foreground">{{ backupStatusText }}</span>
+                  <span>最近开始</span>
+                  <span class="text-right text-foreground">{{ formatDateTime(backupState?.last_started_at) }}</span>
+                  <span>最近完成</span>
+                  <span class="text-right text-foreground">{{ formatDateTime(backupState?.last_finished_at) }}</span>
+                  <span>最近对象</span>
+                  <span class="break-all text-right font-mono text-foreground">{{ backupState?.last_object_key || '-' }}</span>
+                  <span>最近错误</span>
+                  <span class="break-all text-right text-rose-600">{{ backupState?.last_error || '-' }}</span>
+                </div>
+              </div>
+
+              <div v-if="backupItems.length > 0" class="mt-3 space-y-2">
+                <div
+                  v-for="item in backupItems.slice(0, 5)"
+                  :key="item.key"
+                  class="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-border bg-card px-3 py-2 text-xs"
+                >
+                  <div class="min-w-0">
+                    <p class="truncate font-medium text-foreground">{{ item.name || item.key }}</p>
+                    <p class="mt-1 text-muted-foreground">{{ formatBytes(item.size_bytes ?? item.size ?? 0) }} · {{ item.last_modified || '-' }}</p>
+                  </div>
+                  <Button size="xs" variant="outline" root-class="text-rose-600" :disabled="backupBusy === item.key" @click="deleteBackupItem(item)">
+                    删除
+                  </Button>
+                </div>
+              </div>
+            </section>
           </div>
         </FormSection>
       </div>
 
       <div v-else-if="activeSettingsTab === 'canvas'" class="max-w-3xl">
-        <FormSection title="画布入口" subtitle="开启后顶部导航会显示无限画布入口，并自动带上当前接口地址和密钥。">
+        <FormSection title="画布入口" description="开启后顶部导航会显示无限画布入口，并自动带上当前接口地址和密钥。">
           <div class="settings-check-grid settings-check-grid--single">
             <div class="settings-check-item">
-              <Checkbox v-model="localSettings.third_party_apps.infinite_canvas.enabled">启用无限画布入口</Checkbox>
+              <div class="settings-check-control">
+                <Checkbox v-model="localSettings.third_party_apps.infinite_canvas.enabled">启用无限画布入口</Checkbox>
+              </div>
             </div>
           </div>
-          <FormField label="无限画布地址">
-            <Input
-              v-model.trim="localSettings.third_party_apps.infinite_canvas.url"
-              block
-              placeholder="https://canvas.best"
-            />
-          </FormField>
+          <div class="mt-3">
+            <FormField label="无限画布地址">
+              <Input
+                v-model.trim="localSettings.third_party_apps.infinite_canvas.url"
+                block
+                placeholder="https://canvas.best"
+              />
+            </FormField>
+          </div>
         </FormSection>
       </div>
 
       <div v-else-if="activeSettingsTab === 'api-docs'" class="space-y-4">
-        <FormSection title="接口接入" subtitle="第三方应用按 OpenAI 兼容接口接入，使用同一套 Bearer 鉴权。">
+        <FormSection title="接口接入" description="第三方应用按 OpenAI 兼容接口接入，使用同一套 Bearer 鉴权。">
           <div class="grid gap-3 md:grid-cols-2">
             <SurfaceBox density="compact">
               <p class="text-xs text-muted-foreground">服务地址</p>
@@ -2584,6 +2699,94 @@ const handleSave = async () => {
 </script>
 
 <style scoped>
+.settings-block-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-block {
+  border: 1px solid hsl(var(--border) / 0.9);
+  border-radius: var(--radius);
+  background: hsl(var(--background) / 0.55);
+  padding: 12px;
+}
+
+.settings-block--status {
+  background: hsl(var(--muted) / 0.22);
+}
+
+.settings-block__header {
+  margin-bottom: 10px;
+}
+
+.settings-block__title {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: hsl(var(--foreground));
+}
+
+.settings-block__desc {
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: hsl(var(--muted-foreground));
+}
+
+.settings-block__note {
+  margin-top: 10px;
+  word-break: break-all;
+  font-size: 11px;
+  line-height: 1.45;
+  color: hsl(var(--muted-foreground));
+}
+
+.settings-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@media (min-width: 768px) {
+  .settings-status-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+.settings-status-chip {
+  min-width: 0;
+  border: 1px solid hsl(var(--border) / 0.85);
+  border-radius: var(--radius);
+  background: hsl(var(--card));
+  padding: 8px 10px;
+}
+
+.settings-status-chip__label {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}
+
+.settings-status-chip__value {
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.settings-result-box {
+  margin-top: 10px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  background: hsl(var(--background));
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
 .settings-check-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(13.5rem, 1fr));
@@ -2595,23 +2798,24 @@ const handleSave = async () => {
 }
 
 .settings-check-item {
-  min-height: 38px;
+  min-height: 40px;
   border: 1px solid hsl(var(--border));
   border-radius: var(--radius);
-  background: hsl(var(--background) / 0.72);
+  background: hsl(var(--card));
   transition:
     border-color 0.16s ease,
-    background-color 0.16s ease;
+    background-color 0.16s ease,
+    box-shadow 0.16s ease;
 }
 
 .settings-check-item:hover {
   border-color: hsl(var(--foreground) / 0.18);
-  background: hsl(var(--muted) / 0.24);
+  background: hsl(var(--muted) / 0.28);
 }
 
 .settings-check-control {
   display: flex;
-  min-height: 38px;
+  min-height: 40px;
   align-items: center;
   gap: 8px;
   padding-right: 10px;
@@ -2621,15 +2825,38 @@ const handleSave = async () => {
   display: flex;
   width: 100%;
   flex: 1;
-  min-height: 38px;
+  min-height: 40px;
   align-items: center;
   gap: 10px;
   padding: 9px 11px;
 }
 
 .settings-check-item :deep(label > span:last-child) {
-  color: hsl(var(--foreground) / 0.78);
+  color: hsl(var(--foreground) / 0.88);
+  font-size: 12px;
   line-height: 1.35;
 }
 
+html[data-theme='dark'] .settings-block {
+  background: hsl(var(--card) / 0.55);
+  border-color: hsl(var(--border));
+}
+
+html[data-theme='dark'] .settings-block--status {
+  background: hsl(var(--muted) / 0.35);
+}
+
+html[data-theme='dark'] .settings-check-item {
+  background: hsl(var(--background) / 0.72);
+  border-color: hsl(var(--foreground) / 0.14);
+}
+
+html[data-theme='dark'] .settings-check-item:hover {
+  border-color: hsl(var(--primary) / 0.45);
+  background: hsl(var(--muted) / 0.45);
+}
+
+html[data-theme='dark'] .settings-check-item :deep(label > span:last-child) {
+  color: hsl(var(--foreground) / 0.92);
+}
 </style>

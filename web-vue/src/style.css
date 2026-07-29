@@ -104,7 +104,7 @@ html[data-theme="dark"] {
   --secondary-foreground: 0 0% 96%;
 
   --muted: 0 0% 16%;
-  --muted-foreground: 0 0% 62%;
+  --muted-foreground: 0 0% 68%;
 
   --accent: 207 40% 18%;
   --accent-foreground: 207 80% 78%;
@@ -112,9 +112,20 @@ html[data-theme="dark"] {
   --destructive: 2 76% 55%;
   --destructive-foreground: 0 0% 100%;
 
-  --border: 0 0% 24%;
-  --input: 0 0% 24%;
+  --border: 0 0% 26%;
+  --input: 0 0% 26%;
   --ring: 207 80% 55%;
+
+  --bauhaus-blue: #3d8fd9;
+  --bauhaus-red: #ff6b6b;
+  --bauhaus-yellow: #3a3420;
+  --bauhaus-ink: #f2f2f2;
+  --bauhaus-paper: #1a1a1a;
+  --bauhaus-paper-2: #222222;
+  --bauhaus-card: #212121;
+  --bauhaus-grey: #a3a3a3;
+  --bauhaus-line-soft: #3d3d3d;
+  --bauhaus-postit: #3a3420;
 
   --tone-success-border: 207 40% 32%;
   --tone-success-bg: 207 35% 14%;
@@ -488,6 +499,61 @@ html[data-theme="dark"] .ui-segmented-btn-active .ui-segmented-count {
   outline: 2px solid color-mix(in srgb, var(--bauhaus-blue) 28%, transparent);
   outline-offset: 0;
   box-shadow: none !important;
+}
+
+/*
+ * nanocat Checkbox 选中态默认 peer-checked:bg-foreground + text-white。
+ * 深色主题 foreground 接近白色，对勾与底同色，几乎看不见。
+ * 统一改成主色底 + 白勾，未选中态提高边框对比。
+ */
+label:has(> input[type="checkbox"].sr-only.peer) > span:first-of-type {
+  border-radius: var(--radius) !important;
+  border-color: hsl(var(--border)) !important;
+  background: hsl(var(--card)) !important;
+  color: transparent !important;
+  box-shadow: inset 0 0 0 1px hsl(var(--foreground) / 0.06);
+  transition:
+    border-color 0.12s ease,
+    background-color 0.12s ease,
+    color 0.12s ease,
+    box-shadow 0.12s ease !important;
+}
+
+label:has(> input[type="checkbox"].sr-only.peer:hover:not(:disabled)) > span:first-of-type {
+  border-color: hsl(var(--foreground) / 0.35) !important;
+}
+
+label:has(> input[type="checkbox"].sr-only.peer:checked) > span:first-of-type {
+  border-color: var(--bauhaus-blue) !important;
+  background: var(--bauhaus-blue) !important;
+  color: #ffffff !important;
+  box-shadow: none;
+}
+
+label:has(> input[type="checkbox"].sr-only.peer:focus-visible) > span:first-of-type {
+  outline: 2px solid color-mix(in srgb, var(--bauhaus-blue) 45%, transparent);
+  outline-offset: 2px;
+}
+
+label:has(> input[type="checkbox"].sr-only.peer:disabled) > span:first-of-type {
+  opacity: 0.45;
+}
+
+html[data-theme="dark"] label:has(> input[type="checkbox"].sr-only.peer) > span:first-of-type {
+  border-color: hsl(var(--foreground) / 0.28) !important;
+  background: hsl(var(--background)) !important;
+  box-shadow: inset 0 0 0 1px hsl(var(--foreground) / 0.08);
+}
+
+html[data-theme="dark"] label:has(> input[type="checkbox"].sr-only.peer:checked) > span:first-of-type {
+  border-color: hsl(var(--primary)) !important;
+  background: hsl(var(--primary)) !important;
+  color: #ffffff !important;
+  box-shadow: none;
+}
+
+html[data-theme="dark"] label:has(> input[type="checkbox"].sr-only.peer) > span:last-child {
+  color: hsl(var(--foreground) / 0.88);
 }
 
 /* ========== 功能色块工具类 ========== */
