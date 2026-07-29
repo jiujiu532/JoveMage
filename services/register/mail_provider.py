@@ -376,17 +376,43 @@ def _random_subdomain_label() -> str:
     return "".join(random.choices(string.ascii_lowercase + string.digits, k=random.randint(4, 10)))
 
 
-def _next_domain(domains: list[str]) -> str:
+def _next_domain(domains: list[str], provider_ref: str = "") -> str:
     global domain_index
     domains = [str(item).strip() for item in domains if str(item).strip()]
+    if provider_ref:
+        try:
+            from services.register.domain_blacklist import filter_domains
+
+            domains = filter_domains(provider_ref, domains)
+        except Exception:
+            pass
     if not domains:
-        raise RuntimeError("mail.domain 不能为空")
+        raise RuntimeError("mail.domain 不能为空或域名均已拉黑")
     if len(domains) == 1:
         return domains[0]
     with domain_lock:
         value = domains[domain_index % len(domains)]
         domain_index = (domain_index + 1) % len(domains)
         return value
+
+
+def _assert_domain_not_banned(provider_ref: str, domain: str, provider_type: str = "") -> None:
+    """单域名 provider 在建箱前检查黑名单；拉黑则 raise，让上层轮询其它 provider。"""
+    pref = str(provider_ref or "").strip()
+    dom = str(domain or "").strip()
+    if not pref or not dom:
+        return
+    try:
+        from services.register.domain_blacklist import is_banned, is_excluded_provider
+
+        if is_excluded_provider(provider_type=provider_type, provider_ref=pref):
+            return
+        if is_banned(pref, dom):
+            raise RuntimeError(f"域名已拉黑: {dom}")
+    except RuntimeError:
+        raise
+    except Exception:
+        pass
 
 
 def _normalize_string_list(value: Any) -> list[str]:
@@ -799,7 +825,7 @@ class CloudflareTempMailProvider(BaseMailProvider):
         return {} if resp.status_code == 204 else resp.json()
 
     def create_mailbox(self, username: str | None = None) -> dict[str, Any]:
-        data = self._request("POST", "/admin/new_address", headers={"x-admin-auth": self.admin_password}, payload={"enablePrefix": True, "name": username or _random_mailbox_name(), "domain": _next_domain(self.domain)})
+        data = self._request("POST", "/admin/new_address", headers={"x-admin-auth": self.admin_password}, payload={"enablePrefix": True, "name": username or _random_mailbox_name(), "domain": _next_domain(self.domain, self.provider_ref)})
         address = str(data.get("address") or "").strip()
         token = str(data.get("jwt") or "").strip()
         if not address or not token:
@@ -1060,7 +1086,7 @@ class CloudMailGenProvider(BaseMailProvider):
         return token
 
     def _resolve_address(self, username: str | None = None) -> str:
-        domain = _next_domain(self.domain)
+        domain = _next_domain(self.domain, self.provider_ref)
         if self.subdomain:
             domain = f"{random.choice(self.subdomain)}.{domain}"
         if username:
@@ -1152,7 +1178,16 @@ class TempMailLolProvider(BaseMailProvider):
     def create_mailbox(self, username: str | None = None) -> dict[str, Any]:
         payload: dict[str, Any] = {}
         if self.domain:
-            domain, force_random_prefix = self._resolve_domain(random.choice(self.domain))
+            domains = list(self.domain)
+            try:
+                from services.register.domain_blacklist import filter_domains
+
+                domains = filter_domains(self.provider_ref, domains)
+            except Exception:
+                pass
+            if not domains:
+                raise RuntimeError("mail.domain 不能为空或域名均已拉黑")
+            domain, force_random_prefix = self._resolve_domain(random.choice(domains))
             payload["domain"] = domain
             if force_random_prefix:
                 payload["prefix"] = _random_mailbox_name()
@@ -1201,6 +1236,7 @@ class DuckMailProvider(BaseMailProvider):
         return data if isinstance(data, list) else data.get("hydra:member") or data.get("member") or data.get("data") or []
 
     def create_mailbox(self, username: str | None = None) -> dict[str, Any]:
+        _assert_domain_not_banned(self.provider_ref, self.default_domain, provider_type=self.name)
         password = "".join(random.choices(string.ascii_letters + string.digits, k=12))
         address = f"{username or _random_mailbox_name()}@{self.default_domain}"
         payload = {"address": address, "password": password}
@@ -1251,6 +1287,8 @@ class GptMailProvider(BaseMailProvider):
         return data["data"] if isinstance(data, dict) and "data" in data else data
 
     def create_mailbox(self, username: str | None = None) -> dict[str, Any]:
+        if self.default_domain:
+            _assert_domain_not_banned(self.provider_ref, self.default_domain, provider_type=self.name)
         if self.local_compose:
             if not self.default_domain:
                 raise RuntimeError("GPTMail 本地拼接模式需要配置默认域名")
@@ -1299,7 +1337,7 @@ class MoEmailProvider(BaseMailProvider):
         return data
 
     def create_mailbox(self, username: str | None = None) -> dict[str, Any]:
-        data = self._request("POST", "/api/emails/generate", payload={"name": username or _random_mailbox_name(), "expiryTime": self.expiry_time, "domain": _next_domain(self.domain)}, expected=(200, 201))
+        data = self._request("POST", "/api/emails/generate", payload={"name": username or _random_mailbox_name(), "expiryTime": self.expiry_time, "domain": _next_domain(self.domain, self.provider_ref)}, expected=(200, 201))
         address = str(data.get("email") or "").strip()
         email_id = str(data.get("id") or data.get("email_id") or "").strip()
         if not address or not email_id:
@@ -1364,7 +1402,7 @@ class InbucketMailProvider(BaseMailProvider):
 
     def _resolve_domain(self) -> str:
         if self.domain:
-            return _next_domain(self.domain)
+            return _next_domain(self.domain, self.provider_ref)
         raise RuntimeError("Inbucket 需要至少配置一个 domain")
 
     def _mailbox_name(self, address: str) -> str:
@@ -1493,10 +1531,10 @@ class AhemMailProvider(BaseMailProvider):
 
     def _resolve_domain(self) -> str:
         if self.domain:
-            return _next_domain(self.domain)
+            return _next_domain(self.domain, self.provider_ref)
         remote = self._fetch_remote_domains()
         if remote:
-            return _next_domain(remote)
+            return _next_domain(remote, self.provider_ref)
         raise RuntimeError("AHEM 需要至少配置一个 domain，或保证 /properties 返回 allowedDomains")
 
     @staticmethod
@@ -1689,7 +1727,7 @@ class JoveMailProvider(BaseMailProvider):
         if username:
             payload["prefix"] = str(username).strip()
         if self.domain:
-            payload["domain"] = _next_domain(self.domain)
+            payload["domain"] = _next_domain(self.domain, self.provider_ref)
         data = self._request("POST", "/api/generate-email", payload=payload, expected=(200, 201))
         if not isinstance(data, dict):
             raise RuntimeError("JoveMail 生成邮箱返回结构异常")
@@ -1976,7 +2014,7 @@ class YydsMailProvider(BaseMailProvider):
     def create_mailbox(self, username: str | None = None) -> dict[str, Any]:
         payload = {"localPart": username or _random_mailbox_name()}
         if self.domain:
-            payload["domain"] = _next_domain(self.domain)
+            payload["domain"] = _next_domain(self.domain, self.provider_ref)
         if self.subdomain:
             payload["subdomain"] = self.subdomain
         data = self._request("POST", "/accounts/wildcard" if self.wildcard else "/accounts", payload=payload)
@@ -2655,11 +2693,28 @@ def create_mailbox(mail_config: dict, username: str | None = None, purpose: str 
                 continue
             tried.add(provider_key)
             mailbox = provider.create_mailbox(username)
+            # 成功建箱后再校验域名是否已拉黑（覆盖远端随机域 / 默认域）
+            address = str(mailbox.get("address") or "").strip()
+            domain = address.rsplit("@", 1)[-1].strip() if "@" in address else ""
+            provider_ref = str(mailbox.get("provider_ref") or provider.provider_ref or "").strip()
+            provider_type = str(mailbox.get("provider") or provider.name or "").strip()
+            if domain and provider_ref:
+                try:
+                    from services.register.domain_blacklist import is_banned, is_excluded_provider
+
+                    if not is_excluded_provider(provider_type=provider_type, provider_ref=provider_ref) and is_banned(
+                        provider_ref, domain
+                    ):
+                        last_error = f"域名已拉黑: {domain}"
+                        continue
+                except Exception:
+                    pass
             mailbox["_code_not_before"] = datetime.now(timezone.utc)
             return mailbox
         except RuntimeError as error:
             last_error = str(error)
-            if "DDG日上限已达" not in last_error:
+            # DDG 日上限 / 域名拉黑：换下一个 provider 继续试
+            if "DDG日上限已达" not in last_error and "域名已拉黑" not in last_error:
                 raise
         finally:
             provider.close()

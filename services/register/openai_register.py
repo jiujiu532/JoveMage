@@ -410,6 +410,79 @@ def _authorize_landed_page(resp) -> str:
     return ""
 
 
+def _load_domain_ban_rules() -> list | None:
+    """从主 config 读取自定义域名拉黑规则；失败返回 None。"""
+    try:
+        from services.config import config as app_config
+
+        rules = None
+        if hasattr(app_config, "data") and isinstance(getattr(app_config, "data", None), dict):
+            rules = app_config.data.get("domain_ban_rules")
+        if rules is None and hasattr(app_config, "get"):
+            try:
+                snapshot = app_config.get()
+                if isinstance(snapshot, dict):
+                    rules = snapshot.get("domain_ban_rules")
+            except Exception:
+                pass
+        if isinstance(rules, list):
+            return rules
+    except Exception:
+        pass
+    return None
+
+
+def _maybe_ban_domain_from_error(mailbox: dict | None, error: Exception | str | None, *, index: int | None = None) -> None:
+    """注册失败时按错误文案自动拉黑邮箱域名（outlook 类排除）。"""
+    if not mailbox or error is None:
+        return
+    try:
+        from services.register.domain_blacklist import (
+            ban,
+            is_excluded_provider,
+            should_ban_from_error,
+        )
+    except Exception:
+        return
+
+    provider_ref = str(mailbox.get("provider_ref") or "").strip()
+    provider_type = str(mailbox.get("provider") or "").strip()
+    email = str(mailbox.get("address") or "").strip()
+    if not provider_ref or not email or "@" not in email:
+        return
+    if is_excluded_provider(provider_type=provider_type, provider_ref=provider_ref):
+        return
+
+    domain = email.rsplit("@", 1)[-1].strip()
+    if not domain:
+        return
+
+    try:
+        error_text = redact_auth_diagnostic(error)
+    except Exception:
+        error_text = str(error or "")
+    custom_rules = _load_domain_ban_rules()
+    ok, reason = should_ban_from_error(error_text, custom_rules)
+    if not ok:
+        return
+
+    ban(
+        provider_ref,
+        domain,
+        reason=reason or "auto",
+        source="auto",
+        sample_email=email,
+        raw_hint=error_text[:500],
+        provider_type=provider_type,
+        provider_label=str(mailbox.get("label") or ""),
+    )
+    msg = f"域名已拉黑: {domain} ({reason})"
+    if index is not None:
+        step(index, msg, "yellow")
+    else:
+        log(msg, "yellow")
+
+
 def create_mailbox(username: str | None = None, register_proxy: str = "") -> dict:
     purpose = str(config.get("mail_purpose") or "daily")
     return mail_provider.create_mailbox(_mail_config(register_proxy), username, purpose=purpose)
@@ -1568,6 +1641,10 @@ class PlatformRegistrar:
                 self._create_account(f"{first_name} {last_name}", _random_birthdate(), index)
                 tokens = self._exchange_registered_tokens(index)
         except Exception as error:
+            try:
+                _maybe_ban_domain_from_error(mailbox, error, index=index)
+            except Exception:
+                pass
             mail_provider.mark_mailbox_result(mailbox, success=False, error=error)
             raise
         mail_provider.mark_mailbox_result(mailbox, success=True)

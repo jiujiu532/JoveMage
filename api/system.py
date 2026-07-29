@@ -75,6 +75,7 @@ SETTINGS_UPDATE_KEYS = {
     "backup",
     "chat_completion_cache",
     "third_party_apps",
+    "domain_ban_rules",
 }
 
 

@@ -98,6 +98,11 @@ DEFAULT_THIRD_PARTY_APPS = {
     },
 }
 
+# 自定义自动拉黑规则（存 config.json，不进 domain_blacklist.json）
+# 每项: {id?: str, match: str, enabled?: bool}；match 过短（<8）丢弃
+DEFAULT_DOMAIN_BAN_RULES: list[dict[str, object]] = []
+_DOMAIN_BAN_MATCH_MIN_LEN = 8
+
 
 def _normalize_bool(value: object, default: bool = False) -> bool:
     if isinstance(value, str):
@@ -301,6 +306,28 @@ def _normalize_third_party_apps_settings(value: object) -> dict[str, object]:
             "url": str(canvas_source.get("url") or DEFAULT_THIRD_PARTY_APPS["infinite_canvas"]["url"]).strip(),
         },
     }
+
+
+def _normalize_domain_ban_rules(value: object) -> list[dict[str, object]]:
+    """规范化自定义自动拉黑规则；空 match / 过短 match 丢弃，enabled 默认 True。"""
+    if not isinstance(value, list):
+        return list(DEFAULT_DOMAIN_BAN_RULES)
+    result: list[dict[str, object]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        match = str(item.get("match") or "").strip()
+        if len(match) < _DOMAIN_BAN_MATCH_MIN_LEN:
+            continue
+        rule: dict[str, object] = {
+            "match": match,
+            "enabled": _normalize_bool(item.get("enabled"), True),
+        }
+        rid = str(item.get("id") or "").strip()
+        if rid:
+            rule["id"] = rid
+        result.append(rule)
+    return result
 
 
 def _legacy_basic_from_settings(value: object, settings: dict[str, object]) -> dict[str, object]:
@@ -657,6 +684,7 @@ class ConfigStore:
             data["proxy_runtime"] = self.get_public_proxy_runtime_settings()
             data["fallback_proxy"] = self.get_proxy_fallback_settings()
             data["third_party_apps"] = self.get_third_party_apps_settings()
+            data["domain_ban_rules"] = self.get_domain_ban_rules()
             data["basic"] = _legacy_basic_from_settings(data.get("basic"), data)
             data.pop("auth-key", None)
             return data
@@ -685,6 +713,9 @@ class ConfigStore:
     def get_third_party_apps_settings(self) -> dict[str, object]:
         return _normalize_third_party_apps_settings(self.data.get("third_party_apps"))
 
+    def get_domain_ban_rules(self) -> list[dict[str, object]]:
+        return _normalize_domain_ban_rules(self.data.get("domain_ban_rules"))
+
     def update(self, data: dict[str, object]) -> dict[str, object]:
         with self._lock:
             self.reload_if_changed()
@@ -702,6 +733,8 @@ class ConfigStore:
                 )
             if "third_party_apps" in next_data:
                 next_data["third_party_apps"] = _normalize_third_party_apps_settings(next_data.get("third_party_apps"))
+            if "domain_ban_rules" in next_data:
+                next_data["domain_ban_rules"] = _normalize_domain_ban_rules(next_data.get("domain_ban_rules"))
             if "proxy_runtime" in next_data:
                 incoming_runtime = next_data.get("proxy_runtime")
                 if isinstance(incoming_runtime, dict):
