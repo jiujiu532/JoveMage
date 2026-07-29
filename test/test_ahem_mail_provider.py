@@ -66,6 +66,29 @@ class AhemMailProviderTests(unittest.TestCase):
         self.assertEqual(args[0], "GET")
         self.assertEqual(args[1], "https://mail.example/api/properties")
 
+    def test_api_base_without_api_suffix_is_normalized(self):
+        self.session.request.return_value = _FakeResponse(
+            payload={"allowedDomains": ["remote.example"]}
+        )
+        provider = mail_provider.AhemMailProvider(
+            {"api_base": "https://mail.example", "domain": []},
+            self.conf,
+        )
+        self.assertEqual(provider.api_base, "https://mail.example/api")
+        mailbox = provider.create_mailbox("bob")
+        self.assertEqual(mailbox["address"], "bob@remote.example")
+        args, _ = self.session.request.call_args
+        self.assertEqual(args[1], "https://mail.example/api/properties")
+
+    def test_empty_properties_raises_clear_error(self):
+        self.session.request.return_value = _FakeResponse(payload={"serverBaseUri": "x"})
+        provider = mail_provider.AhemMailProvider(
+            {"api_base": "https://mail.example/api", "domain": []},
+            self.conf,
+        )
+        with self.assertRaisesRegex(RuntimeError, "allowedDomains"):
+            provider.create_mailbox("bob")
+
     def test_fetch_latest_message_reads_text_body(self):
         list_item = {
             "emailId": "msg-1",

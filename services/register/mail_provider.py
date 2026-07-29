@@ -1499,6 +1499,20 @@ class InbucketMailProvider(BaseMailProvider):
         self.session.close()
 
 
+def _normalize_ahem_api_base(raw: str) -> str:
+    """统一 AHEM API 基址，确保以 /api 结尾。
+
+    接受 https://mail.example.com 或 https://mail.example.com/api。
+    真实接口是 /api/properties，缺 /api 时会落到站点根路径，解析不到 allowedDomains。
+    """
+    base = str(raw or "").strip().rstrip("/")
+    if not base:
+        return ""
+    if not base.lower().endswith("/api"):
+        base = f"{base}/api"
+    return base
+
+
 class AhemMailProvider(BaseMailProvider):
     """AHEM (Ad-Hoc Email Server) 临时邮箱。
 
@@ -1510,7 +1524,7 @@ class AhemMailProvider(BaseMailProvider):
 
     def __init__(self, entry: dict, conf: dict):
         super().__init__(conf, str(entry.get("provider_ref") or ""))
-        self.api_base = str(entry.get("api_base") or "").strip().rstrip("/")
+        self.api_base = _normalize_ahem_api_base(str(entry.get("api_base") or ""))
         if not self.api_base:
             raise RuntimeError("AHEM 需要配置 api_base")
         raw_domains = entry.get("domain") or []
@@ -1552,11 +1566,18 @@ class AhemMailProvider(BaseMailProvider):
         if self._remote_domains is not None:
             return self._remote_domains
         data = self._request("GET", "/properties")
+        if not isinstance(data, dict):
+            preview = str(data)[:200]
+            raise RuntimeError(
+                "AHEM /properties 响应不是 JSON 对象；"
+                f"请确认 api_base 指向 AHEM 的 /api（当前 {self.api_base}），body={preview}"
+            )
+        raw = data.get("allowedDomains") or data.get("allowed_domains") or []
         domains: list[str] = []
-        if isinstance(data, dict):
-            raw = data.get("allowedDomains") or data.get("allowed_domains") or []
-            if isinstance(raw, list):
-                domains = [str(item).strip() for item in raw if str(item).strip()]
+        if isinstance(raw, list):
+            domains = [str(item).strip() for item in raw if str(item).strip()]
+        elif isinstance(raw, str) and raw.strip():
+            domains = [part.strip() for part in raw.replace(";", ",").split(",") if part.strip()]
         # 去重保序
         seen: set[str] = set()
         unique: list[str] = []
@@ -1566,6 +1587,13 @@ class AhemMailProvider(BaseMailProvider):
                 continue
             seen.add(key)
             unique.append(item)
+        if not unique:
+            keys = ",".join(sorted(str(k) for k in data.keys()))
+            raise RuntimeError(
+                "AHEM /properties 未返回可用 allowedDomains；"
+                f"api_base={self.api_base}, keys=[{keys}]。"
+                "可在「允许域名」手动填写，或检查 AHEM 服务配置"
+            )
         self._remote_domains = unique
         return unique
 
@@ -1574,9 +1602,7 @@ class AhemMailProvider(BaseMailProvider):
         if self.domain:
             return _next_domain(self.domain, self.provider_ref)
         remote = self._fetch_remote_domains()
-        if remote:
-            return _next_domain(remote, self.provider_ref)
-        raise RuntimeError("AHEM 需要至少配置一个 domain，或保证 /properties 返回 allowedDomains")
+        return _next_domain(remote, self.provider_ref)
 
     @staticmethod
     def _mailbox_prefix(address: str) -> str:
