@@ -17,7 +17,8 @@ set -uo pipefail
 # ============================================================
 #  全局变量
 # ============================================================
-SCRIPT_VERSION="0.3.0"
+# 不写死版本：优先脚本旁 VERSION，其次 GitHub Release latest，再次安装目录戳记
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)"
 INSTALL_DIR="/opt/jovemage"
 # 代理套件始终放在安装目录内，不碰系统其他路径
 PROXY_DIR="$INSTALL_DIR/proxy"
@@ -163,7 +164,6 @@ wait_healthy() {
     return 1
 }
 
-# 拉取远端最新版本（从 Gist 维护的版本号文件读取，3 秒超时）
 # 从 GitHub Releases latest 拉取最新版本；缓存到 /tmp/jovemage-latest-version，60 秒内复用
 get_latest_version() {
     local cache="/tmp/jovemage-latest-version"
@@ -196,6 +196,31 @@ get_latest_version() {
         v="${v#v}"
         echo "$v" > "$cache" 2>/dev/null || true
         echo "$v"
+    fi
+}
+
+# 管理工具自身版本：不硬编码
+# 1) 脚本同目录 VERSION（仓库/发布包）
+# 2) GitHub Release latest（curl 单文件安装时）
+# 3) 安装目录 .install-version / VERSION（离线回退）
+get_script_version() {
+    local v=""
+    if [ -n "${SCRIPT_DIR:-}" ] && [ -f "$SCRIPT_DIR/VERSION" ]; then
+        v=$(tr -d '[:space:]' < "$SCRIPT_DIR/VERSION" 2>/dev/null || true)
+    fi
+    if [ -z "$v" ]; then
+        v=$(get_latest_version || true)
+    fi
+    if [ -z "$v" ] && [ -f "$INSTALL_DIR/.install-version" ]; then
+        v=$(tr -d '[:space:]' < "$INSTALL_DIR/.install-version" 2>/dev/null || true)
+    fi
+    if [ -z "$v" ] && [ -f "$INSTALL_DIR/VERSION" ]; then
+        v=$(tr -d '[:space:]' < "$INSTALL_DIR/VERSION" 2>/dev/null || true)
+    fi
+    if [ -n "$v" ]; then
+        echo "${v#v}"
+    else
+        echo "unknown"
     fi
 }
 
@@ -881,7 +906,9 @@ cmd_install() {
     mkdir -p "$INSTALL_DIR/data"
     generate_config_files
     generate_app_compose
-    echo "$SCRIPT_VERSION" > "$INSTALL_DIR/.install-version"
+    {
+        get_script_version
+    } > "$INSTALL_DIR/.install-version"
     ok "配置已生成: $CONFIG_FILE"
     ok "Compose 已生成: $COMPOSE_FILE"
 
@@ -1784,9 +1811,11 @@ cmd_status() {
 show_menu() {
     clear 2>/dev/null || true
 
+    local tool_ver
+    tool_ver=$(get_script_version)
     cat <<EOF
 =========================================
-  JoveMage 管理工具 v${SCRIPT_VERSION}
+  JoveMage 管理工具 v${tool_ver}
 =========================================
 
 EOF
