@@ -21,6 +21,8 @@ export type RegisterProvider = {
   id?: string
   provider_id?: string
   enable?: boolean
+  /** 是否参与定时抢注（与 enable 正交） */
+  schedule_enable?: boolean
   type?: string
   label?: string
   api_base?: string
@@ -74,6 +76,28 @@ export type RegisterProvider = {
   [key: string]: unknown
 }
 
+export type RegisterScheduleWindow = {
+  start: string
+  end: string
+}
+
+export type RegisterScheduleConfig = {
+  enabled?: boolean
+  windows?: RegisterScheduleWindow[]
+  /** 仅前端编辑用，保存时解析为 windows */
+  windows_text?: string
+  threads?: number
+  max_relogin_retries?: number
+  preempt_minutes?: number
+  drain_timeout_minutes?: number
+  next_window?: {
+    start?: string
+    end?: string
+    [key: string]: unknown
+  } | string | null
+  [key: string]: unknown
+}
+
 export type LegacyRegisterConfig = {
   mail: {
     request_timeout?: number
@@ -85,6 +109,7 @@ export type LegacyRegisterConfig = {
   }
   proxy: string
   proxy_pool?: string[]
+  /** 日常重登重试；定时抢注另有 schedule.max_relogin_retries */
   max_relogin_retries?: number
   total: number
   threads: number
@@ -93,6 +118,12 @@ export type LegacyRegisterConfig = {
   target_available: number
   check_interval: number
   enabled: boolean
+  /** 定时抢注配置 */
+  schedule?: RegisterScheduleConfig
+  /** 运行相位（后端可选返回） */
+  phase?: string
+  /** 运行类型：daily | schedule 等（后端可选返回） */
+  run_kind?: string
   stats?: {
     success?: number
     fail?: number
@@ -104,6 +135,8 @@ export type LegacyRegisterConfig = {
     success_rate?: number
     current_quota?: number
     current_available?: number
+    phase?: string
+    run_kind?: string
     [key: string]: unknown
   }
   logs?: Array<{

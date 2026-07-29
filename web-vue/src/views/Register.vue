@@ -3,9 +3,16 @@
     <PagePanel class="space-y-4">
       <PanelHeader title="注册账号" align="start">
         <template #actions>
-          <StateBadge :tone="registerConfig?.enabled ? 'success' : 'muted'" shape="rounded" size="sm">
-            {{ registerConfig?.enabled ? '运行中' : '已停止' }}
+          <StateBadge :tone="registerStatusBadge.tone" shape="rounded" size="sm">
+            {{ registerStatusBadge.label }}
           </StateBadge>
+          <MetaChip
+            v-if="registerStatusChip"
+            size="xs"
+            :tone="registerStatusChip.tone"
+          >
+            {{ registerStatusChip.label }}
+          </MetaChip>
           <Button
             size="sm"
             variant="primary"
@@ -83,7 +90,7 @@
               </label>
 
               <label class="register-field">
-                <span class="register-label">重登重试次数</span>
+                <span class="register-label">日常重登重试</span>
                 <Input
                   v-model.number="registerConfig.max_relogin_retries"
                   type="number"
@@ -155,6 +162,78 @@
                   @input="updateProxyPool(($event.target as HTMLTextAreaElement).value)"
                 ></textarea>
               </label>
+
+              <label class="register-checkbox-field register-checkbox-field--compact register-field--full">
+                <Checkbox
+                  :model-value="registerConfig.schedule?.enabled === true"
+                  :disabled="registerConfig.enabled"
+                  @update:model-value="setScheduleEnabled"
+                >
+                  启用定时抢注
+                </Checkbox>
+              </label>
+
+              <template v-if="registerConfig.schedule?.enabled">
+                <label class="register-field register-field--full">
+                  <span class="register-label">抢注时段</span>
+                  <textarea
+                    class="register-textarea font-mono"
+                    :value="scheduleWindowsText"
+                    placeholder="02:00-03:00&#10;23:00-01:00"
+                    :disabled="registerConfig.enabled"
+                    @input="updateScheduleWindowsText(($event.target as HTMLTextAreaElement).value)"
+                  ></textarea>
+                </label>
+
+                <label class="register-field">
+                  <span class="register-label">抢注线程</span>
+                  <Input
+                    v-model.number="registerConfig.schedule.threads"
+                    type="number"
+                    min="1"
+                    block
+                    :disabled="registerConfig.enabled"
+                  />
+                </label>
+
+                <label class="register-field">
+                  <span class="register-label">抢注重登重试</span>
+                  <Input
+                    v-model.number="registerConfig.schedule.max_relogin_retries"
+                    type="number"
+                    min="0"
+                    max="10"
+                    block
+                    :disabled="registerConfig.enabled"
+                  />
+                </label>
+
+                <label class="register-field">
+                  <span class="register-label">开始前收束（分）</span>
+                  <Input
+                    v-model.number="registerConfig.schedule.preempt_minutes"
+                    type="number"
+                    min="0"
+                    block
+                    :disabled="registerConfig.enabled"
+                  />
+                </label>
+
+                <label class="register-field">
+                  <span class="register-label">结束后最长等待（分）</span>
+                  <Input
+                    v-model.number="registerConfig.schedule.drain_timeout_minutes"
+                    type="number"
+                    min="0"
+                    block
+                    :disabled="registerConfig.enabled"
+                  />
+                </label>
+
+                <p class="register-proxy-hint register-field--full">
+                  时区 Asia/Shanghai。时段可写多行，每行一个 `HH:MM-HH:MM`（允许跨日）；到点开抢，到结束时刻停止。
+                </p>
+              </template>
             </div>
           </FormSection>
 
@@ -213,6 +292,7 @@
                 缺 {{ enabledProviderIssueCount }}
               </MetaChip>
               <MetaChip size="xs" tone="muted">已启用 {{ enabledProviderCount }} / {{ registerProviders.length }}</MetaChip>
+              <MetaChip v-if="scheduleProviderCount" size="xs" tone="info">定时 {{ scheduleProviderCount }}</MetaChip>
               <Button
                 size="sm"
                 variant="outline"
@@ -249,17 +329,23 @@
                       <div class="register-provider-title">
                         <span>{{ providerTitle(provider, index) }}</span>
                         <MetaChip size="xs" tone="muted">{{ providerTypeLabel(providerType(provider)) }}</MetaChip>
-                        <MetaChip v-if="provider.enable === false" size="xs" tone="warning">未启用</MetaChip>
-                        <MetaChip v-else-if="providerRequirementMessages(provider).length" size="xs" tone="danger">
-                          缺 {{ providerRequirementMessages(provider).length }} 项
+                        <MetaChip
+                          v-for="chip in providerStatusChips(provider)"
+                          :key="chip.label"
+                          size="xs"
+                          :tone="chip.tone"
+                        >
+                          {{ chip.label }}
                         </MetaChip>
-                        <MetaChip v-else size="xs" tone="success">可启动</MetaChip>
                       </div>
                     </div>
                   </button>
                   <div class="register-provider-actions" @click.stop>
                     <Checkbox v-model="provider.enable" :disabled="registerConfig.enabled">
                       启用
+                    </Checkbox>
+                    <Checkbox v-model="provider.schedule_enable" :disabled="registerConfig.enabled">
+                      定时参与
                     </Checkbox>
                     <Button
                       size="sm"
@@ -749,6 +835,10 @@
               </Button>
             </div>
 
+            <SurfaceBox v-if="scheduleNextWindowHint" tone="muted" density="compact">
+              {{ scheduleNextWindowHint }}
+            </SurfaceBox>
+
             <SurfaceBox tone="muted" density="compact">
               {{ registerRuntimeHint }}
             </SurfaceBox>
@@ -780,7 +870,7 @@ import type { ActionMenuItem } from 'nanocat-ui'
 import { proxyApi } from '@/api/proxy'
 import { getAuthToken } from '@/api/client'
 import { parseProxyReference, serializeProxyReference, type ProxyGroup } from '@/api/proxy'
-import { registerApi, type GptMailStatus, type LegacyRegisterConfig, type OutlookMailboxParseStats, type RegisterProvider } from '@/api/register'
+import { registerApi, type GptMailStatus, type LegacyRegisterConfig, type OutlookMailboxParseStats, type RegisterProvider, type RegisterScheduleConfig, type RegisterScheduleWindow } from '@/api/register'
 import FloatingActionMenu from '@/components/ai/FloatingActionMenu.vue'
 import FormSection from '@/components/ai/FormSection.vue'
 import MetaChip from '@/components/ai/MetaChip.vue'
@@ -829,6 +919,16 @@ const gptMailClockTimer = ref<number | null>(null)
 const gptMailResetFallbackSeconds = 5 * 60
 const expandedProviderKeys = ref<Set<string>>(new Set())
 
+const defaultScheduleConfig: RegisterScheduleConfig = {
+  enabled: false,
+  windows: [],
+  windows_text: '',
+  threads: 10,
+  max_relogin_retries: 3,
+  preempt_minutes: 5,
+  drain_timeout_minutes: 15,
+}
+
 const defaultRegisterConfig: LegacyRegisterConfig = {
   mail: {
     request_timeout: 30,
@@ -847,6 +947,7 @@ const defaultRegisterConfig: LegacyRegisterConfig = {
   target_available: 10,
   check_interval: 5,
   enabled: false,
+  schedule: { ...defaultScheduleConfig },
   stats: {
     success: 0,
     fail: 0,
@@ -926,7 +1027,7 @@ const outlookPoolActionItems: ActionMenuItem[] = [
   { key: 'unused', label: '删除未使用材料', danger: true, dividerBefore: true },
   { key: 'all', label: '重置邮箱池状态', danger: true },
 ]
-const providerCommonKeys = ['id', 'enable', 'type', 'label'] as const
+const providerCommonKeys = ['id', 'enable', 'type', 'label', 'schedule_enable'] as const
 const providerTypeKeys: Record<string, string[]> = {
   cloudmail_gen: ['api_base', 'admin_email', 'admin_password', 'domain', 'subdomain', 'email_prefix'],
   cloudflare_temp_email: ['api_base', 'admin_password', 'domain'],
@@ -970,6 +1071,7 @@ const registerProxyHint = computed(() => {
   return '默认使用系统设置里的默认代理；默认代理设为直连时不使用代理。'
 })
 const enabledProviderCount = computed(() => registerProviders.value.filter(provider => provider.enable !== false).length)
+const scheduleProviderCount = computed(() => registerProviders.value.filter(provider => provider.schedule_enable === true).length)
 const enabledProviderIssueCount = computed(() =>
   registerProviders.value
     .filter(provider => provider.enable !== false)
@@ -982,10 +1084,63 @@ const registerActionDisabled = computed(() => {
 })
 const legacyStats = computed(() => ({ ...defaultRegisterConfig.stats, ...(registerConfig.value?.stats || {}) }))
 const legacyLogs = computed(() => [...(registerConfig.value?.logs || [])])
+
+const registerRunKind = computed(() => {
+  const raw = registerConfig.value
+  if (!raw) return ''
+  return String(raw.run_kind || raw.stats?.run_kind || '').trim().toLowerCase()
+})
+
+const registerStatusBadge = computed(() => {
+  const cfg = registerConfig.value
+  if (!cfg) return { label: '已停止', tone: 'muted' as const }
+  if (cfg.enabled) {
+    if (registerRunKind.value === 'schedule') {
+      return { label: '定时抢注中', tone: 'success' as const }
+    }
+    return { label: '运行中', tone: 'success' as const }
+  }
+  if (cfg.schedule?.enabled) {
+    return { label: '已停止', tone: 'muted' as const }
+  }
+  return { label: '已停止', tone: 'muted' as const }
+})
+
+const registerStatusChip = computed(() => {
+  const cfg = registerConfig.value
+  if (!cfg) return null
+  if (!cfg.enabled && cfg.schedule?.enabled) {
+    return { label: '定时已启用', tone: 'info' as const }
+  }
+  return null
+})
+
+const scheduleWindowsText = computed(() => {
+  const schedule = registerConfig.value?.schedule
+  if (!schedule) return ''
+  if (typeof schedule.windows_text === 'string') return schedule.windows_text
+  return formatScheduleWindows(schedule.windows)
+})
+
+const scheduleNextWindowHint = computed(() => {
+  const schedule = registerConfig.value?.schedule
+  if (!schedule?.enabled) return ''
+  const next = formatNextWindow(schedule.next_window)
+  if (next) return `下次抢注时段：${next}（Asia/Shanghai）`
+  if (registerConfig.value?.enabled && registerRunKind.value === 'schedule') {
+    return '当前处于定时抢注窗口（Asia/Shanghai）。'
+  }
+  if (!registerConfig.value?.enabled && schedule.enabled) {
+    return '定时抢注已启用，等待窗口到点自动开抢。'
+  }
+  return ''
+})
+
 const registerRuntimeHint = computed(() => {
   if (enabledProviderCount.value === 0) return '至少启用一个邮箱来源。'
   if (enabledProviderIssueCount.value > 0) return `还有 ${enabledProviderIssueCount.value} 项必填配置未完成。`
   if (registerConfig.value?.enabled) return '任务运行中，配置已锁定。'
+  if (registerConfig.value?.schedule?.enabled) return '定时抢注已启用；也可手动启动日常任务。启动前会自动保存当前配置。'
   return '启动前会自动保存当前配置。'
 })
 
@@ -1027,8 +1182,37 @@ function normalizeRegisterConfig(raw: LegacyRegisterConfig): LegacyRegisterConfi
       ? raw.proxy_pool.map(item => String(item || '').trim()).filter(Boolean)
       : [],
     max_relogin_retries: Math.max(0, Math.min(10, Number(raw.max_relogin_retries ?? 3) || 0)),
+    schedule: normalizeScheduleConfig(raw.schedule),
+    phase: raw.phase,
+    run_kind: raw.run_kind,
     stats: { ...defaultRegisterConfig.stats, ...(raw.stats || {}) },
     logs: Array.isArray(raw.logs) ? raw.logs : [],
+  }
+}
+
+function normalizeScheduleConfig(raw?: RegisterScheduleConfig | null): RegisterScheduleConfig {
+  const source = raw && typeof raw === 'object' ? raw : {}
+  const windows = Array.isArray(source.windows)
+    ? source.windows
+        .map((item) => ({
+          start: String(item?.start || '').trim(),
+          end: String(item?.end || '').trim(),
+        }))
+        .filter(item => item.start && item.end)
+    : []
+  const windowsText = typeof source.windows_text === 'string' && source.windows_text.trim()
+    ? source.windows_text
+    : formatScheduleWindows(windows)
+  return {
+    ...defaultScheduleConfig,
+    ...source,
+    enabled: source.enabled === true,
+    windows,
+    windows_text: windowsText,
+    threads: Math.max(1, Number(source.threads ?? defaultScheduleConfig.threads) || defaultScheduleConfig.threads || 10),
+    max_relogin_retries: Math.max(0, Math.min(10, Number(source.max_relogin_retries ?? defaultScheduleConfig.max_relogin_retries) || 0)),
+    preempt_minutes: Math.max(0, Number(source.preempt_minutes ?? defaultScheduleConfig.preempt_minutes) || 0),
+    drain_timeout_minutes: Math.max(0, Number(source.drain_timeout_minutes ?? defaultScheduleConfig.drain_timeout_minutes) || 0),
   }
 }
 
@@ -1040,6 +1224,7 @@ function normalizeProvider(provider: RegisterProvider): RegisterProvider {
     id: String(provider.id || provider.provider_id || '').trim() || createProviderId(type),
     type,
     enable: provider.enable !== false,
+    schedule_enable: provider.schedule_enable === true,
   }
   if (type === 'gptmail' && !provider.key_mode && isFilled(provider.api_key)) {
     normalized.key_mode = 'custom'
@@ -1048,7 +1233,7 @@ function normalizeProvider(provider: RegisterProvider): RegisterProvider {
 }
 
 function defaultProvider(type = 'cloudmail_gen'): RegisterProvider {
-  const base = { id: createProviderId(type), enable: true, type }
+  const base = { id: createProviderId(type), enable: true, type, schedule_enable: false }
   switch (type) {
     case 'cloudmail_gen':
       return { ...base, api_base: '', admin_email: '', admin_password: '', domain: [], subdomain: [], email_prefix: '' }
@@ -1161,6 +1346,28 @@ function providerTitle(provider: RegisterProvider, index: number) {
   return `邮箱来源 ${index + 1}`
 }
 
+function providerStatusChips(provider: RegisterProvider) {
+  const chips: Array<{ label: string; tone: 'muted' | 'warning' | 'success' | 'info' | 'danger' }> = []
+  const dailyEnabled = provider.enable !== false
+  const scheduleEnabled = provider.schedule_enable === true
+  if (!dailyEnabled && !scheduleEnabled) {
+    chips.push({ label: '未启用', tone: 'warning' })
+    return chips
+  }
+  if (dailyEnabled) {
+    const missing = providerRequirementMessages(provider).length
+    if (missing) {
+      chips.push({ label: `缺 ${missing} 项`, tone: 'danger' })
+    } else {
+      chips.push({ label: '可日常', tone: 'success' })
+    }
+  }
+  if (scheduleEnabled) {
+    chips.push({ label: '可定时', tone: 'info' })
+  }
+  return chips
+}
+
 function providerTypeLabel(type: string) {
   return providerTypeOptions.find(item => item.value === type)?.label || type
 }
@@ -1202,10 +1409,11 @@ function providerWithTypeDraft(current: RegisterProvider, type: string): Registe
     id: String(current.id || current.provider_id || defaults.id || '').trim(),
     type,
     enable: current.enable !== false,
+    schedule_enable: current.schedule_enable === true,
   }
 
   for (const key of providerKeysForType(type, true)) {
-    if (key === 'type' || key === 'enable') continue
+    if (key === 'type' || key === 'enable' || key === 'schedule_enable') continue
     if (current[key] !== undefined) {
       next[key] = providerDraftValue(type, key, current[key])
     }
@@ -1213,6 +1421,7 @@ function providerWithTypeDraft(current: RegisterProvider, type: string): Registe
 
   next.type = type
   next.enable = current.enable !== false
+  next.schedule_enable = current.schedule_enable === true
 
   return next
 }
@@ -1791,6 +2000,82 @@ function updateProxyPool(value: string) {
     .filter(Boolean)
 }
 
+function ensureScheduleConfig() {
+  if (!registerConfig.value) return null
+  if (!registerConfig.value.schedule) {
+    registerConfig.value.schedule = normalizeScheduleConfig()
+  }
+  return registerConfig.value.schedule
+}
+
+function setScheduleEnabled(value: boolean | string | number) {
+  const schedule = ensureScheduleConfig()
+  if (!schedule) return
+  schedule.enabled = value === true || value === 'true' || value === 1
+}
+
+function updateScheduleWindowsText(value: string) {
+  const schedule = ensureScheduleConfig()
+  if (!schedule) return
+  schedule.windows_text = value
+}
+
+function formatScheduleWindows(windows?: RegisterScheduleWindow[] | null) {
+  if (!Array.isArray(windows) || !windows.length) return ''
+  return windows
+    .map((item) => {
+      const start = String(item?.start || '').trim()
+      const end = String(item?.end || '').trim()
+      if (!start || !end) return ''
+      return `${start}-${end}`
+    })
+    .filter(Boolean)
+    .join('\n')
+}
+
+function parseScheduleWindowsText(text: string): { windows: RegisterScheduleWindow[]; error?: string } {
+  const lines = String(text || '')
+    .split(/\n/)
+    .map(item => item.trim())
+    .filter(Boolean)
+  if (!lines.length) return { windows: [] }
+
+  const windows: RegisterScheduleWindow[] = []
+  const hhmm = /^([01]\d|2[0-3]):([0-5]\d)$/
+  for (const line of lines) {
+    const match = line.match(/^(\d{1,2}:\d{2})\s*[-~～—–]\s*(\d{1,2}:\d{2})$/)
+    if (!match) {
+      return { windows: [], error: `时段格式无效：${line}（示例 02:00-03:00）` }
+    }
+    const start = normalizeClockToken(match[1])
+    const end = normalizeClockToken(match[2])
+    if (!hhmm.test(start) || !hhmm.test(end)) {
+      return { windows: [], error: `时段时间无效：${line}（须为 HH:MM）` }
+    }
+    windows.push({ start, end })
+  }
+  return { windows }
+}
+
+function normalizeClockToken(value: string) {
+  const [h, m] = String(value || '').split(':')
+  const hour = String(Math.max(0, Math.min(23, Number(h) || 0))).padStart(2, '0')
+  const minute = String(Math.max(0, Math.min(59, Number(m) || 0))).padStart(2, '0')
+  return `${hour}:${minute}`
+}
+
+function formatNextWindow(value: RegisterScheduleConfig['next_window']) {
+  if (!value) return ''
+  if (typeof value === 'string') return value.trim()
+  if (typeof value === 'object') {
+    const start = String(value.start || '').trim()
+    const end = String(value.end || '').trim()
+    if (start && end) return `${start}-${end}`
+    if (start) return start
+  }
+  return ''
+}
+
 function updateProviderArray(index: number, key: 'domain' | 'subdomain', event: Event) {
   const provider = registerProviders.value[index]
   if (!provider) return
@@ -1810,6 +2095,9 @@ function sanitizeProvider(provider: RegisterProvider): RegisterProvider {
     }
   }
 
+  output.enable = provider.enable !== false
+  output.schedule_enable = provider.schedule_enable === true
+
   delete output.mailboxes_count
   delete output.mailboxes_base_count
   delete output.mailboxes_alias_count
@@ -1820,8 +2108,25 @@ function sanitizeProvider(provider: RegisterProvider): RegisterProvider {
   return output
 }
 
-function legacyPayload(): Partial<LegacyRegisterConfig> {
+function legacyPayload(): Partial<LegacyRegisterConfig> | null {
   if (!registerConfig.value) return {}
+  const scheduleSource = registerConfig.value.schedule || defaultScheduleConfig
+  const scheduleEnabled = scheduleSource.enabled === true
+  const windowsText = typeof scheduleSource.windows_text === 'string'
+    ? scheduleSource.windows_text
+    : formatScheduleWindows(scheduleSource.windows)
+  const parsed = parseScheduleWindowsText(windowsText)
+  if (scheduleEnabled) {
+    if (parsed.error) {
+      toast.error(parsed.error)
+      return null
+    }
+    if (!parsed.windows.length) {
+      toast.error('已启用定时抢注，请至少填写一个有效时段（HH:MM-HH:MM）')
+      return null
+    }
+  }
+
   return {
     mail: {
       ...registerConfig.value.mail,
@@ -1838,6 +2143,14 @@ function legacyPayload(): Partial<LegacyRegisterConfig> {
     target_quota: Math.max(1, Number(registerConfig.value.target_quota) || 1),
     target_available: Math.max(1, Number(registerConfig.value.target_available) || 1),
     check_interval: Math.max(1, Number(registerConfig.value.check_interval) || 5),
+    schedule: {
+      enabled: scheduleEnabled,
+      windows: parsed.error ? [] : parsed.windows,
+      threads: Math.max(1, Number(scheduleSource.threads ?? 10) || 10),
+      max_relogin_retries: Math.max(0, Math.min(10, Number(scheduleSource.max_relogin_retries ?? 3) || 0)),
+      preempt_minutes: Math.max(0, Number(scheduleSource.preempt_minutes ?? 5) || 0),
+      drain_timeout_minutes: Math.max(0, Number(scheduleSource.drain_timeout_minutes ?? 15) || 0),
+    },
   }
 }
 
@@ -1866,9 +2179,11 @@ async function loadProxyGroups() {
 
 async function saveLegacyConfig() {
   if (!registerConfig.value) return
+  const payload = legacyPayload()
+  if (!payload) return
   legacySaving.value = true
   try {
-    const response = await registerApi.updateConfig(legacyPayload())
+    const response = await registerApi.updateConfig(payload)
     applyRegisterConfig(response.register)
     toast.success('注册配置已保存')
   } catch (error: any) {
@@ -1890,7 +2205,12 @@ async function toggleLegacyTask() {
   legacySaving.value = true
   try {
     if (starting) {
-      await registerApi.updateConfig(legacyPayload())
+      const payload = legacyPayload()
+      if (!payload) {
+        legacySaving.value = false
+        return
+      }
+      await registerApi.updateConfig(payload)
     }
     const response = starting ? await registerApi.startLegacy() : await registerApi.stopLegacy()
     applyRegisterConfig(response.register)

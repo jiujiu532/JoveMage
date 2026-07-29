@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 import uuid
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
-from datetime import datetime, timezone
+from datetime import datetime, time as dt_time, timedelta, timezone
 from pathlib import Path
 
 from services.account_service import account_service
 from services.config import DATA_DIR
 from services.json_file import read_json_object, write_json_file
 from services.register import mail_provider, openai_register
+from utils.timezone import BEIJING_TZ, beijing_now
 
 
 REGISTER_FILE = DATA_DIR / "register.json"
@@ -80,6 +82,123 @@ def _ensure_provider_id(provider: dict) -> str:
     return provider_id
 
 
+# ---------------------------------------------------------------------------
+# 定时抢注：时段解析与判定（跨天 = start > end，start == end 非法）
+# ---------------------------------------------------------------------------
+
+_HHMM_RE = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
+
+SCHEDULE_DEFAULTS = {
+    "enabled": False,
+    "windows": [],
+    "threads": 10,
+    "max_relogin_retries": 3,
+    "preempt_minutes": 5,
+    "drain_timeout_minutes": 15,
+}
+
+
+def _parse_hhmm(value: object) -> dt_time | None:
+    match = _HHMM_RE.match(str(value or "").strip())
+    if not match:
+        return None
+    return dt_time(hour=int(match.group(1)), minute=int(match.group(2)))
+
+
+def _normalize_window(raw: dict) -> dict | None:
+    """规范化单个时段；start==end 视为非法返回 None。start>end 表示跨天。"""
+    if not isinstance(raw, dict):
+        return None
+    start = _parse_hhmm(raw.get("start"))
+    end = _parse_hhmm(raw.get("end"))
+    if start is None or end is None or start == end:
+        return None
+    return {"start": f"{start.hour:02d}:{start.minute:02d}", "end": f"{end.hour:02d}:{end.minute:02d}"}
+
+
+def _normalize_schedule(raw: object) -> dict:
+    source = raw if isinstance(raw, dict) else {}
+    windows: list[dict] = []
+    if isinstance(source.get("windows"), list):
+        for item in source["windows"]:
+            window = _normalize_window(item)
+            if window:
+                windows.append(window)
+    return {
+        "enabled": _safe_bool(source.get("enabled"), False),
+        "windows": windows,
+        "threads": _clamp_int(source.get("threads"), fallback=SCHEDULE_DEFAULTS["threads"], lower=1, upper=200),
+        "max_relogin_retries": _clamp_int(source.get("max_relogin_retries"), fallback=SCHEDULE_DEFAULTS["max_relogin_retries"], lower=0, upper=10),
+        "preempt_minutes": _clamp_int(source.get("preempt_minutes"), fallback=SCHEDULE_DEFAULTS["preempt_minutes"], lower=0, upper=60),
+        "drain_timeout_minutes": _clamp_int(source.get("drain_timeout_minutes"), fallback=SCHEDULE_DEFAULTS["drain_timeout_minutes"], lower=0, upper=360),
+    }
+
+
+def _window_bounds(day, start: dt_time, end: dt_time, tz=BEIJING_TZ) -> tuple[datetime, datetime]:
+    """返回某天在某 tz 下的时段起止（跨天 end 落在次日）。"""
+    start_dt = datetime.combine(day, start, tzinfo=tz)
+    end_dt = datetime.combine(day, end, tzinfo=tz)
+    if end_dt <= start_dt:
+        end_dt += timedelta(days=1)
+    return start_dt, end_dt
+
+
+def _active_schedule_window(now: datetime, windows: list[dict]) -> dict | None:
+    """now 是否落在任一时段内（含跨天：同时检查「今天开始」与「昨天开始跨到今天」）。
+
+    返回 {"start", "end", "start_dt", "end_dt"}，未命中返回 None。
+    """
+    now = now.astimezone(BEIJING_TZ)
+    today = now.date()
+    for window in windows:
+        start = _parse_hhmm(window.get("start"))
+        end = _parse_hhmm(window.get("end"))
+        if start is None or end is None or start == end:
+            continue
+        # 今天开始的时段（start<end 当天；start>end 跨到明天）
+        s_today, e_today = _window_bounds(today, start, end)
+        if s_today <= now < e_today:
+            return {"start": window["start"], "end": window["end"], "start_dt": s_today, "end_dt": e_today}
+        # 昨天开始跨到今天的时段（仅当 start>end）
+        s_yesterday = s_today - timedelta(days=1)
+        e_yesterday = e_today - timedelta(days=1)
+        if start > end and s_yesterday <= now < e_yesterday:
+            return {"start": window["start"], "end": window["end"], "start_dt": s_yesterday, "end_dt": e_yesterday}
+    return None
+
+
+def _next_schedule_window(now: datetime, windows: list[dict]) -> dict | None:
+    """最近的下一时段（未来 8 天内），含正在进行的时段。"""
+    now = now.astimezone(BEIJING_TZ)
+    best: dict | None = None
+    for offset in range(-1, 9):
+        day = now.date() + timedelta(days=offset)
+        for window in windows:
+            start = _parse_hhmm(window.get("start"))
+            end = _parse_hhmm(window.get("end"))
+            if start is None or end is None or start == end:
+                continue
+            start_dt, end_dt = _window_bounds(day, start, end)
+            if end_dt <= now:
+                continue
+            if start_dt <= now:
+                return {"start": window["start"], "end": window["end"], "start_dt": start_dt, "end_dt": end_dt}
+            if best is None or start_dt < best["start_dt"]:
+                best = {"start": window["start"], "end": window["end"], "start_dt": start_dt, "end_dt": end_dt}
+    return best
+
+
+def _format_schedule_hint(info: dict | None) -> dict | None:
+    if not info:
+        return None
+    return {
+        "start": info["start"],
+        "end": info["end"],
+        "start_dt": info["start_dt"].isoformat(),
+        "end_dt": info["end_dt"].isoformat(),
+    }
+
+
 def _default_config() -> dict:
     return {**openai_register.config, "mode": "total", "target_quota": 100, "target_available": 10, "check_interval": 5, "enabled": False, "stats": {"success": 0, "fail": 0, "done": 0, "running": 0, "threads": openai_register.config["threads"], "elapsed_seconds": 0, "avg_seconds": 0, "success_rate": 0, "current_quota": 0, "current_available": 0}}
 
@@ -112,6 +231,7 @@ def _normalize(raw: dict) -> dict:
     cfg["mail"]["api_use_register_proxy"] = _safe_bool(cfg["mail"].get("api_use_register_proxy"), True)
     cfg["mail"].pop("proxy", None)
     cfg["enabled"] = bool(cfg.get("enabled"))
+    cfg["schedule"] = _normalize_schedule(raw.get("schedule"))
     default_stats = default_config["stats"] if isinstance(default_config.get("stats"), dict) else {}
     stats = dict(default_stats)
     raw_stats = raw.get("stats")
@@ -127,9 +247,20 @@ class RegisterService:
         self._store_file = store_file
         self._lock = threading.RLock()
         self._runner: threading.Thread | None = None
+        self._scheduler: threading.Thread | None = None
+        self._stop_event = threading.Event()
+        self._wake_event = threading.Event()
+        self._user_stop = threading.Event()
+        self._schedule_active = threading.Event()
+        self._drain_event = threading.Event()
+        self._resubmit_event = threading.Event()
+        self._phase = "idle"  # idle|daily_running|preempt_drain|schedule_running|post_drain
+        self._current_kind: str | None = None  # "daily" | "schedule"
+        self._restore_daily_after = False
         self._logs: list[dict] = []
         openai_register.register_log_sink = self._append_log
         self._config = self._load()
+        self._ensure_scheduler()
         if self._config["enabled"]:
             self.start()
 
@@ -141,7 +272,19 @@ class RegisterService:
 
     def get(self) -> dict:
         with self._lock:
-            snapshot = json.loads(json.dumps({**self._config, "logs": self._logs[-300:]}, ensure_ascii=False))
+            schedule = dict(self._config.get("schedule") or {})
+            windows = schedule.get("windows") if isinstance(schedule.get("windows"), list) else []
+            if windows:
+                schedule["next_window"] = _format_schedule_hint(_next_schedule_window(beijing_now(), windows))
+            else:
+                schedule["next_window"] = None
+            snapshot = json.loads(json.dumps({
+                **self._config,
+                "schedule": schedule,
+                "phase": self._phase,
+                "run_kind": self._current_kind,
+                "logs": self._logs[-300:],
+            }, ensure_ascii=False))
         self._redact_outlook_pools(snapshot)
         return snapshot
 
@@ -278,31 +421,74 @@ class RegisterService:
             self._drop_mail_proxy()
             openai_register.config.update({k: self._config[k] for k in ("mail", "proxy", "proxy_pool", "total", "threads", "max_relogin_retries")})
             self._save()
+            self._ensure_scheduler()
+            self._wake_event.set()
             return self.get()
+
+    # ---- 运行参数同步 ----
+
+    def _sync_run_params(self, kind: str) -> None:
+        """把当前相位的线程数/重登/选源 purpose 同步进 openai_register.config。"""
+        if kind == "schedule":
+            schedule = self._config.get("schedule") or {}
+            threads = _clamp_int(schedule.get("threads"), fallback=10, lower=1, upper=200)
+            retries = _clamp_int(schedule.get("max_relogin_retries"), fallback=3, lower=0, upper=10)
+        else:
+            threads = _clamp_int(self._config.get("threads"), fallback=3, lower=1, upper=200)
+            retries = _clamp_int(self._config.get("max_relogin_retries"), fallback=3, lower=0, upper=10)
+        openai_register.config.update({
+            "mail": self._config.get("mail"),
+            "proxy": self._config.get("proxy"),
+            "proxy_pool": self._config.get("proxy_pool"),
+            "total": self._config.get("total"),
+            "threads": threads,
+            "max_relogin_retries": retries,
+            "mail_purpose": "schedule" if kind == "schedule" else "daily",
+        })
+
+    def _reset_run_state(self, threads: int) -> None:
+        self._logs = []
+        metrics = self._pool_metrics()
+        self._config["stats"] = {
+            "job_id": uuid.uuid4().hex, "success": 0, "fail": 0, "done": 0, "running": 0,
+            "threads": threads, **metrics, "started_at": _now(), "updated_at": _now(),
+        }
+        with openai_register.stats_lock:
+            openai_register.stats.update({"done": 0, "success": 0, "fail": 0, "start_time": time.time()})
+
+    def _set_phase(self, phase: str, kind: str | None = None) -> None:
+        with self._lock:
+            self._phase = phase
+            if kind is not None:
+                self._current_kind = kind
+            elif phase == "idle":
+                self._current_kind = None
+            self._config["stats"]["updated_at"] = _now()
+            self._save()
+
+    # ---- 启动 / 停止 ----
 
     def start(self) -> dict:
         with self._lock:
-            if self._runner and self._runner.is_alive():
-                self._config["enabled"] = True
-                self._save()
-                return self.get()
+            self._user_stop.clear()
             self._config["enabled"] = True
             self._drop_mail_proxy()
-            self._logs = []
-            metrics = self._pool_metrics()
-            self._config["stats"] = {"job_id": uuid.uuid4().hex, "success": 0, "fail": 0, "done": 0, "running": 0, "threads": self._config["threads"], **metrics, "started_at": _now(), "updated_at": _now()}
-            openai_register.config.update({k: self._config[k] for k in ("mail", "proxy", "proxy_pool", "total", "threads", "max_relogin_retries")})
-            with openai_register.stats_lock:
-                openai_register.stats.update({"done": 0, "success": 0, "fail": 0, "start_time": time.time()})
+            if self._runner and self._runner.is_alive():
+                self._save()
+                self._wake_event.set()
+                return self.get()
             self._save()
-            self._runner = threading.Thread(target=self._run, daemon=True, name="openai-register")
+            self._runner = threading.Thread(target=self._orchestrate, daemon=True, name="openai-register")
             self._runner.start()
-            self._append_log(f"注册任务启动，模式={self._config['mode']}，线程数={self._config['threads']}", "yellow")
+            self._append_log("注册任务已启动", "yellow")
             return self.get()
 
     def stop(self) -> dict:
+        """上帝键：停止一切相位，不做自动恢复；调度配置保留待后续自动触发。"""
         with self._lock:
+            self._user_stop.set()
             self._config["enabled"] = False
+            self._restore_daily_after = False
             self._config["stats"]["updated_at"] = _now()
             self._save()
             self._append_log("已请求停止注册任务，正在等待当前运行任务结束", "yellow")
@@ -408,23 +594,54 @@ class RegisterService:
             self._config["stats"]["updated_at"] = _now()
             self._save()
 
-    def _run(self) -> None:
-        threads = int(self.get()["threads"])
+    # ---- 单相位运行器：dispatch / drain 受 _schedule_active / _drain_event 控制 ----
+
+    def _run_batch(self, kind: str) -> dict:
+        """跑一个相位（daily 或 schedule），返回 {success, fail, done}。
+
+        - 派发受 `_schedule_active`（schedule 相位）/ enabled（daily 相位）控制；
+        - `_drain_event` 置位后立即停止派发，仅等待在途任务归零；
+        - 每次进入都重建 ThreadPoolExecutor，线程数取该相位配置。
+        """
+        self._sync_run_params(kind)
+        threads = int(openai_register.config.get("threads") or 1)
+        self._reset_run_state(threads)
         submitted, done, success, fail = 0, 0, 0, 0
         with ThreadPoolExecutor(max_workers=threads) as executor:
             futures = set()
             while True:
                 cfg = self.get()
-                while self.get()["enabled"] and not self._target_reached(cfg, submitted) and len(futures) < threads:
+                # 该相位是否还允许派发
+                if kind == "schedule":
+                    allow_dispatch = (
+                        self._schedule_active.is_set()
+                        and not self._user_stop.is_set()
+                        and not self._drain_event.is_set()
+                    )
+                else:
+                    allow_dispatch = (
+                        cfg["enabled"]
+                        and not self._user_stop.is_set()
+                        and not self._drain_event.is_set()
+                        and not self._schedule_active.is_set()  # 被定时抢占时停发
+                    )
+                while allow_dispatch and not self._target_reached(cfg, submitted) and len(futures) < threads:
                     submitted += 1
                     futures.add(executor.submit(openai_register.worker, submitted))
-                self._bump(running=len(futures), done=done, success=success, fail=fail)
-                if not futures and (not self.get()["enabled"] or str(cfg.get("mode") or "total") == "total"):
-                    break
+                self._bump(running=len(futures), done=done, success=success, fail=fail, phase=self._phase, run_kind=kind)
                 if not futures:
+                    # 无在途任务：drain 完成 / 被停 / 目标达成 都退出
+                    if self._drain_event.is_set() or self._user_stop.is_set():
+                        break
+                    if kind == "schedule" and not self._schedule_active.is_set():
+                        break
+                    if kind == "daily" and (not cfg["enabled"] or str(cfg.get("mode") or "total") == "total"):
+                        break
+                    if kind == "daily" and self._schedule_active.is_set():
+                        break
                     time.sleep(max(1, int(cfg.get("check_interval") or 5)))
                     continue
-                finished, futures = wait(futures, return_when=FIRST_COMPLETED)
+                finished, futures = wait(futures, timeout=1.0, return_when=FIRST_COMPLETED)
                 for future in finished:
                     done += 1
                     try:
@@ -433,11 +650,140 @@ class RegisterService:
                         fail += 0 if result.get("ok") else 1
                     except Exception:
                         fail += 1
-        self._bump(running=0, done=done, success=success, fail=fail, finished_at=_now())
+        self._bump(running=0, done=done, success=success, fail=fail, finished_at=_now(), phase=self._phase, run_kind=kind)
+        return {"success": success, "fail": fail, "done": done}
+
+    # ---- 相位编排器 ----
+
+    def _orchestrate(self) -> None:
+        """主运行循环：决定跑 daily 还是 schedule，处理抢占与恢复。"""
+        while not self._user_stop.is_set():
+            schedule_cfg = self._config.get("schedule") or {}
+            windows = schedule_cfg.get("windows") if isinstance(schedule_cfg.get("windows"), list) else []
+            now = beijing_now()
+            active = _active_schedule_window(now, windows) if (schedule_cfg.get("enabled") and windows) else None
+
+            if active:
+                # 定时抢注时段内（含重启落在窗口内 → 继续抢注直到结束）
+                self._schedule_active.set()
+                self._drain_event.clear()
+                self._set_phase("schedule_running", "schedule")
+                self._append_log(
+                    f"进入定时抢注时段 {active['start']}-{active['end']}（Asia/Shanghai），线程={schedule_cfg.get('threads')}",
+                    "yellow",
+                )
+                result = self._run_batch("schedule")
+                self._schedule_active.clear()
+                self._append_log(f"定时抢注结束，成功{result['success']}，失败{result['fail']}", "yellow")
+
+                if self._user_stop.is_set():
+                    break
+                # 时段结束后 drain 在途任务（等零或超时强制归零）
+                self._post_drain(schedule_cfg)
+                if self._user_stop.is_set():
+                    break
+                # 恢复日常：仅当之前是日常在跑且用户未按上帝键
+                if self._restore_daily_after and self._config.get("enabled"):
+                    self._append_log("恢复日常注册", "yellow")
+                    continue
+                break
+
+            # 非时段：日常模式
+            self._schedule_active.clear()
+            self._drain_event.clear()
+            if not self._config.get("enabled"):
+                break
+            self._set_phase("daily_running", "daily")
+            self._append_log(f"日常注册运行中，模式={self._config['mode']}，线程数={self._config['threads']}", "yellow")
+            was_daily = True
+            result = self._run_batch("daily")
+            # daily 退出原因判断
+            if self._user_stop.is_set():
+                break
+            if self._schedule_active.is_set():
+                # 被定时抢占：drain 在途 → 标记恢复 → 回到循环进入 schedule
+                self._restore_daily_after = was_daily and self._config.get("enabled")
+                self._preempt_drain(schedule_cfg)
+                continue
+            # 正常跑完（total 达成 / 用户停用 enabled）→ 结束
+            self._append_log(f"日常注册结束，成功{result['success']}，失败{result['fail']}", "yellow")
+            break
+
         with self._lock:
-            self._config["enabled"] = False
+            self._schedule_active.clear()
+            self._drain_event.clear()
+            if not self._restore_daily_after or self._user_stop.is_set():
+                self._config["enabled"] = False
+            self._set_phase("idle", None)
             self._save()
-        self._append_log(f"注册任务结束，成功{success}，失败{fail}", "yellow")
+
+    def _preempt_drain(self, schedule_cfg: dict) -> None:
+        """定时开始前抢占 drain：停止派发，等待在途归零。"""
+        self._set_phase("preempt_drain")
+        self._drain_event.set()
+        timeout = _clamp_int(schedule_cfg.get("drain_timeout_minutes"), fallback=15, lower=0, upper=360) * 60
+        deadline = time.monotonic() + timeout
+        self._append_log(f"定时抢注即将开始，停止派发日常任务，等待在途归零（最长{timeout // 60}分钟）", "yellow")
+        while not self._user_stop.is_set():
+            running = int(self._config["stats"].get("running") or 0)
+            if running <= 0 or time.monotonic() >= deadline:
+                break
+            time.sleep(0.5)
+        self._drain_event.clear()
+
+    def _post_drain(self, schedule_cfg: dict) -> None:
+        """定时结束后 drain：等待在途归零或超时强制归零。"""
+        self._set_phase("post_drain", "schedule")
+        self._drain_event.set()
+        timeout = _clamp_int(schedule_cfg.get("drain_timeout_minutes"), fallback=15, lower=0, upper=360) * 60
+        deadline = time.monotonic() + timeout
+        self._append_log(f"定时抢注时段结束，等待在途任务归零（最长{timeout // 60}分钟）", "yellow")
+        while not self._user_stop.is_set():
+            running = int(self._config["stats"].get("running") or 0)
+            if running <= 0 or time.monotonic() >= deadline:
+                break
+            time.sleep(0.5)
+        self._drain_event.clear()
+
+    # ---- 常驻调度器：定时到点抢占 / 提前收束 ----
+
+    def _ensure_scheduler(self) -> None:
+        schedule_cfg = self._config.get("schedule") or {}
+        if schedule_cfg.get("enabled") and schedule_cfg.get("windows"):
+            if not (self._scheduler and self._scheduler.is_alive()):
+                self._stop_event.clear()
+                self._scheduler = threading.Thread(target=self._scheduler_loop, daemon=True, name="register-scheduler")
+                self._scheduler.start()
+
+    def _scheduler_loop(self) -> None:
+        while not self._stop_event.is_set():
+            schedule_cfg = self._config.get("schedule") or {}
+            windows = schedule_cfg.get("windows") if isinstance(schedule_cfg.get("windows"), list) else []
+            if not (schedule_cfg.get("enabled") and windows):
+                time.sleep(1.0)
+                continue
+            now = beijing_now()
+            active = _active_schedule_window(now, windows)
+            if active:
+                # 窗口内：若当前没在跑 schedule，唤醒 orchestrator 接管
+                if self._phase != "schedule_running" and not self._user_stop.is_set():
+                    self._schedule_active.set()
+                    self._wake_event.set()
+                    if not (self._runner and self._runner.is_alive()) and self._config.get("enabled"):
+                        self._runner = threading.Thread(target=self._orchestrate, daemon=True, name="openai-register")
+                        self._runner.start()
+                time.sleep(1.0)
+                continue
+            # 窗口外：检查是否临近下一时段（提前 preempt_minutes 收束日常）
+            nxt = _next_schedule_window(now, windows)
+            if nxt and self._phase == "daily_running":
+                preempt = _clamp_int(schedule_cfg.get("preempt_minutes"), fallback=5, lower=0, upper=60)
+                seconds_to_start = (nxt["start_dt"] - now).total_seconds()
+                if 0 < seconds_to_start <= preempt * 60:
+                    self._append_log(f"距离定时抢注 {nxt['start']} 还有 {int(seconds_to_start)} 秒，提前收束日常派发", "yellow")
+                    self._schedule_active.set()  # 触发 daily 停发 + preempt_drain
+            self._wake_event.wait(timeout=1.0)
+            self._wake_event.clear()
 
 
 register_service = RegisterService(REGISTER_FILE)
