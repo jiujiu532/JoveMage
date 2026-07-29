@@ -759,14 +759,42 @@ def _message_tracking_ref(message: dict[str, Any]) -> str:
     return f"content:{provider}:{mailbox}:{received_value}:{digest}"
 
 
+def _coerce_message_time_boundary(value: Any) -> datetime | None:
+    """把 _code_not_before / _received_after 规范成带 tz 的 datetime；解析失败返回 None。"""
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if value is None or value == "":
+        return None
+    try:
+        # 兼容 openai_register 写入的 isoformat（含 Z 后缀）
+        text = str(value).strip().replace("Z", "+00:00")
+        parsed = datetime.fromisoformat(text)
+    except Exception:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
 def _message_before_code_boundary(mailbox: dict[str, Any], message: dict[str, Any]) -> bool:
-    boundary = mailbox.get("_code_not_before")
+    """消息 received_at 早于验证码时间边界则应跳过（旧信 / 重发前的码）。
+
+    同时认：
+    - `_code_not_before`：建箱时刻（datetime 或 isoformat）
+    - `_received_after`：重发验证码等场景（openai_register 写 isoformat）
+    received_at 缺失或无法解析时不拦截，避免误杀无取时间的 provider。
+    """
     received_at = message.get("received_at")
-    if not isinstance(boundary, datetime) or not isinstance(received_at, datetime):
+    if not isinstance(received_at, datetime):
         return False
     if not received_at.tzinfo:
         received_at = received_at.replace(tzinfo=timezone.utc)
-    return received_at < boundary
+
+    for key in ("_code_not_before", "_received_after"):
+        boundary = _coerce_message_time_boundary(mailbox.get(key))
+        if boundary is not None and received_at < boundary:
+            return True
+    return False
 
 
 class BaseMailProvider:
@@ -2575,7 +2603,10 @@ class OutlookTokenProvider(BaseMailProvider):
         return messages[0] if messages else None
 
     def wait_for_code(self, mailbox: dict[str, Any]) -> str | None:
-        """轮询时遍历最近 N 封邮件，逐封提取验证码，避免最新一封是广告/安全提醒时错过验证码。"""
+        """轮询时遍历最近 N 封邮件，逐封提取验证码，避免最新一封是广告/安全提醒时错过验证码。
+
+        时间边界（_code_not_before / _received_after）统一走 _message_before_code_boundary。
+        """
         seen_value = mailbox.setdefault("_seen_code_message_refs", [])
         if not isinstance(seen_value, list):
             seen_value = []
@@ -2590,18 +2621,6 @@ class OutlookTokenProvider(BaseMailProvider):
                     continue
                 if target_address and not _message_matches_email(message, target_address):
                     continue
-                received_after = mailbox.get("_received_after")
-                received_at = message.get("received_at")
-                if received_after and received_at:
-                    try:
-                        threshold = datetime.fromisoformat(str(received_after))
-                        if threshold.tzinfo is None:
-                            threshold = threshold.replace(tzinfo=timezone.utc)
-                        current = received_at if received_at.tzinfo else received_at.replace(tzinfo=timezone.utc)
-                        if current < threshold:
-                            continue
-                    except Exception:
-                        pass
                 ref = _message_tracking_ref(message)
                 if ref in seen_refs:
                     continue
@@ -2743,6 +2762,9 @@ def create_mailbox(mail_config: dict, username: str | None = None, purpose: str 
     for _ in range(len(enabled)):
         provider = _create_provider(mail_config, purpose=purpose)
         provider_key = f"{provider.name}#{provider.provider_ref}"
+        # 建箱成功后若因 ban / 异常放弃，必须 release，避免 Outlook 等 in_use 永久占用
+        mailbox: dict[str, Any] | None = None
+        keep_mailbox = False
         try:
             if provider_key in tried:
                 continue
@@ -2771,6 +2793,7 @@ def create_mailbox(mail_config: dict, username: str | None = None, purpose: str 
                     last_error = f"域名已拉黑: 黑名单检查失败 ({exc})"
                     continue
             mailbox["_code_not_before"] = datetime.now(timezone.utc)
+            keep_mailbox = True
             return mailbox
         except RuntimeError as error:
             last_error = str(error)
@@ -2778,6 +2801,11 @@ def create_mailbox(mail_config: dict, username: str | None = None, purpose: str 
             if "DDG日上限已达" not in last_error and "域名已拉黑" not in last_error:
                 raise
         finally:
+            if mailbox is not None and not keep_mailbox:
+                try:
+                    release_mailbox(mailbox)
+                except Exception:
+                    pass
             provider.close()
     raise RuntimeError(last_error or "所有启用的邮箱提供商均无法创建邮箱")
 

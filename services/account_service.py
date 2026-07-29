@@ -432,7 +432,11 @@ class AccountService:
         if force:
             return True
         remaining = cls._token_expires_in(access_token)
-        return remaining is not None and remaining <= cls._ACCESS_TOKEN_REFRESH_SKEW_SECONDS
+        # 非 JWT / 坏 payload 时 remaining 为 None：无法判断剩余寿命，
+        # 保守视为需要刷新（调用方已保证有 refresh_token 才会真正发起 OAuth）。
+        if remaining is None:
+            return True
+        return remaining <= cls._ACCESS_TOKEN_REFRESH_SKEW_SECONDS
 
     @classmethod
     def _token_issued_at(cls, access_token: str) -> datetime | None:
@@ -808,6 +812,8 @@ class AccountService:
             try:
                 return future.result()
             except TerminalRefreshTokenError:
+                # 终态：owner 路径已 handle_invalid_token；返回旧 token 让调用方走
+                # refreshed != token 分支（例如 conversation 再兜底标记）。
                 return active_token
             except RefreshCredentialsChangedError:
                 if credential_attempt == 0:
@@ -815,10 +821,10 @@ class AccountService:
                 current_token, current = self._get_account_for_token(access_token)
                 return str((current or {}).get("access_token") or current_token or access_token)
             except Exception:
-                current_token, current = self._get_account_for_token(active_token)
-                if current:
-                    return str(current.get("access_token") or current_token or active_token)
-                return active_token
+                # 瞬时失败（429/5xx/网络等）：不要静默返回旧 token，
+                # 避免上层把“未刷成功”当成“刷完仍是原 token / 可继续用旧 AT”。
+                # 错误已在 _refresh_access_token_owner 记入 last_token_refresh_error。
+                raise
             finally:
                 if owner:
                     with self._oauth_refresh_flights_lock:
@@ -857,7 +863,19 @@ class AccountService:
         errors = []
         for access_token in access_tokens:
             before = self.resolve_access_token(access_token)
-            after = self.refresh_access_token(before, force=True, event="refresh_token_keepalive")
+            try:
+                after = self.refresh_access_token(before, force=True, event="refresh_token_keepalive")
+            except Exception as exc:
+                # 瞬时失败会 re-raise；错误细节多半已写入账号字段。
+                account = self.get_account(before)
+                error_text = ""
+                if account:
+                    error_text = str(account.get("last_token_refresh_error") or "").strip()
+                errors.append({
+                    "token": anonymize_token(before),
+                    "error": error_text or redact_auth_diagnostic(str(exc) or "refresh token failed"),
+                })
+                continue
             account = self.get_account(after)
             if account and str(account.get("last_token_refresh_error") or "").strip():
                 errors.append({
@@ -1052,7 +1070,11 @@ class AccountService:
                 return ""
             access_token = candidates[self._index % len(candidates)]
             self._index += 1
-        return self.refresh_access_token(access_token, event="get_text_access_token") or access_token
+        try:
+            return self.refresh_access_token(access_token, event="get_text_access_token") or access_token
+        except Exception:
+            # 机会性续期瞬时失败时仍返回现有 AT，由上游 401 再走 force refresh。
+            return access_token
 
     def mark_text_used(self, access_token: str) -> None:
         if not access_token:
@@ -1470,8 +1492,20 @@ class AccountService:
             if account is None:
                 return None
             if account.get("status") == "限流" and config.auto_remove_rate_limited_accounts:
+                # 对齐 delete_accounts：清理 inflight / alias，并唤醒等槽位的线程。
                 self._accounts.pop(access_token, None)
+                self._image_inflight.pop(access_token, None)
+                self._token_aliases = {
+                    old: new
+                    for old, new in self._token_aliases.items()
+                    if old != access_token and new != access_token
+                }
+                if self._accounts:
+                    self._index %= len(self._accounts)
+                else:
+                    self._index = 0
                 self._save_accounts()
+                self._image_slot_condition.notify_all()
                 log_service.add(LOG_TYPE_ACCOUNT, "自动移除额度耗尽账号", {"token": anonymize_token(access_token)})
                 return None
             self._accounts[access_token] = account
@@ -1503,6 +1537,8 @@ class AccountService:
             account = self._normalize_account(next_item)
             if account is not None:
                 self._accounts[access_token] = account
+                # 与 _record_remote_check_error 一致：成功路径也必须落盘，否则重启丢新鲜度。
+                self._save_accounts()
 
     def _record_remote_check_error(
         self,
@@ -1586,16 +1622,26 @@ class AccountService:
             current = self._accounts.get(access_token)
             if current is None:
                 return None
-            # expected 也走 alias 链，避免 token 旋转后 CAS 误拒绝导致静默丢账。
+            # expected AT 也走 alias 链，避免 access_token 旋转后 CAS 误拒绝导致静默丢账。
             if expected_access_token is not None:
                 expected_resolved = self._resolve_access_token_locked(expected_access_token)
                 if access_token != expected_resolved:
                     return dict(current)
+            # RT 旋转（keepalive / force refresh）是正常现象，不能据此丢扣额。
+            # 只要 access_token（经 alias）指向同一账号即可记账；RT 不匹配只记诊断。
             if expected_refresh_token is not None and (
                 str(current.get("refresh_token") or "").strip()
                 != str(expected_refresh_token or "").strip()
             ):
-                return dict(current)
+                log_service.add(
+                    LOG_TYPE_ACCOUNT,
+                    "生图结果记账时 refresh_token 已旋转，仍按 access_token 记账",
+                    {
+                        "token": anonymize_token(access_token),
+                        "expected_rt": anonymize_token(str(expected_refresh_token or "")),
+                        "current_rt": anonymize_token(str(current.get("refresh_token") or "")),
+                    },
+                )
             next_item = dict(current)
             next_item["last_used_at"] = now.astimezone().strftime("%Y-%m-%d %H:%M:%S")
             image_quota_unknown = bool(next_item.get("image_quota_unknown"))
@@ -1750,12 +1796,29 @@ class AccountService:
 
         from services.openai_backend_api import InvalidAccessTokenError, OpenAIBackendAPI
 
-        active_token = self.refresh_access_token(access_token, event=f"{event}:preflight") or access_token
+        # preflight 仅做「JWT 可解析且临近过期」的机会性续期。
+        # remaining=None（非 JWT / 坏 payload）交给 401 后 force 路径或后台 list_expiring，
+        # 避免在远程探活前无谓旋转 token、打乱 401→force-refresh 语义。
+        active_token = access_token
+        try:
+            remaining = self._token_expires_in(access_token)
+            if remaining is not None and remaining <= self._ACCESS_TOKEN_REFRESH_SKEW_SECONDS:
+                active_token = (
+                    self.refresh_access_token(access_token, event=f"{event}:preflight") or access_token
+                )
+        except Exception:
+            active_token = access_token
         try:
             with OpenAIBackendAPI(active_token) as backend:
                 result = backend.get_user_info()
         except InvalidAccessTokenError as exc:
-            refreshed_token = self.refresh_access_token(active_token, force=True, event=f"{event}:invalid_access_token")
+            try:
+                refreshed_token = self.refresh_access_token(
+                    active_token, force=True, event=f"{event}:invalid_access_token"
+                )
+            except Exception:
+                # 瞬时失败等同“未刷到新 token”，走下方 invalid 分支。
+                refreshed_token = ""
             if refreshed_token and refreshed_token != active_token:
                 try:
                     with OpenAIBackendAPI(refreshed_token) as backend:

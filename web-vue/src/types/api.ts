@@ -101,6 +101,7 @@ export interface Settings {
     enabled: boolean
     base_url: string
     api_key: string
+    has_api_key?: boolean
     model: string
     prompt: string
   }
@@ -164,6 +165,7 @@ export interface Settings {
     webdav_url: string
     webdav_username: string
     webdav_password: string
+    has_webdav_password?: boolean
     webdav_root_path: string
     public_base_url: string
   }
@@ -173,12 +175,14 @@ export interface Settings {
     account_id: string
     access_key_id: string
     secret_access_key: string
+    has_secret_access_key?: boolean
     bucket: string
     prefix: string
     interval_minutes: number
     rotation_keep: number
     encrypt: boolean
     passphrase: string
+    has_passphrase?: boolean
     include: Record<string, boolean>
   }
   chat_completion_cache?: {

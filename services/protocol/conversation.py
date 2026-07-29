@@ -1114,11 +1114,22 @@ def iter_conversation_payloads(payloads: Iterator[str], history_text: str = "",
     state = ConversationState()
     history_messages = history_messages or []
     history_index = 0
+    # 最后一条 history 被 skip 时暂存；若整轮无新 delta，视为模型复述而非回放
+    last_skipped_history_text = ""
     for payload in payloads:
         # print(f"[upstream_sse] {payload}", flush=True)
         if not payload:
             continue
         if payload == "[DONE]":
+            # 仅 history 回放被 skip、全程无新增文本：把最后一次匹配当作真实回答吐出
+            if not state.text and last_skipped_history_text:
+                state.raw_text = last_skipped_history_text
+                state.text = sanitize_output_text(last_skipped_history_text)
+                yield conversation_base_event(
+                    "conversation.delta",
+                    state,
+                    delta=state.text,
+                )
             yield conversation_base_event("conversation.done", state, done=True)
             break
         try:
@@ -1131,8 +1142,21 @@ def iter_conversation_payloads(payloads: Iterator[str], history_text: str = "",
             yield conversation_base_event("conversation.event", state, raw=event)
             continue
         update_conversation_state(state, payload, event)
-        if history_index < len(history_messages) and event_assistant_text(event, history_text) == history_messages[history_index]:
+        # 历史回放：完整 assistant 消息精确等于下一条 history，且当前尚无新文本时才 skip。
+        # 用未 strip 的全文匹配，避免 history_text 拼接干扰。
+        full_assistant = event_assistant_text(event, "")
+        if (
+            history_index < len(history_messages)
+            and full_assistant
+            and full_assistant == history_messages[history_index]
+            and not state.text
+            and not state.raw_text
+        ):
             history_index += 1
+            if history_index >= len(history_messages):
+                last_skipped_history_text = full_assistant
+            else:
+                last_skipped_history_text = ""
             state.raw_text = ""
             state.text = ""
             continue
@@ -1140,6 +1164,8 @@ def iter_conversation_payloads(payloads: Iterator[str], history_text: str = "",
         next_text = sanitize_output_text(next_raw_text)
         state.raw_text = next_raw_text
         if next_text != state.text:
+            # 已有真实增量，清空「最后 history 可能是复述」标记
+            last_skipped_history_text = ""
             delta = next_text[len(state.text):] if next_text.startswith(state.text) else next_text
             state.text = next_text
             yield conversation_base_event("conversation.delta", state, raw=event, delta=delta)
@@ -1197,48 +1223,63 @@ def stream_text_deltas(backend: OpenAIBackendAPI, request: ConversationRequest) 
     attempted_tokens: set[str] = set()
     token = getattr(backend, "access_token", "")
     emitted = False
-    while True:
-        if token and token in attempted_tokens:
-            raise RuntimeError("no available text account")
-        if token:
-            attempted_tokens.add(token)
-        active_backend: OpenAIBackendAPI | None = None
-        try:
-            _remember_text_account(backend, token)
-            active_backend = OpenAIBackendAPI(access_token=token)
-            _remember_text_account(active_backend, token)
-            for event in conversation_events(
-                active_backend,
-                messages=request.messages,
-                model=request.model,
-                prompt=request.prompt,
-                thinking_effort=request.thinking_effort,
-            ):
-                if event.get("type") != "conversation.delta":
-                    continue
-                delta = str(event.get("delta") or "")
-                if delta:
-                    emitted = True
-                    yield delta
-            account_service.mark_text_used(token)
-            return
-        except Exception as exc:
-            error_message = str(exc)
-            if token and not emitted and is_token_invalid_error(error_message):
-                refreshed_token = account_service.refresh_access_token(token, force=True, event="text_stream")
-                if refreshed_token and refreshed_token != token and refreshed_token not in attempted_tokens:
-                    token = refreshed_token
-                else:
-                    account_service.handle_invalid_token(token, "text_stream", error=error_message)
-                    token = account_service.get_text_access_token(attempted_tokens)
-                if token:
-                    continue
-            if token and not getattr(exc, "account_email", ""):
-                setattr(exc, "account_email", _text_account_email(token))
-            raise
-        finally:
-            if active_backend is not None:
-                active_backend.close()
+    try:
+        while True:
+            if token and token in attempted_tokens:
+                raise RuntimeError("no available text account")
+            if token:
+                attempted_tokens.add(token)
+            active_backend: OpenAIBackendAPI | None = None
+            try:
+                _remember_text_account(backend, token)
+                active_backend = OpenAIBackendAPI(access_token=token)
+                _remember_text_account(active_backend, token)
+                for event in conversation_events(
+                    active_backend,
+                    messages=request.messages,
+                    model=request.model,
+                    prompt=request.prompt,
+                    thinking_effort=request.thinking_effort,
+                ):
+                    if event.get("type") != "conversation.delta":
+                        continue
+                    delta = str(event.get("delta") or "")
+                    if delta:
+                        emitted = True
+                        yield delta
+                account_service.mark_text_used(token)
+                return
+            except Exception as exc:
+                error_message = str(exc)
+                if token and not emitted and is_token_invalid_error(error_message):
+                    # force refresh 瞬时失败会 re-raise：此时 token 未必真失效，
+                    # 不标 handle_invalid，直接换号重试，由下一次 401 再定夺。
+                    try:
+                        refreshed_token = account_service.refresh_access_token(token, force=True, event="text_stream")
+                    except Exception:
+                        token = account_service.get_text_access_token(attempted_tokens)
+                        if token:
+                            continue
+                        raise
+                    if refreshed_token and refreshed_token != token and refreshed_token not in attempted_tokens:
+                        token = refreshed_token
+                    else:
+                        account_service.handle_invalid_token(token, "text_stream", error=error_message)
+                        token = account_service.get_text_access_token(attempted_tokens)
+                    if token:
+                        continue
+                if token and not getattr(exc, "account_email", ""):
+                    setattr(exc, "account_email", _text_account_email(token))
+                raise
+            finally:
+                if active_backend is not None:
+                    active_backend.close()
+    finally:
+        # text_backend() 创建的 session 只用于持有 token/email，真正请求走 active_backend；
+        # 这里统一关闭，避免调用方忘记 close 导致连接泄漏。
+        close = getattr(backend, "close", None)
+        if callable(close):
+            close()
 
 
 def collect_text(backend: OpenAIBackendAPI, request: ConversationRequest) -> str:
@@ -2422,7 +2463,12 @@ def _generate_single_image(
             if not emitted_for_token and is_token_invalid_error(last_error):
                 # 不传 failure：避免异步核验与下方 force refresh / handle_invalid_token 双开。
                 finalize_image_slot(False)
-                refreshed_token = account_service.refresh_access_token(token, force=True, event="image_stream")
+                # 瞬时刷新失败不标失效：清空 token 走下一轮重选新号（同 text_stream 换号语义，不冒泡）。
+                try:
+                    refreshed_token = account_service.refresh_access_token(token, force=True, event="image_stream")
+                except Exception:
+                    token = ""
+                    continue
                 if refreshed_token and refreshed_token != token:
                     token = refreshed_token
                     continue
@@ -2562,15 +2608,37 @@ def stream_image_outputs_with_pool(request: ConversationRequest) -> Iterator[Ima
                         "error": last_error[:200],
                     })
 
-    # 如果有失败但也有成功，记录警告
-    if emitted:
-        for index in range(1, request.n + 1):
-            if index in errors:
-                logger.warning({
-                    "event": "image_parallel_partial_failure",
-                    "failed_index": index,
-                    "error": str(errors[index])[:200],
-                })
+    # 并行 n>1：部分 index 失败时不能静默当全成功（客户端会收到 HTTP 200 少图）。
+    # 方案 a：已有成功输出仍统一 raise partial failure，让上层映射为错误语义。
+    if errors:
+        failed_indexes = sorted(errors.keys())
+        success_indexes = sorted(results.keys())
+        detail = "; ".join(f"index {i}: {errors[i]}" for i in failed_indexes)
+        for index in failed_indexes:
+            logger.warning({
+                "event": "image_parallel_partial_failure",
+                "failed_index": index,
+                "success_count": len(success_indexes),
+                "failed_count": len(failed_indexes),
+                "error": str(errors[index])[:200],
+            })
+        if not emitted:
+            if not last_error:
+                last_error = "no account in the pool could generate images — check account quota and rate-limit status"
+            raise ImageGenerationError(
+                image_stream_error_message(last_error),
+                conversation_id="",
+                raw_error=last_error,
+                upstream_error=last_error,
+            )
+        raise ImageGenerationError(
+            f"partial image generation failure: {len(success_indexes)}/{request.n} succeeded; "
+            f"failed indexes {failed_indexes}: {detail[:400]}",
+            conversation_id="",
+            raw_error=detail,
+            upstream_error=detail,
+            code="partial_image_failure",
+        )
 
     if not emitted:
         if not last_error:

@@ -235,59 +235,88 @@ def stream_events(chunks: Iterable[dict[str, object]], model: str, input_tokens:
     tool_mode = isinstance(tools, list) and bool(tools)
     tool_started = False
     text_open = False
-    yield {"type": "message_start", "message": {"id": message_id, "type": "message", "role": "assistant", "model": model, "content": [], "stop_reason": None, "stop_sequence": None, "usage": {"input_tokens": input_tokens, "output_tokens": 0}}}
-    if not tool_mode:
-        text_open = True
-        yield {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}
-    for chunk in chunks:
-        chunk_account_email = str(chunk.get("_account_email") or "").strip()
-        if chunk_account_email:
-            account_email = chunk_account_email
-        choice = (chunk.get("choices") or [{}])[0]
-        delta = choice.get("delta") or {}
-        text_delta = delta.get("content", "") if isinstance(delta, dict) else ""
-        if text_delta:
-            current_text += text_delta
-            if not tool_started:
-                visible_text = current_text if not tool_mode else streamable_text(current_text)
-                if visible_text.startswith(streamed_text):
-                    text_delta = visible_text[len(streamed_text):]
-                    if text_delta:
-                        if not text_open:
-                            text_open = True
-                            yield {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}
-                        streamed_text = visible_text
-                        yield _with_log_metadata(
-                            {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": text_delta}},
-                            account_email,
-                        )
-                tool_started = tool_mode and visible_text != current_text
-        if choice.get("finish_reason"):
-            content, stop_reason = content_blocks(current_text, tools)
-            if text_open:
-                yield {"type": "content_block_stop", "index": 0}
-            if stop_reason == "tool_use":
-                start_index = 1 if text_open else 0
-                if content and content[0]["type"] == "text":
-                    remaining = str(content[0].get("text") or "")[len(streamed_text):]
-                    if remaining:
-                        if not text_open:
-                            yield {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}
-                        yield _with_log_metadata(
-                            {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": remaining}},
-                            account_email,
-                        )
-                        if not text_open:
-                            yield {"type": "content_block_stop", "index": 0}
-                    start_index = 1
-                    content = content[1:]
-                yield from _stream_buffered_blocks(content, start_index)
-            yield _with_log_metadata(
-                {"type": "message_delta", "delta": {"stop_reason": stop_reason, "stop_sequence": None}, "usage": {"output_tokens": output_tokens(current_text)}},
-                account_email,
-            )
-            break
-    yield _with_log_metadata({"type": "message_stop", "created": created}, account_email)
+    # 最小状态：已 start 未 stop 的 block 下标 + message 是否已开；异常时先闭合再抛出
+    open_block_indices: set[int] = set()
+    message_started = False
+
+    def _mark_block_start(index: int) -> None:
+        open_block_indices.add(index)
+
+    def _mark_block_stop(index: int) -> None:
+        open_block_indices.discard(index)
+
+    try:
+        yield {"type": "message_start", "message": {"id": message_id, "type": "message", "role": "assistant", "model": model, "content": [], "stop_reason": None, "stop_sequence": None, "usage": {"input_tokens": input_tokens, "output_tokens": 0}}}
+        message_started = True
+        if not tool_mode:
+            text_open = True
+            _mark_block_start(0)
+            yield {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}
+        for chunk in chunks:
+            chunk_account_email = str(chunk.get("_account_email") or "").strip()
+            if chunk_account_email:
+                account_email = chunk_account_email
+            choice = (chunk.get("choices") or [{}])[0]
+            delta = choice.get("delta") or {}
+            text_delta = delta.get("content", "") if isinstance(delta, dict) else ""
+            if text_delta:
+                current_text += text_delta
+                if not tool_started:
+                    visible_text = current_text if not tool_mode else streamable_text(current_text)
+                    if visible_text.startswith(streamed_text):
+                        text_delta = visible_text[len(streamed_text):]
+                        if text_delta:
+                            if not text_open:
+                                text_open = True
+                                _mark_block_start(0)
+                                yield {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}
+                            streamed_text = visible_text
+                            yield _with_log_metadata(
+                                {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": text_delta}},
+                                account_email,
+                            )
+                    tool_started = tool_mode and visible_text != current_text
+            if choice.get("finish_reason"):
+                content, stop_reason = content_blocks(current_text, tools)
+                if text_open:
+                    yield {"type": "content_block_stop", "index": 0}
+                    _mark_block_stop(0)
+                if stop_reason == "tool_use":
+                    # 保持原语义：text_open 在 stop 后仍为 True 时 tool 从 index 1 起
+                    start_index = 1 if text_open else 0
+                    if content and content[0]["type"] == "text":
+                        remaining = str(content[0].get("text") or "")[len(streamed_text):]
+                        if remaining:
+                            if not text_open:
+                                text_open = True
+                                _mark_block_start(0)
+                                yield {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}
+                            yield _with_log_metadata(
+                                {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": remaining}},
+                                account_email,
+                            )
+                            if not text_open:
+                                yield {"type": "content_block_stop", "index": 0}
+                                _mark_block_stop(0)
+                        start_index = 1
+                        content = content[1:]
+                    yield from _stream_buffered_blocks(content, start_index)
+                yield _with_log_metadata(
+                    {"type": "message_delta", "delta": {"stop_reason": stop_reason, "stop_sequence": None}, "usage": {"output_tokens": output_tokens(current_text)}},
+                    account_email,
+                )
+                break
+        yield _with_log_metadata({"type": "message_stop", "created": created}, account_email)
+        message_started = False
+    except Exception:
+        # 上游中途失败：先闭合未结束的 content block 与 message，再抛出让 anthropic_sse_stream 发 error
+        for index in sorted(open_block_indices):
+            yield {"type": "content_block_stop", "index": index}
+        open_block_indices.clear()
+        if message_started:
+            yield _with_log_metadata({"type": "message_stop", "created": created}, account_email)
+            message_started = False
+        raise
 
 
 def _stream_buffered_blocks(content: list[dict[str, object]], start_index: int = 0) -> Iterator[dict[str, object]]:

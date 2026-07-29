@@ -226,7 +226,9 @@ def sse_json_stream(items) -> Iterator[str]:
         error = exc.to_openai_error() if hasattr(exc, "to_openai_error") else {
             "error": {"message": str(exc), "type": exc.__class__.__name__}
         }
+        # 中途错误只发 error 帧，与 image_sse_stream 一致，不再追加 [DONE]
         yield f"data: {json.dumps(error, ensure_ascii=False)}\n\n"
+        return
     yield "data: [DONE]\n\n"
 
 
@@ -250,9 +252,29 @@ def image_sse_stream(items) -> Iterator[str]:
 
 
 def anthropic_sse_stream(items) -> Iterator[str]:
+    # 跟踪已 start 未 stop 的 content block / message，异常时先闭合再发 error
+    open_block_indices: set[int] = set()
+    message_started = False
+    message_stopped = False
     try:
         for item in items:
             event = str(item.get("type") or "message_delta") if isinstance(item, dict) else "message_delta"
+            if isinstance(item, dict):
+                if event == "message_start":
+                    message_started = True
+                    message_stopped = False
+                elif event == "content_block_start":
+                    try:
+                        open_block_indices.add(int(item.get("index", 0)))
+                    except (TypeError, ValueError):
+                        open_block_indices.add(0)
+                elif event == "content_block_stop":
+                    try:
+                        open_block_indices.discard(int(item.get("index", 0)))
+                    except (TypeError, ValueError):
+                        open_block_indices.discard(0)
+                elif event == "message_stop":
+                    message_stopped = True
             yield f"event: {event}\n"
             yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
     except Exception as exc:
@@ -261,6 +283,15 @@ def anthropic_sse_stream(items) -> Iterator[str]:
             "error_type": exc.__class__.__name__,
             "error": str(exc),
         })
+        # 严格客户端依赖 stop 事件结束解析；error 前先补齐未闭合帧
+        for index in sorted(open_block_indices):
+            stop_block = {"type": "content_block_stop", "index": index}
+            yield "event: content_block_stop\n"
+            yield f"data: {json.dumps(stop_block, ensure_ascii=False)}\n\n"
+        if message_started and not message_stopped:
+            stop_msg = {"type": "message_stop"}
+            yield "event: message_stop\n"
+            yield f"data: {json.dumps(stop_msg, ensure_ascii=False)}\n\n"
         error = {"type": "error", "error": {"type": exc.__class__.__name__, "message": str(exc)}}
         yield "event: error\n"
         yield f"data: {json.dumps(error, ensure_ascii=False)}\n\n"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import re
 import threading
 from datetime import datetime, timezone
@@ -8,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from services.config import DATA_DIR
-from services.json_file import read_json_object, write_json_file
+from services.json_file import write_json_file
 
 EXCLUDED_PROVIDER_TYPES = frozenset({"outlook_token", "outlook_email_api"})
 DOMAIN_BLACKLIST_FILE = DATA_DIR / "domain_blacklist.json"
@@ -200,11 +201,48 @@ def _empty_store() -> dict[str, Any]:
     return {"version": _SCHEMA_VERSION, "entries": []}
 
 
-def _load_unlocked(path: Path | None = None) -> dict[str, Any]:
-    target = path or DOMAIN_BLACKLIST_FILE
-    data = read_json_object(target, name="domain_blacklist.json")
+def _backup_path(path: Path) -> Path:
+    return path.with_suffix(path.suffix + ".bak")
+
+
+def _try_parse_store(candidate: Path) -> dict[str, Any] | None:
+    """解析候选文件；成功返回 dict，不可读/非 dict 返回 None。"""
+    if not candidate.exists() or candidate.is_dir():
+        return None
+    try:
+        data = json.loads(candidate.read_text(encoding="utf-8"))
+    except Exception:
+        return None
     if not isinstance(data, dict):
+        return None
+    return data
+
+
+def _load_unlocked(path: Path | None = None) -> dict[str, Any]:
+    """
+    加载黑名单。
+    - 主文件与 .bak 均不存在：合法空库（新部署）。
+    - 任一存在但均无法解析为 dict：fail-closed，抛 ValueError（调用方按检查失败处理）。
+    - 主文件损坏但 .bak 可用：与 json_file 一致，从备份恢复。
+    """
+    target = path or DOMAIN_BLACKLIST_FILE
+    backup = _backup_path(target)
+    primary_exists = target.exists() and not target.is_dir()
+    backup_exists = backup.exists() and not backup.is_dir()
+
+    # 文件不存在 = 合法空库；勿与「损坏」混为一谈
+    if not primary_exists and not backup_exists:
         return _empty_store()
+
+    data = _try_parse_store(target)
+    if data is None:
+        data = _try_parse_store(backup)
+    if data is None:
+        # 主文件或备份存在却都不可用：禁止 fail-open 成空表
+        raise ValueError(
+            f"domain_blacklist 不可用: '{target.name}' 损坏或不可解析"
+        )
+
     entries = data.get("entries")
     if not isinstance(entries, list):
         entries = []
@@ -247,12 +285,21 @@ def _find_index(entries: list[dict[str, Any]], provider_ref: str, domain: str) -
 
 
 def is_banned(provider_ref: str, domain: str) -> bool:
+    """
+    查询域名是否在黑名单。
+    fail-closed：
+    - 空 provider_ref：无法绑定账号来源，视为已 ban（返回 True）
+    - 黑名单文件损坏：_load_unlocked 抛 ValueError，由调用方按检查失败处理
+    非法 domain 属调用方入参错误，返回 False（无法形成有效匹配）。
+    """
     pref = str(provider_ref or "").strip()
     if not pref:
-        return False
+        # 无 provider 上下文时不可安全放行
+        return True
     try:
         cand = normalize_domain(domain)
     except ValueError:
+        # 非法域名：调用方 bug，不视为「在黑名单中」
         return False
     with _LOCK:
         store = _load_unlocked()
@@ -275,6 +322,9 @@ def filter_domains(provider_ref: str, domains: list[str]) -> list[str]:
     """去掉已 ban 的域名（含父子域 / 通配），保持原顺序。"""
     pref = str(provider_ref or "").strip()
     if not domains:
+        return []
+    # 空 provider_ref：无法判定归属，fail-closed 全部剔除
+    if not pref:
         return []
     with _LOCK:
         store = _load_unlocked()

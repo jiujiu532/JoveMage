@@ -151,6 +151,18 @@ def _normalize_backup_settings(value: object) -> dict[str, object]:
     }
 
 
+def _public_backup_settings(settings: dict[str, object]) -> dict[str, object]:
+    """backup 对外脱敏：密钥不回传明文，仅给 has_* 标志（与 cf_clearance 同模式）。"""
+    public = dict(settings)
+    secret = str(public.get("secret_access_key") or "").strip()
+    passphrase = str(public.get("passphrase") or "").strip()
+    public["secret_access_key"] = ""
+    public["passphrase"] = ""
+    public["has_secret_access_key"] = bool(secret)
+    public["has_passphrase"] = bool(passphrase)
+    return public
+
+
 def _normalize_backup_state(value: object) -> dict[str, object]:
     source = value if isinstance(value, dict) else {}
     return {
@@ -180,6 +192,15 @@ def _normalize_image_storage_settings(value: object) -> dict[str, object]:
         "webdav_root_path": root_path or str(DEFAULT_IMAGE_STORAGE["webdav_root_path"]),
         "public_base_url": str(source.get("public_base_url") or "").strip().rstrip("/"),
     }
+
+
+def _public_image_storage_settings(settings: dict[str, object]) -> dict[str, object]:
+    """image_storage 对外脱敏：webdav 密码不回传明文，仅给 has_* 标志。"""
+    public = dict(settings)
+    password = str(public.get("webdav_password") or "").strip()
+    public["webdav_password"] = ""
+    public["has_webdav_password"] = bool(password)
+    return public
 
 
 def _normalize_chat_completion_cache_settings(value: object) -> dict[str, object]:
@@ -362,72 +383,115 @@ def _promote_legacy_proxy_runtime(data: dict[str, object]) -> dict[str, object]:
     """把 install.sh 旧版顶层 flaresolverr_url / clearance_mode 提升进 proxy_runtime。
 
     应用只读 proxy_runtime.clearance.*；旧安装脚本只写了扁平键，导致 UI 显示清障关闭。
-    已完整配置的 nested proxy_runtime 不覆盖。
+    本函数为只读视图 promote（load/get 时调用），不落盘、不删扁平键，因此必须幂等：
+
+    - 已完整配置的 nested proxy_runtime 不覆盖；
+    - **若 nested 已存在（哪怕是默认全关），视作用户/程序已接管，不再用扁平键强制开启**，
+      避免「UI 关掉清障后又被扁平键反复 force-enable」。
+    只有完全没有 proxy_runtime 键时才从扁平键合成一份（且为幂等输出，重复调用结果一致）。
     """
     next_data = dict(data or {})
     flat_mode = str(next_data.get("clearance_mode") or "").strip().lower()
     flat_url = str(next_data.get("flaresolverr_url") or "").strip()
     flat_interval = next_data.get("clearance_refresh_interval")
 
+    # 无有效扁平配置：不动
     if flat_mode not in {"flaresolverr", "manual"} and not flat_url:
         return next_data
 
+    # 幂等关键：nested 键已存在即视为已接管，绝不根据扁平键强制开启。
+    # 新 install.sh 会同时写扁平键（兼容镜像）与 nested；若这里用扁平键 force-enable，
+    # 用户在 UI 关掉清障（nested.enabled=false）后，每次 load/get 都会被扁平键重新打开。
     raw_runtime = next_data.get("proxy_runtime")
-    runtime: dict[str, object] = dict(raw_runtime) if isinstance(raw_runtime, dict) else {}
-    raw_clearance = runtime.get("clearance")
-    clearance: dict[str, object] = dict(raw_clearance) if isinstance(raw_clearance, dict) else {}
-
-    nested_mode = str(clearance.get("mode") or "none").strip().lower()
-    nested_url = str(clearance.get("flaresolverr_url") or "").strip()
-    nested_enabled = _normalize_bool(clearance.get("enabled"), False)
-    runtime_enabled = _normalize_bool(runtime.get("enabled"), False)
-
-    # 已可工作的 nested 配置：runtime 开 + clearance 开 + 有效 mode（flaresolverr 还需 URL）
-    nested_ready = (
-        runtime_enabled
-        and nested_enabled
-        and nested_mode in {"manual", "flaresolverr"}
-        and (nested_mode == "manual" or bool(nested_url))
-    )
-    if nested_ready:
+    if isinstance(raw_runtime, dict):
         return next_data
 
-    if flat_mode in {"flaresolverr", "manual", "none"}:
-        mode = flat_mode
-    elif flat_url:
-        mode = "flaresolverr"
-    else:
-        mode = nested_mode if nested_mode in {"manual", "flaresolverr", "none"} else "none"
+    mode = flat_mode if flat_mode in {"flaresolverr", "manual"} else ("flaresolverr" if flat_url else "none")
     if mode == "none" and not flat_url:
         return next_data
-    if mode == "none" and flat_url:
-        mode = "flaresolverr"
 
-    # clearance_enabled 依赖 runtime.enabled；multi-WARP 出口仍走 proxy_pool，egress 保持 direct 即可
-    runtime["enabled"] = True
-    if not str(runtime.get("egress_mode") or "").strip():
-        runtime["egress_mode"] = "direct"
-
-    clearance["enabled"] = True
-    clearance["mode"] = mode
-    if flat_url and (not nested_url or not nested_enabled or nested_mode in {"", "none"}):
-        clearance["flaresolverr_url"] = flat_url
-    elif not nested_url and mode == "flaresolverr":
-        clearance["flaresolverr_url"] = flat_url
-
-    if flat_interval is not None and clearance.get("refresh_interval") in (None, "", 0):
+    clearance: dict[str, object] = {
+        "enabled": True,
+        "mode": mode,
+        "flaresolverr_url": flat_url if mode == "flaresolverr" else "",
+    }
+    if flat_interval is not None:
         try:
             clearance["refresh_interval"] = max(60, int(flat_interval))  # type: ignore[arg-type]
         except (OverflowError, TypeError, ValueError):
             pass
 
-    runtime["clearance"] = clearance
-    next_data["proxy_runtime"] = runtime
+    # multi-WARP 出口仍走 proxy_pool，egress 保持 direct；clearance_enabled 依赖 runtime.enabled
+    next_data["proxy_runtime"] = {
+        "enabled": True,
+        "egress_mode": "direct",
+        "clearance": clearance,
+    }
     return next_data
 
 
 def _promote_legacy_settings(data: dict[str, object]) -> dict[str, object]:
     return _promote_legacy_proxy_runtime(_promote_legacy_basic_settings(data))
+
+
+# 设置项「********」哨兵：与 backup_service.get_settings 脱敏值一致，防止脱敏值被当真值写回
+_SECRET_SENTINEL = "********"
+
+
+def _masked_secret_keep_previous(incoming: object, has_flag: object, previous: str) -> str:
+    """密钥字段「不回填不覆盖」：
+
+    - 传入空串 / 「********」哨兵 / has_*=true 且未给新值 → 保留旧值；
+    - 否则采用新值（允许显式改成新密钥；清空密钥需走专用接口，不在通用设置里误触发）。
+    """
+    text = str(incoming or "").strip()
+    if not text or text == _SECRET_SENTINEL or _normalize_bool(has_flag, False):
+        return previous
+    return text
+
+
+def _preserve_masked_secrets(previous_data: dict[str, object], next_data: dict[str, object]) -> None:
+    """update 时把「脱敏/未改」的密钥字段还原为旧值，避免设置页改无关项后密钥被清空或写入哨兵字面量。
+
+    覆盖 backup.secret_access_key / backup.passphrase、image_storage.webdav_password、ai_review.api_key。
+    就地修改 next_data。
+    """
+    # backup
+    if "backup" in next_data:
+        prev_backup = previous_data.get("backup") if isinstance(previous_data.get("backup"), dict) else {}
+        next_backup = next_data.get("backup")
+        if isinstance(next_backup, dict) and isinstance(prev_backup, dict):
+            next_backup = dict(next_backup)
+            for field, flag in (("secret_access_key", "has_secret_access_key"), ("passphrase", "has_passphrase")):
+                next_backup[field] = _masked_secret_keep_previous(
+                    next_backup.get(field), next_backup.get(flag), str(prev_backup.get(field) or "").strip()
+                )
+                next_backup.pop(flag, None)
+            next_data["backup"] = next_backup
+    # image_storage
+    if "image_storage" in next_data:
+        prev_storage = previous_data.get("image_storage") if isinstance(previous_data.get("image_storage"), dict) else {}
+        next_storage = next_data.get("image_storage")
+        if isinstance(next_storage, dict) and isinstance(prev_storage, dict):
+            next_storage = dict(next_storage)
+            next_storage["webdav_password"] = _masked_secret_keep_previous(
+                next_storage.get("webdav_password"),
+                next_storage.get("has_webdav_password"),
+                str(prev_storage.get("webdav_password") or "").strip(),
+            )
+            next_storage.pop("has_webdav_password", None)
+            next_data["image_storage"] = next_storage
+    # ai_review
+    if "ai_review" in next_data:
+        prev_review = previous_data.get("ai_review") if isinstance(previous_data.get("ai_review"), dict) else {}
+        next_review = next_data.get("ai_review")
+        if isinstance(next_review, dict) and isinstance(prev_review, dict):
+            next_review = dict(next_review)
+            next_review["api_key"] = _masked_secret_keep_previous(
+                next_review.get("api_key"), next_review.get("has_api_key"), str(prev_review.get("api_key") or "").strip()
+            )
+            next_review.pop("has_api_key", None)
+            next_data["ai_review"] = next_review
 
 
 def _validate_image_storage_settings(settings: dict[str, object]) -> None:
@@ -680,6 +744,14 @@ class ConfigStore:
         value = self.data.get("ai_review")
         return value if isinstance(value, dict) else {}
 
+    def get_public_ai_review_settings(self) -> dict[str, object]:
+        """ai_review 对外脱敏：api_key 不回传明文，仅给 has_* 标志。"""
+        public = dict(self.ai_review)
+        api_key = str(public.get("api_key") or "").strip()
+        public["api_key"] = ""
+        public["has_api_key"] = bool(api_key)
+        return public
+
     @property
     def global_system_prompt(self) -> str:
         return str(self.data.get("global_system_prompt") or "").strip()
@@ -748,10 +820,10 @@ class ConfigStore:
             data["auto_remove_rate_limited_accounts"] = self.auto_remove_rate_limited_accounts
             data["log_levels"] = self.log_levels
             data["sensitive_words"] = self.sensitive_words
-            data["ai_review"] = self.ai_review
+            data["ai_review"] = self.get_public_ai_review_settings()
             data["global_system_prompt"] = self.global_system_prompt
-            data["backup"] = self.get_backup_settings()
-            data["image_storage"] = self.get_image_storage_settings()
+            data["backup"] = _public_backup_settings(self.get_backup_settings())
+            data["image_storage"] = _public_image_storage_settings(self.get_image_storage_settings())
             data["chat_completion_cache"] = self.get_chat_completion_cache_settings()
             data["proxy_runtime"] = self.get_public_proxy_runtime_settings()
             data["fallback_proxy"] = self.get_proxy_fallback_settings()
@@ -795,6 +867,7 @@ class ConfigStore:
             next_data = _promote_legacy_settings(self.data)
             next_data.update(_promote_legacy_settings(dict(data or {})))
             next_data = _promote_legacy_settings(next_data)
+            _preserve_masked_secrets(self.data, next_data)
             if "backup" in next_data:
                 next_data["backup"] = _normalize_backup_settings(next_data.get("backup"))
             if "image_storage" in next_data:

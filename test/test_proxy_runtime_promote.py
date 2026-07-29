@@ -54,7 +54,7 @@ class PromoteLegacyProxyRuntimeTests(unittest.TestCase):
         self.assertEqual(clearance["flaresolverr_url"], "http://nested:8191")
 
     def test_nested_disabled_with_flat_url_promoted(self) -> None:
-        """旧脚本写了扁平键，nested 仍是默认关闭 → 应提升。"""
+        """nested 键已存在（即使默认全关）即视为已接管，扁平键不得再强制开启（B14 幂等）。"""
         data = {
             "flaresolverr_url": "http://jovemage-flaresolverr:8191",
             "clearance_mode": "flaresolverr",
@@ -70,13 +70,10 @@ class PromoteLegacyProxyRuntimeTests(unittest.TestCase):
         }
         promoted = _promote_legacy_proxy_runtime(data)
         runtime = _normalize_proxy_runtime_settings(promoted.get("proxy_runtime"))
-        self.assertTrue(runtime["enabled"])
-        self.assertTrue(runtime["clearance"]["enabled"])
-        self.assertEqual(runtime["clearance"]["mode"], "flaresolverr")
-        self.assertEqual(
-            runtime["clearance"]["flaresolverr_url"],
-            "http://jovemage-flaresolverr:8191",
-        )
+        # nested 已存在 → 尊重其显式关闭，不被扁平键 force-enable
+        self.assertFalse(runtime["enabled"])
+        self.assertFalse(runtime["clearance"]["enabled"])
+        self.assertEqual(runtime["clearance"]["mode"], "none")
 
     def test_no_flat_keys_unchanged(self) -> None:
         data = {"auth-key": "x", "proxy_pool": []}
