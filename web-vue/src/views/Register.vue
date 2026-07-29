@@ -885,6 +885,7 @@ const providerTypeOptions = [
   { value: 'moemail', label: 'MoEmail' },
   { value: 'inbucket', label: 'Inbucket' },
   { value: 'ahem', label: 'AHEM' },
+  { value: 'jovemail', label: 'JoveMail' },
   { value: 'duckmail', label: 'DuckMail' },
   { value: 'gptmail', label: 'GPTMail' },
   { value: 'yyds_mail', label: 'YYDS Mail' },
@@ -933,6 +934,7 @@ const providerTypeKeys: Record<string, string[]> = {
   moemail: ['api_base', 'api_key', 'domain', 'expiry_time'],
   inbucket: ['api_base', 'domain', 'random_subdomain'],
   ahem: ['api_base', 'domain'],
+  jovemail: ['api_base', 'api_key', 'domain'],
   duckmail: ['api_key', 'default_domain'],
   gptmail: ['key_mode', 'api_key', 'default_domain', 'local_compose'],
   yyds_mail: ['api_base', 'api_key', 'domain', 'subdomain', 'wildcard'],
@@ -1060,6 +1062,8 @@ function defaultProvider(type = 'cloudmail_gen'): RegisterProvider {
       return { ...base, api_base: '', domain: [], random_subdomain: true }
     case 'ahem':
       return { ...base, api_base: '', domain: [] }
+    case 'jovemail':
+      return { ...base, api_base: '', api_key: '', domain: [] }
     case 'duckmail':
       return { ...base, api_key: '', default_domain: 'duckmail.sbs' }
     case 'gptmail':
@@ -1256,6 +1260,10 @@ function providerRequirementMessages(provider: RegisterProvider) {
     case 'ahem':
       requireValue(provider.api_base, 'API Base')
       break
+    case 'jovemail':
+      requireValue(provider.api_base, '服务地址')
+      requireValue(provider.api_key, 'API Key')
+      break
     case 'duckmail':
       requireValue(provider.api_key, 'API Key')
       break
@@ -1303,11 +1311,11 @@ function updateProviderField(index: number, key: string, value: unknown) {
 }
 
 function providerUsesApiBase(provider: RegisterProvider) {
-  return ['cloudmail_gen', 'cloudflare_temp_email', 'moemail', 'inbucket', 'ahem', 'yyds_mail', 'ddg_mail', 'outlook_email_api'].includes(providerType(provider))
+  return ['cloudmail_gen', 'cloudflare_temp_email', 'moemail', 'inbucket', 'ahem', 'jovemail', 'yyds_mail', 'ddg_mail', 'outlook_email_api'].includes(providerType(provider))
 }
 
 function providerUsesApiKey(provider: RegisterProvider) {
-  return ['tempmail_lol', 'moemail', 'duckmail', 'gptmail', 'yyds_mail', 'outlook_email_api'].includes(providerType(provider))
+  return ['tempmail_lol', 'moemail', 'duckmail', 'gptmail', 'yyds_mail', 'jovemail', 'outlook_email_api'].includes(providerType(provider))
 }
 
 function providerUsesPublicGptMailKey(provider: RegisterProvider) {
@@ -1323,14 +1331,14 @@ function providerUsesDefaultDomain(provider: RegisterProvider) {
 }
 
 function providerUsesDomainList(provider: RegisterProvider) {
-  return ['cloudmail_gen', 'tempmail_lol', 'cloudflare_temp_email', 'moemail', 'inbucket', 'ahem', 'yyds_mail'].includes(providerType(provider))
+  return ['cloudmail_gen', 'tempmail_lol', 'cloudflare_temp_email', 'moemail', 'inbucket', 'ahem', 'jovemail', 'yyds_mail'].includes(providerType(provider))
 }
 
 function apiBaseLabel(provider: RegisterProvider) {
   const type = providerType(provider)
   if (type === 'cloudmail_gen') return 'CloudMail URL'
   if (type === 'ddg_mail') return 'CF API Base'
-  if (type === 'outlook_email_api') return '服务地址'
+  if (type === 'outlook_email_api' || type === 'jovemail') return '服务地址'
   return 'API Base'
 }
 
@@ -1338,6 +1346,7 @@ function apiBasePlaceholder(provider: RegisterProvider) {
   const type = providerType(provider)
   if (type === 'yyds_mail') return 'https://maliapi.215.im/v1'
   if (type === 'ahem') return 'https://your-ahem-host/api'
+  if (type === 'jovemail') return 'https://your-jovemail-host'
   if (type === 'outlook_email_api') return 'https://your-outlook-email-host'
   return ''
 }
@@ -1346,6 +1355,7 @@ function domainLabel(provider: RegisterProvider) {
   const type = providerType(provider)
   if (type === 'inbucket') return '基础域名'
   if (type === 'ahem') return '允许域名'
+  if (type === 'jovemail') return '优先域名'
   if (type === 'cloudmail_gen') return '邮箱域名'
   return '域名'
 }
@@ -1354,6 +1364,7 @@ function domainPlaceholder(provider: RegisterProvider) {
   const type = providerType(provider)
   if (type === 'inbucket') return '每行一个基础域名，可配合随机子域名'
   if (type === 'ahem') return '每行一个允许域名；可留空，运行时从 /properties 拉取'
+  if (type === 'jovemail') return '每行一个优先域名；可留空，由 JoveMail 选择可用公共域'
   if (type === 'cloudmail_gen') return '每行一个邮箱域名'
   if (type === 'cloudflare_temp_email') return '每行一个域名'
   if (type === 'moemail') return '每行一个域名'

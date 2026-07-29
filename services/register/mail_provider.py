@@ -1611,6 +1611,136 @@ class AhemMailProvider(BaseMailProvider):
         self.session.close()
 
 
+class JoveMailProvider(BaseMailProvider):
+    """JoveMail 第一方临时邮箱。
+
+    - POST /api/generate-email  生成地址（可选 prefix/domain）
+    - GET  /api/emails/next     取下一封未读（含 HTML，自动标已读）
+    配置项：api_base、api_key；可选 domain 列表。不内置任何部署地址。
+    """
+
+    name = "jovemail"
+
+    def __init__(self, entry: dict, conf: dict):
+        super().__init__(conf, str(entry.get("provider_ref") or ""))
+        raw_base = str(entry.get("api_base") or "").strip().rstrip("/")
+        if not raw_base:
+            raise RuntimeError("JoveMail 需要配置 api_base")
+        # 允许用户填根地址或 /api 结尾，统一成根 URL 再拼 /api/...
+        if raw_base.lower().endswith("/api"):
+            raw_base = raw_base[:-4].rstrip("/")
+        if not raw_base:
+            raise RuntimeError("JoveMail 需要配置 api_base")
+        self.api_base = raw_base
+        self.api_key = str(entry.get("api_key") or "").strip()
+        if not self.api_key:
+            raise RuntimeError("JoveMail 需要配置 api_key")
+        raw_domains = entry.get("domain") or []
+        if isinstance(raw_domains, list):
+            self.domain = [str(item).strip() for item in raw_domains if str(item).strip()]
+        else:
+            self.domain = [str(raw_domains).strip()] if str(raw_domains).strip() else []
+        self.session = _create_session(conf)
+        self.session.headers.update({
+            "User-Agent": conf["user_agent"],
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "X-API-Key": self.api_key,
+        })
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        params: dict | None = None,
+        payload: dict | None = None,
+        expected: tuple[int, ...] = (200,),
+    ):
+        resp = self.session.request(
+            method.upper(),
+            f"{self.api_base}{path}",
+            params=params,
+            json=payload,
+            timeout=self.conf["request_timeout"],
+        )
+        if resp.status_code not in expected:
+            raise RuntimeError(
+                f"JoveMail 请求失败: {method} {path}, HTTP {resp.status_code}, body={resp.text[:300]}"
+            )
+        if resp.status_code == 204:
+            return {}
+        content_type = str(resp.headers.get("content-type") or "").lower()
+        if "application/json" not in content_type and not (resp.text or "").strip():
+            return {}
+        try:
+            data = resp.json()
+        except Exception as exc:
+            raise RuntimeError(f"JoveMail {method} {path} 返回非 JSON: {resp.text[:200]}") from exc
+        if isinstance(data, dict):
+            if data.get("success") is False:
+                error = data.get("error") or data.get("message") or resp.text[:200]
+                raise RuntimeError(f"JoveMail {method} {path} 失败: {error}")
+            if "data" in data:
+                return data["data"]
+        return data
+
+    def create_mailbox(self, username: str | None = None) -> dict[str, Any]:
+        payload: dict[str, Any] = {"share": False}
+        if username:
+            payload["prefix"] = str(username).strip()
+        if self.domain:
+            payload["domain"] = _next_domain(self.domain)
+        data = self._request("POST", "/api/generate-email", payload=payload, expected=(200, 201))
+        if not isinstance(data, dict):
+            raise RuntimeError("JoveMail 生成邮箱返回结构异常")
+        address = str(data.get("email") or "").strip()
+        if not address:
+            raise RuntimeError("JoveMail 生成邮箱缺少 email")
+        local_part = str(data.get("local_part") or address.partition("@")[0]).strip()
+        host = str(data.get("host") or data.get("root_domain") or address.partition("@")[2]).strip()
+        return {
+            "provider": self.name,
+            "provider_ref": self.provider_ref,
+            "address": address,
+            "mailbox_name": local_part,
+            "domain": host,
+            "domain_id": data.get("domain_id"),
+        }
+
+    def fetch_latest_message(self, mailbox: dict[str, Any]) -> dict[str, Any] | None:
+        address = str(mailbox.get("address") or "").strip()
+        if not address:
+            raise RuntimeError("JoveMail 缺少 address")
+        data = self._request("GET", "/api/emails/next", params={"email": address})
+        if not isinstance(data, dict) or not data.get("has_email"):
+            return None
+        message = data.get("message")
+        if not isinstance(message, dict):
+            return None
+        text_content = str(message.get("text_content") or "")
+        html_content = str(message.get("html_content") or "")
+        code = str(message.get("verification_code") or "").strip()
+        if code and code not in text_content and code not in html_content:
+            text_content = f"{code}\n{text_content}".strip()
+        if not text_content and not html_content and code:
+            text_content = code
+        return {
+            "provider": self.name,
+            "mailbox": address,
+            "message_id": str(message.get("id") or ""),
+            "subject": str(message.get("subject") or ""),
+            "sender": str(message.get("from_address") or message.get("from_name") or ""),
+            "text_content": text_content,
+            "html_content": html_content,
+            "received_at": _parse_received_at(message.get("created_at") or message.get("timestamp")),
+            "to": message.get("recipient"),
+            "raw": message,
+        }
+
+    def close(self) -> None:
+        self.session.close()
+
+
 class OutlookEmailApiProvider(BaseMailProvider):
     """对接 outlookEmail 管理端的对外 API。
 
@@ -2495,6 +2625,8 @@ def _create_provider(mail_config: dict, provider: str = "", provider_ref: str = 
         return InbucketMailProvider(entry, conf)
     if entry["type"] == "ahem":
         return AhemMailProvider(entry, conf)
+    if entry["type"] == "jovemail":
+        return JoveMailProvider(entry, conf)
     if entry["type"] == "outlook_email_api":
         return OutlookEmailApiProvider(entry, conf)
     if entry["type"] == "yyds_mail":
