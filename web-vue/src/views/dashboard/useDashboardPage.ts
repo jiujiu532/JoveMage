@@ -8,6 +8,7 @@ import {
   chartColors,
   getModelColor,
   filterValidModels,
+  getChartSurfaceTokens,
 } from '@/lib/chartTheme'
 import { DEFAULT_DASHBOARD_TIME_RANGE, type DashboardTimeRange } from '@/lib/timeRanges'
 
@@ -63,54 +64,58 @@ export function useDashboardPage() {
   watch(timeRangeResponseTime, createChartWatcher('responseTime', updateResponseTimeChart))
 
   function createDefaultStats() {
+    // StatCard(nanocat) 图标容器默认 rounded-full；用 !rounded + 2px ink 描边覆盖成 Bauhaus 直边小方块
+    // 底色/字色走 --bauhaus-* / --tone-* 令牌，深浅模式自动对照
+    const iconBox =
+      '!rounded-[var(--radius)] border-2 border-[var(--bauhaus-ink)] shadow-none'
     return [
       {
         label: '账号总数',
         value: '0',
         meta: '',
         icon: 'lucide:users',
-        iconBg: 'bg-sky-100',
-        iconColor: 'text-sky-600'
+        iconBg: `${iconBox} bg-[hsl(var(--tone-info-bg))]`,
+        iconColor: 'text-[var(--bauhaus-ink)]',
       },
       {
         label: '正常账号',
         value: '0',
         meta: '',
         icon: 'lucide:check-circle',
-        iconBg: 'bg-emerald-100',
-        iconColor: 'text-emerald-600'
+        iconBg: `${iconBox} bg-[color-mix(in_srgb,var(--bauhaus-blue)_18%,transparent)]`,
+        iconColor: 'text-[var(--bauhaus-blue)]',
       },
       {
         label: '限流账号',
         value: '0',
         meta: '',
         icon: 'lucide:clock',
-        iconBg: 'bg-amber-100',
-        iconColor: 'text-amber-600'
+        iconBg: `${iconBox} bg-[var(--bauhaus-postit)]`,
+        iconColor: 'text-[var(--bauhaus-ink)]',
       },
       {
         label: '异常账号',
         value: '0',
         meta: '',
         icon: 'lucide:alert-circle',
-        iconBg: 'bg-rose-100',
-        iconColor: 'text-rose-600'
+        iconBg: `${iconBox} bg-[hsl(var(--tone-error-bg))]`,
+        iconColor: 'text-[hsl(var(--tone-error-strong))]',
       },
       {
         label: '禁用账号',
         value: '0',
         meta: '',
         icon: 'lucide:ban',
-        iconBg: 'bg-slate-100',
-        iconColor: 'text-slate-600'
+        iconBg: `${iconBox} bg-[var(--bauhaus-paper-2)]`,
+        iconColor: 'text-[var(--bauhaus-ink)]',
       },
       {
         label: '剩余额度',
         value: '0',
         meta: '',
         icon: 'lucide:coins',
-        iconBg: 'bg-cyan-100',
-        iconColor: 'text-cyan-600'
+        iconBg: `${iconBox} bg-[hsl(var(--tone-info-bg))]`,
+        iconColor: 'text-[var(--bauhaus-blue)]',
       },
     ]
   }
@@ -209,6 +214,33 @@ export function useDashboardPage() {
     window.removeEventListener('resize', handleResize)
   }
 
+  // 主题切换时重绘图表（tooltip / 轴线 / 图例随 data-theme）
+  let themeObserver: MutationObserver | null = null
+  let lastResolvedTheme = typeof document !== 'undefined'
+    ? (document.documentElement.dataset.theme || 'light')
+    : 'light'
+
+  function bindThemeListener() {
+    if (typeof document === 'undefined' || themeObserver) return
+    lastResolvedTheme = document.documentElement.dataset.theme || 'light'
+    themeObserver = new MutationObserver(() => {
+      const next = document.documentElement.dataset.theme || 'light'
+      if (next === lastResolvedTheme) return
+      lastResolvedTheme = next
+      if (!chartsBootstrapped.value) return
+      updateAllCharts('refresh')
+    })
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    })
+  }
+
+  function unbindThemeListener() {
+    themeObserver?.disconnect()
+    themeObserver = null
+  }
+
   function applyAnimatedOption(key: ChartKey, option: Record<string, unknown>, mode: RenderMode = 'refresh') {
     const chart = charts[key]
     if (!chart) return
@@ -241,10 +273,15 @@ export function useDashboardPage() {
     key: ChartKey,
     updateFn: (mode?: RenderMode) => void
   ) {
-    const echarts = (window as any).echarts as { init: (el: HTMLElement) => ChartInstance } | undefined
-    if (!echarts || !ref) return
-    charts[key] = echarts.init(ref)
-    updateFn('initial')
+    try {
+      const echarts = (window as any).echarts as { init: (el: HTMLElement) => ChartInstance } | undefined
+      if (!echarts || !ref) return
+      charts[key] = echarts.init(ref)
+      updateFn('initial')
+    } catch (error) {
+      // 图表初始化失败不应阻塞 dashboard 渲染
+      console.warn('[dashboard] 图表初始化失败:', key, error)
+    }
   }
 
   function bootstrapCharts() {
@@ -259,12 +296,17 @@ export function useDashboardPage() {
   }
 
   function updateAllCharts(mode: RenderMode = 'refresh') {
-    updateTrendChart(mode)
-    updateModelChart(mode)
-    updateSuccessRateChart(mode)
-    updateHourlyRequestsChart(mode)
-    updateModelRankChart(mode)
-    updateResponseTimeChart(mode)
+    try {
+      updateTrendChart(mode)
+      updateModelChart(mode)
+      updateSuccessRateChart(mode)
+      updateHourlyRequestsChart(mode)
+      updateModelRankChart(mode)
+      updateResponseTimeChart(mode)
+    } catch (error) {
+      // 图表 option 构造/setOption 失败不应阻塞 dashboard 渲染
+      console.warn('[dashboard] 图表更新失败:', error)
+    }
   }
 
   function resetChartFirstRenderState() {
@@ -335,11 +377,13 @@ export function useDashboardPage() {
 
   onMounted(async () => {
     bindResizeListener()
+    bindThemeListener()
     await reloadDashboardOnEnter()
   })
 
   onActivated(() => {
     bindResizeListener()
+    bindThemeListener()
     if (!firstActivationSkipped) {
       firstActivationSkipped = true
       return
@@ -349,12 +393,14 @@ export function useDashboardPage() {
 
   onDeactivated(() => {
     unbindResizeListener()
+    unbindThemeListener()
     dashboardEntrySeq += 1
     pauseDashboardViewState()
   })
 
   onBeforeUnmount(() => {
     unbindResizeListener()
+    unbindThemeListener()
     dashboardEntrySeq += 1
     clearChartBootstrapTimer()
     disposeCharts()
@@ -842,6 +888,7 @@ export function useDashboardPage() {
         },
         formatter: (params: any) => {
           if (!params || params.length === 0) return ''
+          const divider = getChartSurfaceTokens().lineSoft
           let result = `<div style="font-weight: 600; margin-bottom: 4px;">${params[0].axisValue}</div>`
           let total = 0
           params.forEach((item: any) => {
@@ -851,7 +898,7 @@ export function useDashboardPage() {
               <span style="font-weight: 600;">${item.value || 0}</span>
             </div>`
           })
-          result += `<div style="margin-top: 6px; padding-top: 6px; border-top: 1px solid #e5e5e5; font-weight: 600;">
+          result += `<div style="margin-top: 6px; padding-top: 6px; border-top: 1px solid ${divider}; font-weight: 600;">
             总计: ${total}
           </div>`
           return result
@@ -929,7 +976,7 @@ export function useDashboardPage() {
         },
         splitLine: {
           lineStyle: {
-            color: '#e5e5e5',
+            color: theme.yAxis.splitLine.lineStyle.color,
             type: 'solid',
           },
         },
@@ -963,7 +1010,7 @@ export function useDashboardPage() {
             show: true,
             position: 'right',
             fontSize: 11,
-            color: '#6b6b6b',
+            color: getChartSurfaceTokens().grey,
             formatter: '{c}',
           },
         },

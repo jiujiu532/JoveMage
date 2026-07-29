@@ -36,19 +36,20 @@ defineEmits<{
 
 <style scoped>
 .detail-text-block {
-  border: 1px solid hsl(var(--border));
+  border: 1px solid var(--bauhaus-line-soft);
   border-radius: var(--radius);
   background: hsl(var(--card));
 }
 
 .detail-text-block--tone-danger {
-  border-color: rgb(244 63 94 / 0.3);
-  background: rgb(244 63 94 / 0.1);
+  /* 覆盖全局 surface 合同的 line-soft 描边 */
+  border-color: hsl(var(--tone-error-border)) !important;
+  background: hsl(var(--tone-error-bg)) !important;
 }
 
 .detail-text-block--tone-warning {
-  border-color: rgb(245 158 11 / 0.3);
-  background: rgb(245 158 11 / 0.1);
+  border-color: hsl(var(--tone-warning-border)) !important;
+  background: hsl(var(--tone-warning-bg)) !important;
 }
 
 .detail-text-block--tone-muted {
@@ -60,7 +61,7 @@ defineEmits<{
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  border-bottom: 1px solid hsl(var(--border) / 0.7);
+  border-bottom: 1px solid var(--bauhaus-line-soft);
   padding: 8px 12px;
 }
 

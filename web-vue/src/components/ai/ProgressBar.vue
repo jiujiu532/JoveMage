@@ -32,14 +32,14 @@ const normalizedValue = computed(() => {
 .progress-bar {
   height: 0.5rem;
   overflow: hidden;
-  border-radius: 999px;
+  border: 1px solid var(--bauhaus-ink);
+  border-radius: var(--radius);
   background: hsl(var(--muted));
 }
 
 .progress-bar__fill {
   height: 100%;
-  border-radius: inherit;
-  background: hsl(var(--primary));
+  background: var(--bauhaus-blue);
   transition: width 180ms ease;
 }
 </style>

@@ -65,13 +65,26 @@ defineEmits<{
 }
 
 .detail-field-card__label {
-  color: hsl(var(--muted-foreground));
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--bauhaus-grey);
 }
 
 .detail-field-card__value {
   margin-top: 4px;
   overflow-wrap: anywhere;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  color: var(--bauhaus-ink);
+}
+
+html[data-theme="dark"] .detail-field-card__value {
   color: hsl(var(--foreground));
 }
 

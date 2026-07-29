@@ -847,8 +847,8 @@ defineExpose({
   min-height: 2rem;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--ui-control-border, hsl(var(--border)));
-  border-radius: 999px;
+  border: 2px solid var(--bauhaus-line-soft, var(--ui-control-border, hsl(var(--border))));
+  border-radius: var(--radius);
   background: var(--ui-control-bg, hsl(var(--background)));
   color: var(--ui-fg-muted, hsl(var(--muted-foreground)));
   padding: 0.35rem 0.875rem;
@@ -859,7 +859,7 @@ defineExpose({
 
 .studio-load-earlier-button:hover,
 .studio-load-earlier-button:focus-visible {
-  border-color: var(--ui-control-hover-border, hsl(var(--foreground) / 0.18));
+  border-color: var(--bauhaus-ink, var(--ui-control-hover-border, hsl(var(--foreground) / 0.18)));
   background: var(--ui-control-hover-bg, hsl(var(--secondary)));
   color: var(--ui-fg-strong, hsl(var(--foreground)));
 }
@@ -917,8 +917,8 @@ defineExpose({
   flex: 0 0 1.75rem;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--ui-control-border, hsl(var(--border)));
-  border-radius: 999px;
+  border: 2px solid var(--bauhaus-ink, var(--ui-control-border, hsl(var(--border))));
+  border-radius: 999px; /* 产品头像保留圆形 */
   background: var(--ui-control-bg, hsl(var(--background)));
   color: var(--ui-fg-muted, hsl(var(--muted-foreground)));
   font-size: 0.6875rem;
@@ -926,7 +926,7 @@ defineExpose({
 }
 
 .chat-message-avatar-user {
-  border-color: var(--ui-accent-border, hsl(var(--foreground) / 0.18));
+  border-color: var(--bauhaus-ink, var(--ui-accent-border, hsl(var(--foreground) / 0.18)));
   background: var(--ui-accent-soft, hsl(var(--secondary)));
   color: var(--ui-accent-strong, hsl(var(--foreground)));
 }
@@ -964,8 +964,8 @@ defineExpose({
   justify-content: center;
   gap: 0.3125rem;
   overflow: hidden;
-  border: 1px solid transparent;
-  border-radius: 999px;
+  border: 2px solid transparent;
+  border-radius: var(--radius);
   background: transparent;
   color: var(--ui-fg-muted, hsl(var(--muted-foreground)));
   padding: 0.25rem 0.625rem;
@@ -977,7 +977,7 @@ defineExpose({
 
 .chat-input-action:hover,
 .chat-input-action:focus-visible {
-  border-color: var(--ui-control-hover-border, hsl(var(--foreground) / 0.18));
+  border-color: var(--bauhaus-ink, var(--ui-control-hover-border, hsl(var(--foreground) / 0.18)));
   background: var(--ui-control-hover-bg, hsl(var(--secondary)));
   color: var(--ui-fg-strong, hsl(var(--foreground)));
 }
@@ -1021,14 +1021,18 @@ defineExpose({
 
 .chat-message-bubble {
   max-width: 100%;
-  border: 1px solid var(--ui-panel-border, hsl(var(--border)));
-  border-radius: 0.25rem;
+  border: 2px solid var(--bauhaus-line-soft, var(--ui-panel-border, hsl(var(--border))));
+  border-radius: var(--radius);
   background: var(--ui-panel-bg, hsl(var(--card)));
   box-shadow: none;
   color: var(--ui-fg-strong, hsl(var(--foreground)));
   padding: 0.625rem 0.875rem;
   font-size: 0.875rem;
   line-height: 1.75;
+}
+
+html[data-theme='dark'] .chat-message-bubble {
+  border-color: var(--bauhaus-line-soft, hsl(var(--border)));
 }
 
 .chat-message-bubble-wrap {
@@ -1067,7 +1071,7 @@ defineExpose({
   align-items: center;
   gap: 0.25rem;
   margin-top: 0.5rem;
-  border-radius: 999px;
+  border-radius: var(--radius);
   color: hsl(var(--muted-foreground));
   font-size: 0.75rem;
   font-weight: 650;
@@ -1082,13 +1086,13 @@ defineExpose({
 
 .chat-message-bubble-user {
   --studio-bubble-fade-bg: hsl(var(--secondary));
-  border-color: var(--ui-accent-border, hsl(var(--foreground) / 0.16));
+  border-color: var(--bauhaus-ink, var(--ui-accent-border, hsl(var(--foreground) / 0.16)));
   background: var(--ui-accent-soft, hsl(var(--secondary)));
 }
 
 .chat-message-bubble-assistant {
   --studio-bubble-fade-bg: hsl(var(--card));
-  border-color: var(--ui-panel-border, hsl(var(--border)));
+  border-color: var(--bauhaus-line-soft, var(--ui-panel-border, hsl(var(--border))));
 }
 
 .chat-message-bubble-image {
@@ -1127,9 +1131,9 @@ defineExpose({
   align-items: center;
   gap: 0.42rem;
   margin-top: 0.65rem;
-  border: 1px solid hsl(var(--primary) / 0.18);
-  border-radius: 0.25rem;
-  background: hsl(var(--primary) / 0.1);
+  border: 2px solid var(--bauhaus-line-soft, hsl(var(--primary) / 0.18));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bauhaus-blue) 12%, transparent);
   color: hsl(var(--foreground));
   padding: 0.34rem 0.68rem 0.34rem 0.5rem;
   font-size: 0.72rem;
@@ -1141,7 +1145,7 @@ defineExpose({
 
 .studio-search-source-chip-icon {
   flex: 0 0 auto;
-  color: hsl(var(--primary));
+  color: var(--bauhaus-blue, hsl(var(--primary)));
 }
 
 .studio-search-source-chip-label {
@@ -1154,15 +1158,15 @@ defineExpose({
   justify-content: center;
   min-width: 1.15rem;
   height: 1.15rem;
-  border-radius: 999px;
-  background: hsl(var(--primary) / 0.13);
-  color: hsl(var(--primary));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bauhaus-blue) 16%, transparent);
+  color: var(--bauhaus-blue, hsl(var(--primary)));
   font-size: 0.68rem;
   font-weight: 820;
 }
 
 .studio-search-source-chip small {
-  border-left: 1px solid hsl(var(--primary) / 0.16);
+  border-left: 1px solid var(--bauhaus-line-soft, hsl(var(--primary) / 0.16));
   padding-left: 0.42rem;
   color: hsl(var(--muted-foreground));
   font-size: 0.68rem;
@@ -1171,8 +1175,8 @@ defineExpose({
 
 .studio-search-source-chip:hover,
 .studio-search-source-chip:focus-visible {
-  border-color: hsl(var(--primary) / 0.34);
-  background: hsl(var(--primary) / 0.14);
+  border-color: var(--bauhaus-ink, hsl(var(--primary) / 0.34));
+  background: color-mix(in srgb, var(--bauhaus-blue) 18%, transparent);
   box-shadow: none;
   transform: none;
 }
@@ -1186,8 +1190,8 @@ defineExpose({
 .studio-search-image-group {
   display: grid;
   gap: 0.42rem;
-  border: 1px solid hsl(var(--border) / 0.68);
-  border-radius: 0.25rem;
+  border: 2px solid var(--bauhaus-line-soft, hsl(var(--border) / 0.68));
+  border-radius: var(--radius);
   background: hsl(var(--muted) / 0.32);
   padding: 0.56rem 0.62rem;
 }
@@ -1217,8 +1221,8 @@ defineExpose({
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  border: 1px solid hsl(var(--border) / 0.62);
-  border-radius: 999px;
+  border: 2px solid var(--bauhaus-line-soft, hsl(var(--border) / 0.62));
+  border-radius: var(--radius);
   background: hsl(var(--background) / 0.72);
   padding: 0.24rem 0.48rem;
   color: hsl(var(--muted-foreground));
@@ -1245,10 +1249,14 @@ defineExpose({
   min-width: 0;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid hsl(var(--border) / 0.82);
-  border-radius: 0.25rem;
+  border: 2px solid var(--bauhaus-ink, hsl(var(--border) / 0.82));
+  border-radius: var(--radius);
   background: hsl(var(--card));
-  box-shadow: none;
+  box-shadow: var(--shadow-hard-lg);
+}
+
+html[data-theme='dark'] .studio-search-drawer {
+  box-shadow: var(--shadow-hard-soft-lg, var(--shadow-hard-soft));
 }
 
 .studio-search-drawer-header {
@@ -1256,7 +1264,7 @@ defineExpose({
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
-  border-bottom: 1px solid hsl(var(--border) / 0.72);
+  border-bottom: 2px solid var(--bauhaus-line-soft, hsl(var(--border) / 0.72));
   padding: 0.9rem 0.95rem 0.75rem;
 }
 
@@ -1286,8 +1294,8 @@ defineExpose({
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  border: 1px solid hsl(var(--border) / 0.72);
-  border-radius: 999px;
+  border: 2px solid var(--bauhaus-line-soft, hsl(var(--border) / 0.72));
+  border-radius: var(--radius);
   background: hsl(var(--background));
   color: hsl(var(--muted-foreground));
   transition: border-color 0.15s, background 0.15s, color 0.15s;
@@ -1295,7 +1303,7 @@ defineExpose({
 
 .studio-search-drawer-close:hover,
 .studio-search-drawer-close:focus-visible {
-  border-color: hsl(var(--foreground) / 0.18);
+  border-color: var(--bauhaus-ink, hsl(var(--foreground) / 0.18));
   background: hsl(var(--secondary));
   color: hsl(var(--foreground));
 }
@@ -1316,18 +1324,18 @@ defineExpose({
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: start;
   gap: 0.45rem;
-  border: 1px solid hsl(var(--border) / 0.62);
-  border-radius: 0.25rem;
+  border: 2px solid var(--bauhaus-line-soft, hsl(var(--border) / 0.62));
+  border-radius: var(--radius);
   background: hsl(var(--background) / 0.72);
   padding: 0.5rem 0.6rem;
   color: hsl(var(--foreground));
   text-decoration: none;
-  transition: border-color 0.15s, background 0.15s, transform 0.15s;
+  transition: border-color 0.15s, background 0.15s, transform 0.15s, box-shadow 0.15s;
 }
 
 .studio-search-source-card:hover,
 .studio-search-source-card:focus-visible {
-  border-color: hsl(var(--foreground) / 0.2);
+  border-color: var(--bauhaus-ink, hsl(var(--foreground) / 0.2));
   background: hsl(var(--background));
   transform: none;
 }
@@ -1337,9 +1345,13 @@ defineExpose({
 }
 
 .studio-search-source-card.is-highlighted {
-  border-color: var(--ui-accent-border, hsl(var(--primary) / 0.35));
-  background: var(--ui-accent-soft, hsl(var(--primary) / 0.08));
-  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.08);
+  border-color: var(--bauhaus-blue, var(--ui-accent-border, hsl(var(--primary) / 0.35)));
+  background: color-mix(in srgb, var(--bauhaus-blue) 10%, transparent);
+  box-shadow: var(--shadow-hard-sm);
+}
+
+html[data-theme='dark'] .studio-search-source-card.is-highlighted {
+  box-shadow: var(--shadow-hard-soft);
 }
 
 .studio-search-source-index {
@@ -1349,7 +1361,7 @@ defineExpose({
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  border-radius: 999px;
+  border-radius: var(--radius);
   background: hsl(var(--secondary));
   color: hsl(var(--muted-foreground));
   font-size: 0.72rem;
@@ -1448,10 +1460,10 @@ defineExpose({
   align-items: center;
   justify-content: center;
   margin: 0 0.08rem;
-  border: 1px solid var(--ui-accent-border, hsl(var(--primary) / 0.28));
-  border-radius: 999px;
-  background: var(--ui-accent-soft, hsl(var(--primary) / 0.08));
-  color: var(--ui-accent-strong, hsl(var(--primary)));
+  border: 1px solid var(--bauhaus-blue, var(--ui-accent-border, hsl(var(--primary) / 0.28)));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bauhaus-blue) 12%, transparent);
+  color: var(--bauhaus-blue, var(--ui-accent-strong, hsl(var(--primary))));
   font-size: 0.68em;
   font-weight: 800;
   line-height: 1;
@@ -1461,8 +1473,8 @@ defineExpose({
 
 .chat-message-bubble :deep(a[href^='studio-citation:']:hover),
 .chat-message-bubble :deep(a[href^='studio-citation:']:focus-visible) {
-  border-color: var(--ui-accent-border, hsl(var(--primary) / 0.5));
-  background: hsl(var(--primary) / 0.12);
+  border-color: var(--bauhaus-ink, var(--ui-accent-border, hsl(var(--primary) / 0.5)));
+  background: color-mix(in srgb, var(--bauhaus-blue) 18%, transparent);
 }
 
 .chat-markdown {
@@ -1512,15 +1524,15 @@ defineExpose({
   overflow-x: auto;
   overflow-wrap: normal;
   word-break: normal;
-  border: 1px solid hsl(var(--border));
-  border-radius: 0.25rem;
+  border: 2px solid var(--bauhaus-line-soft, hsl(var(--border)));
+  border-radius: var(--radius);
   background: hsl(var(--muted) / 0.45);
   padding: 0.75rem;
   font-size: 0.8125rem;
 }
 
 .chat-markdown :deep(code) {
-  border-radius: 0.25rem;
+  border-radius: var(--radius);
   background: hsl(var(--muted) / 0.55);
   padding: 0.1rem 0.25rem;
   font-size: 0.84em;
@@ -1534,8 +1546,8 @@ defineExpose({
 .chat-markdown :deep(.studio-code-block) {
   margin: 0.75rem 0;
   overflow: hidden;
-  border: 1px solid hsl(var(--border));
-  border-radius: 0.25rem;
+  border: 2px solid var(--bauhaus-ink, hsl(var(--border)));
+  border-radius: var(--radius);
   background: hsl(var(--muted) / 0.36);
 }
 
@@ -1545,7 +1557,7 @@ defineExpose({
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  border-bottom: 1px solid hsl(var(--border));
+  border-bottom: 2px solid var(--bauhaus-line-soft, hsl(var(--border)));
   background: hsl(var(--background) / 0.72);
   padding: 0.35rem 0.5rem 0.35rem 0.75rem;
   color: hsl(var(--muted-foreground));
@@ -1559,8 +1571,8 @@ defineExpose({
   height: 1.55rem;
   align-items: center;
   justify-content: center;
-  border: 1px solid transparent;
-  border-radius: 999px;
+  border: 2px solid transparent;
+  border-radius: var(--radius);
   padding: 0 0.625rem;
   color: hsl(var(--muted-foreground));
   font-size: 0.72rem;
@@ -1571,7 +1583,7 @@ defineExpose({
 
 .chat-markdown :deep(.studio-code-copy:hover),
 .chat-markdown :deep(.studio-code-copy:focus-visible) {
-  border-color: hsl(var(--foreground) / 0.14);
+  border-color: var(--bauhaus-ink, hsl(var(--foreground) / 0.14));
   background: hsl(var(--secondary));
   color: hsl(var(--foreground));
 }
@@ -1648,8 +1660,8 @@ defineExpose({
   display: inline-block;
   width: 0.45rem;
   height: 1rem;
-  border-radius: 999px;
-  background: hsl(var(--primary));
+  border-radius: var(--radius);
+  background: var(--bauhaus-blue, hsl(var(--primary)));
   animation: studio-cursor 1s ease-in-out infinite;
 }
 
@@ -1708,8 +1720,8 @@ defineExpose({
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border: 1px solid hsl(var(--border) / 0.72);
-  border-radius: 0.25rem;
+  border: 2px solid var(--bauhaus-line-soft, hsl(var(--border) / 0.72));
+  border-radius: var(--radius);
   background: hsl(var(--secondary) / 0.35);
   color: inherit;
   cursor: zoom-in;
@@ -1726,7 +1738,7 @@ defineExpose({
   height: 100%;
   max-width: none;
   max-height: none;
-  border-radius: 0.25rem;
+  border-radius: var(--radius);
   object-fit: contain;
 }
 
@@ -1788,12 +1800,16 @@ defineExpose({
   transform: translateX(-50%);
   align-items: center;
   justify-content: center;
-  border: 1px solid hsl(var(--border));
-  border-radius: 0.25rem;
+  border: 2px solid var(--bauhaus-ink, hsl(var(--border)));
+  border-radius: var(--radius);
   background: hsl(var(--card) / 0.95);
   color: hsl(var(--foreground));
-  box-shadow: none;
+  box-shadow: var(--shadow-hard-sm);
   backdrop-filter: none;
+}
+
+html[data-theme='dark'] .studio-scroll-latest {
+  box-shadow: var(--shadow-hard-soft);
 }
 
 @media (max-width: 720px) {

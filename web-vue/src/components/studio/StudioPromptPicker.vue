@@ -231,8 +231,8 @@ watch([keyword, sourceFilter, categoryFilter], () => {
 
 .prompt-picker-filter {
   flex: 0 0 auto;
-  border: 1px solid hsl(var(--border));
-  border-radius: 0.25rem;
+  border: 2px solid var(--bauhaus-line-soft, hsl(var(--border)));
+  border-radius: var(--radius);
   background: hsl(var(--card));
   padding: 0.58rem;
 }
@@ -272,16 +272,22 @@ watch([keyword, sourceFilter, categoryFilter], () => {
   min-width: 0;
   overflow: hidden;
   flex-direction: column;
-  border: 1px solid hsl(var(--border));
-  border-radius: 8px;
+  border: 2px solid var(--bauhaus-line-soft, hsl(var(--border)));
+  border-radius: var(--radius);
   background: hsl(var(--card));
   cursor: pointer;
-  transition: border-color 0.16s ease, transform 0.16s ease;
+  box-shadow: none;
+  transition: border-color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
 }
 
 .prompt-card:hover {
-  border-color: hsl(var(--foreground) / 0.2);
+  border-color: var(--bauhaus-ink, hsl(var(--foreground) / 0.2));
+  box-shadow: var(--shadow-hard);
   transform: translateY(-1px);
+}
+
+html[data-theme='dark'] .prompt-card:hover {
+  box-shadow: var(--shadow-hard-soft);
 }
 
 .prompt-card-media {

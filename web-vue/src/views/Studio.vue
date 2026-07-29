@@ -1618,7 +1618,7 @@ onBeforeUnmount(() => {
   z-index: 10;
   width: 0.75rem;
   cursor: col-resize;
-  border-radius: 999px;
+  border-radius: var(--radius);
   touch-action: none;
   transition: background 0.15s;
 }
@@ -1630,8 +1630,8 @@ onBeforeUnmount(() => {
   left: 50%;
   width: 2px;
   transform: translateX(-50%);
-  border-radius: 999px;
-  background: hsl(var(--foreground) / 0.42);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bauhaus-ink) 55%, transparent);
   content: '';
   opacity: 0;
   transition: opacity 0.15s, background 0.15s;
@@ -1643,7 +1643,7 @@ onBeforeUnmount(() => {
 
 .studio-history-resizer:hover::before,
 :global(.studio-resizing) .studio-history-resizer::before {
-  background: hsl(var(--primary) / 0.58);
+  background: var(--bauhaus-blue);
   opacity: 1;
 }
 
@@ -1654,10 +1654,14 @@ onBeforeUnmount(() => {
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid hsl(var(--border));
-  border-radius: 0.25rem;
+  border: 2px solid var(--bauhaus-ink, hsl(var(--border)));
+  border-radius: var(--radius);
   background: hsl(var(--card) / 0.88);
-  box-shadow: none;
+  box-shadow: var(--shadow-hard-sm);
+}
+
+html[data-theme='dark'] .studio-main {
+  box-shadow: var(--shadow-hard-soft);
 }
 
 .chat-header-bar {
@@ -1706,7 +1710,7 @@ onBeforeUnmount(() => {
 
 .chat-header-action-button,
 .chat-header-icon {
-  border-radius: 0.25rem;
+  border-radius: var(--radius);
 }
 
 :global(.studio-resizing) {

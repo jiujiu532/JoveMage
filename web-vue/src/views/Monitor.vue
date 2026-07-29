@@ -353,10 +353,10 @@ const diagnosticGroups = computed(() => {
       items: [
         { key: 'active', label: '当前并发', value: data?.active ?? 0, meta: `线程容量 ${threadTokens.value}`, valueClass: 'text-foreground' },
         { key: 'completed', label: '完成窗口', value: data?.completed ?? 0, meta: completedWindowText.value, valueClass: 'text-foreground' },
-        { key: 'success', label: '成功率', value: `${data?.success_rate ?? 0}%`, meta: `成功 ${data?.success ?? 0}`, valueClass: 'text-emerald-600 dark:text-emerald-400' },
-        { key: 'failed', label: '失败数', value: data?.failed ?? 0, meta: '窗口内失败', valueClass: Number(data?.failed || 0) > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-foreground' },
-        { key: 'average', label: '平均耗时', value: formatMs(data?.avg_duration_ms), meta: '窗口均值', valueClass: 'text-sky-600 dark:text-sky-400' },
-        { key: 'p95', label: 'P95 耗时', value: formatMs(data?.p95_duration_ms), meta: '慢请求参考', valueClass: 'text-sky-600 dark:text-sky-400' },
+        { key: 'success', label: '成功率', value: `${data?.success_rate ?? 0}%`, meta: `成功 ${data?.success ?? 0}`, valueClass: 'text-[var(--bauhaus-blue)]' },
+        { key: 'failed', label: '失败数', value: data?.failed ?? 0, meta: '窗口内失败', valueClass: Number(data?.failed || 0) > 0 ? 'text-[var(--bauhaus-red)]' : 'text-foreground' },
+        { key: 'average', label: '平均耗时', value: formatMs(data?.avg_duration_ms), meta: '窗口均值', valueClass: 'text-[hsl(var(--tone-info-strong))]' },
+        { key: 'p95', label: 'P95 耗时', value: formatMs(data?.p95_duration_ms), meta: '慢请求参考', valueClass: 'text-[hsl(var(--tone-info-strong))]' },
         { key: 'bottleneck', label: '当前瓶颈', value: data?.bottleneck?.label || '-', meta: 'P95 最大阶段', valueClass: 'text-foreground' },
         { key: 'bottleneck_ms', label: '瓶颈耗时', value: formatMs(bottleneckValue), meta: '阶段 P95', valueClass: 'text-foreground' },
       ],
@@ -366,13 +366,13 @@ const diagnosticGroups = computed(() => {
       title: '入口、账号与出口',
       meta: '本地线程、账号池、代理出口',
       items: [
-        { key: 'handler_queue_ms', label: '入口排队', value: formatMs(p95.handler_queue_ms), meta: '等待后端线程', valueClass: 'text-sky-600 dark:text-sky-400' },
-        { key: 'stream_first_queue_ms', label: '首包排队', value: formatMs(p95.stream_first_queue_ms), meta: '等待流式首包', valueClass: 'text-sky-600 dark:text-sky-400' },
-        { key: 'account_wait_ms', label: '账号等待', value: formatMs(p95.account_wait_ms), meta: '账号池筛选', valueClass: 'text-cyan-600 dark:text-cyan-400' },
-        { key: 'egress_wait_ms', label: '出口等待', value: formatMs(p95.egress_wait_ms), meta: activeEgressMeta(), valueClass: 'text-teal-600 dark:text-teal-400' },
-        { key: 'egress_acquire_ms', label: '出口租约', value: formatMs(p95.egress_acquire_ms), meta: '代理节点并发', valueClass: 'text-teal-600 dark:text-teal-400' },
-        { key: 'entry_account_total_ms', label: '入口账号合计', value: formatMs(entryAccountTotal), meta: '入口 + 首包 + 账号 + 出口', valueClass: 'text-sky-600 dark:text-sky-400' },
-        { key: 'entry_p95', label: '入口排队 P95', value: entryQueueText.value, meta: `线程容量 ${threadTokens.value} · 慢 ${data?.slow_counts?.handler_queue ?? 0}`, valueClass: 'text-sky-600 dark:text-sky-400' },
+        { key: 'handler_queue_ms', label: '入口排队', value: formatMs(p95.handler_queue_ms), meta: '等待后端线程', valueClass: 'text-[hsl(var(--tone-info-strong))]' },
+        { key: 'stream_first_queue_ms', label: '首包排队', value: formatMs(p95.stream_first_queue_ms), meta: '等待流式首包', valueClass: 'text-[hsl(var(--tone-info-strong))]' },
+        { key: 'account_wait_ms', label: '账号等待', value: formatMs(p95.account_wait_ms), meta: '账号池筛选', valueClass: 'text-[var(--bauhaus-blue)]' },
+        { key: 'egress_wait_ms', label: '出口等待', value: formatMs(p95.egress_wait_ms), meta: activeEgressMeta(), valueClass: 'text-[var(--bauhaus-blue)]' },
+        { key: 'egress_acquire_ms', label: '出口租约', value: formatMs(p95.egress_acquire_ms), meta: '代理节点并发', valueClass: 'text-[var(--bauhaus-blue)]' },
+        { key: 'entry_account_total_ms', label: '入口账号合计', value: formatMs(entryAccountTotal), meta: '入口 + 首包 + 账号 + 出口', valueClass: 'text-[hsl(var(--tone-info-strong))]' },
+        { key: 'entry_p95', label: '入口排队 P95', value: entryQueueText.value, meta: `线程容量 ${threadTokens.value} · 慢 ${data?.slow_counts?.handler_queue ?? 0}`, valueClass: 'text-[hsl(var(--tone-info-strong))]' },
         { key: 'local_busy', label: '本地拒绝/繁忙', value: `${localBusy}`, meta: '无号 / 并发 / 策略', valueClass: 'text-foreground' },
       ],
     },
@@ -386,9 +386,9 @@ const diagnosticGroups = computed(() => {
         { key: 'requirements_ms', label: '令牌获取', value: formatMs(p95.requirements_ms), meta: 'requirements / token', valueClass: 'text-foreground' },
         { key: 'prepare_conversation_ms', label: '会话准备', value: formatMs(p95.prepare_conversation_ms), meta: '准备图片会话', valueClass: 'text-foreground' },
         { key: 'generation_start_ms', label: '启动生成', value: formatMs(p95.generation_start_ms), meta: '提交上游请求', valueClass: 'text-foreground' },
-        { key: 'http_connect_ms', label: 'HTTP 建连', value: formatMs(httpConnectTotal), meta: 'DNS + TCP + TLS', valueClass: 'text-sky-600 dark:text-sky-400' },
-        { key: 'http_wait_ms', label: 'HTTP 等待', value: formatMs(p95.http_wait_ms), meta: '发出请求到首包', valueClass: 'text-sky-600 dark:text-sky-400' },
-        { key: 'http_ttfb_ms', label: 'HTTP 首包', value: formatMs(p95.http_ttfb_ms), meta: '请求开始到首包', valueClass: 'text-sky-600 dark:text-sky-400' },
+        { key: 'http_connect_ms', label: 'HTTP 建连', value: formatMs(httpConnectTotal), meta: 'DNS + TCP + TLS', valueClass: 'text-[hsl(var(--tone-info-strong))]' },
+        { key: 'http_wait_ms', label: 'HTTP 等待', value: formatMs(p95.http_wait_ms), meta: '发出请求到首包', valueClass: 'text-[hsl(var(--tone-info-strong))]' },
+        { key: 'http_ttfb_ms', label: 'HTTP 首包', value: formatMs(p95.http_ttfb_ms), meta: '请求开始到首包', valueClass: 'text-[hsl(var(--tone-info-strong))]' },
       ],
     },
     {
@@ -396,11 +396,11 @@ const diagnosticGroups = computed(() => {
       title: '生成与结果',
       meta: '流、轮询、下载',
       items: [
-        { key: 'sse_first_event_ms', label: 'SSE 首事件', value: formatMs(p95.sse_first_event_ms), meta: '首个 data 事件', valueClass: 'text-indigo-600 dark:text-indigo-400' },
-        { key: 'sse_max_gap_ms', label: 'SSE 最大空窗', value: formatMs(p95.sse_max_gap_ms), meta: '两次事件最大间隔', valueClass: 'text-indigo-600 dark:text-indigo-400' },
-        { key: 'conversation_stream_ms', label: '上游生成', value: formatMs(p95.conversation_stream_ms), meta: '会话流响应', valueClass: 'text-emerald-600 dark:text-emerald-400' },
-        { key: 'stream_error_ms', label: '上游断流', value: formatMs(p95.stream_error_ms), meta: 'HTTP2 / SSE', valueClass: 'text-slate-600 dark:text-slate-300' },
-        { key: 'resolve_ms', label: '图片解析', value: formatMs(p95.resolve_ms), meta: 'conversation / file', valueClass: 'text-emerald-600 dark:text-emerald-400' },
+        { key: 'sse_first_event_ms', label: 'SSE 首事件', value: formatMs(p95.sse_first_event_ms), meta: '首个 data 事件', valueClass: 'text-[var(--bauhaus-ink)]' },
+        { key: 'sse_max_gap_ms', label: 'SSE 最大空窗', value: formatMs(p95.sse_max_gap_ms), meta: '两次事件最大间隔', valueClass: 'text-[var(--bauhaus-ink)]' },
+        { key: 'conversation_stream_ms', label: '上游生成', value: formatMs(p95.conversation_stream_ms), meta: '会话流响应', valueClass: 'text-[var(--bauhaus-blue)]' },
+        { key: 'stream_error_ms', label: '上游断流', value: formatMs(p95.stream_error_ms), meta: 'HTTP2 / SSE', valueClass: 'text-[var(--bauhaus-grey)]' },
+        { key: 'resolve_ms', label: '图片解析', value: formatMs(p95.resolve_ms), meta: 'conversation / file', valueClass: 'text-[var(--bauhaus-blue)]' },
         { key: 'download_ms', label: '图片下载', value: formatMs(p95.download_ms), meta: '下载并返回', valueClass: 'text-foreground' },
         { key: 'stream_ms', label: '单图内部', value: formatMs(p95.stream_ms), meta: '上游到结果', valueClass: 'text-foreground' },
         { key: 'total_ms', label: '单图总耗时', value: formatMs(p95.total_ms), meta: '完整链路', valueClass: 'text-foreground' },
@@ -829,18 +829,23 @@ onBeforeUnmount(() => {
   color: hsl(var(--foreground));
 }
 
+/* 边框/底/阴影由全局 surface 合同覆盖；本地只保留间距 */
 .monitor-metric-group {
-  border-radius: var(--radius);
-  border: 1px solid hsl(var(--border));
-  background: hsl(var(--background));
   padding: 14px;
 }
 
+/* 直边 + line-soft 描边；深浅靠 --bauhaus-* 令牌 */
 .monitor-metric-cell {
   min-width: 0;
   border-radius: var(--radius);
-  background: hsl(var(--muted) / 0.34);
+  border: 1px solid var(--bauhaus-line-soft, #c9c2b4);
+  background: var(--bauhaus-paper-2, #f5f0e6);
   padding: 10px 12px;
+}
+
+html[data-theme='dark'] .monitor-metric-cell {
+  border-color: var(--bauhaus-line-soft, #3d3d3d);
+  background: color-mix(in srgb, var(--bauhaus-paper-2, #222) 88%, transparent);
 }
 
 .monitor-paired-panel {

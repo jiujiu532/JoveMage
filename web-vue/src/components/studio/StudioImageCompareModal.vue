@@ -209,10 +209,14 @@ function handleDividerKeydown(event: KeyboardEvent) {
   min-height: 28rem;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid hsl(var(--border) / 0.82);
-  border-radius: 0.25rem;
+  border: 2px solid var(--bauhaus-ink, hsl(var(--border) / 0.82));
+  border-radius: var(--radius);
   background: hsl(var(--card));
-  box-shadow: none;
+  box-shadow: var(--shadow-hard-lg);
+}
+
+html[data-theme='dark'] .studio-compare-modal {
+  box-shadow: var(--shadow-hard-soft-lg, var(--shadow-hard-soft));
 }
 
 .studio-compare-mode {
@@ -242,8 +246,8 @@ function handleDividerKeydown(event: KeyboardEvent) {
   height: min(100%, 34rem);
   min-height: 18rem;
   overflow: hidden;
-  border: 1px solid hsl(var(--border) / 0.72);
-  border-radius: 0.25rem;
+  border: 2px solid var(--bauhaus-line-soft, hsl(var(--border) / 0.72));
+  border-radius: var(--radius);
   background: hsl(var(--background));
   cursor: ew-resize;
   touch-action: none;
@@ -273,15 +277,15 @@ function handleDividerKeydown(event: KeyboardEvent) {
   width: 2px;
   transform: translateX(-1px);
   background: hsl(var(--background));
-  box-shadow: 0 0 0 1px rgb(15 23 42 / 0.25);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--bauhaus-ink) 40%, transparent);
   cursor: ew-resize;
   outline: none;
   touch-action: none;
 }
 
 .studio-compare-divider:focus-visible span {
-  border-color: hsl(var(--foreground) / 0.32);
-  box-shadow: 0 0 0 3px hsl(var(--foreground) / 0.08);
+  border-color: var(--bauhaus-blue);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bauhaus-blue) 30%, transparent);
 }
 
 .studio-compare-divider span {
@@ -294,11 +298,15 @@ function handleDividerKeydown(event: KeyboardEvent) {
   transform: translate(-50%, -50%);
   align-items: center;
   justify-content: center;
-  border: 1px solid hsl(var(--border));
-  border-radius: 0.25rem;
+  border: 2px solid var(--bauhaus-ink, hsl(var(--border)));
+  border-radius: var(--radius);
   background: hsl(var(--background));
   color: hsl(var(--foreground));
-  box-shadow: none;
+  box-shadow: var(--shadow-hard-sm);
+}
+
+html[data-theme='dark'] .studio-compare-divider span {
+  box-shadow: var(--shadow-hard-soft);
 }
 
 .studio-compare-side-by-side {
@@ -326,8 +334,8 @@ function handleDividerKeydown(event: KeyboardEvent) {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border: 1px solid hsl(var(--border) / 0.72);
-  border-radius: 0.25rem;
+  border: 2px solid var(--bauhaus-line-soft, hsl(var(--border) / 0.72));
+  border-radius: var(--radius);
   background: hsl(var(--background));
 }
 
@@ -370,8 +378,8 @@ function handleDividerKeydown(event: KeyboardEvent) {
   display: inline-block;
   width: 0.55rem;
   height: 0.55rem;
-  border: 1px solid hsl(var(--border));
-  border-radius: 999px;
+  border: 1px solid var(--bauhaus-ink, hsl(var(--border)));
+  border-radius: var(--radius);
   background: hsl(var(--background));
 }
 

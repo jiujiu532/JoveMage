@@ -581,12 +581,28 @@ onBeforeUnmount(() => {
   margin: 0 auto;
   flex-direction: column;
   gap: 0.6rem;
-  border: 1px solid hsl(var(--border) / 0.82);
-  border-radius: 0.25rem;
-  background: hsl(var(--background) / 0.96);
+  border: 2px solid var(--bauhaus-ink, hsl(var(--border) / 0.82));
+  border-radius: var(--radius);
+  background: var(--bauhaus-card, hsl(var(--card)));
   padding: 0.7rem;
-  box-shadow: none;
+  box-shadow: var(--shadow-hard-sm);
   pointer-events: auto;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.chat-input-panel-shell:focus-within {
+  border-color: var(--bauhaus-blue);
+  box-shadow: var(--shadow-hard);
+}
+
+html[data-theme='dark'] .chat-input-panel-shell {
+  background: var(--bauhaus-card, hsl(var(--card)));
+  box-shadow: var(--shadow-hard-soft);
+}
+
+html[data-theme='dark'] .chat-input-panel-shell:focus-within {
+  border-color: var(--bauhaus-blue);
+  box-shadow: var(--shadow-hard-soft-lg, 0 0 0 3px color-mix(in srgb, var(--bauhaus-blue) 30%, transparent));
 }
 
 .chat-editing-bar {
@@ -594,9 +610,9 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  border: 1px solid hsl(var(--primary) / 0.18);
-  border-radius: 0.25rem;
-  background: hsl(var(--primary) / 0.07);
+  border: 2px solid color-mix(in srgb, var(--bauhaus-blue) 35%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bauhaus-blue) 10%, transparent);
   padding: 0.45rem 0.65rem;
   color: hsl(var(--foreground));
   font-size: 0.78rem;
@@ -657,7 +673,7 @@ onBeforeUnmount(() => {
   justify-content: center;
   gap: 0.3125rem;
   overflow: hidden;
-  border: 1px solid transparent;
+  border: 2px solid transparent;
   border-radius: var(--radius);
   background: hsl(var(--secondary) / 0.58);
   color: hsl(var(--muted-foreground));
@@ -671,7 +687,7 @@ onBeforeUnmount(() => {
 .chat-input-action:hover,
 .chat-input-action:focus-visible,
 .chat-input-action-active {
-  border-color: hsl(var(--foreground) / 0.22);
+  border-color: var(--bauhaus-ink, hsl(var(--foreground) / 0.22));
   background: hsl(var(--secondary));
   color: hsl(var(--foreground));
 }
@@ -728,7 +744,7 @@ onBeforeUnmount(() => {
 
 .chat-input-count {
   flex: 0 0 auto;
-  border: 1px solid hsl(var(--border) / 0.64);
+  border: 2px solid var(--bauhaus-line-soft, hsl(var(--border) / 0.64));
   border-radius: var(--radius);
   background: hsl(var(--secondary) / 0.48);
   padding: 0.125rem 0.5rem;
@@ -742,7 +758,7 @@ onBeforeUnmount(() => {
   min-height: 2.7rem;
   cursor: text;
   border: 0;
-  border-radius: 0.25rem;
+  border-radius: var(--radius);
   background: transparent;
   transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
 }
@@ -764,7 +780,7 @@ onBeforeUnmount(() => {
   resize: none;
   overflow-y: hidden;
   border: 0;
-  border-radius: 0.25rem;
+  border-radius: var(--radius);
   background: transparent;
   padding: 0.15rem 0.25rem 0.15rem 0.25rem;
   color: hsl(var(--foreground));
@@ -801,8 +817,8 @@ onBeforeUnmount(() => {
   height: 4rem;
   flex: 0 0 auto;
   overflow: hidden;
-  border: 1px solid hsl(var(--border));
-  border-radius: 0.25rem;
+  border: 2px solid var(--bauhaus-line-soft, hsl(var(--border)));
+  border-radius: var(--radius);
   background: hsl(var(--card));
   box-shadow: none;
 }
@@ -857,7 +873,7 @@ onBeforeUnmount(() => {
   flex: 0 0 2.35rem;
   align-items: center;
   justify-content: center;
-  border: 1px solid transparent;
+  border: 2px solid transparent;
   border-radius: var(--radius);
   padding: 0;
   font: inherit;
@@ -875,28 +891,54 @@ onBeforeUnmount(() => {
 }
 
 .chat-input-send-ready {
-  background: hsl(var(--foreground));
-  color: hsl(var(--background));
+  border-color: var(--bauhaus-ink);
+  background: var(--bauhaus-blue);
+  color: #ffffff;
+  box-shadow: var(--shadow-hard-sm);
 }
 
 .chat-input-send-idle {
-  border-color: hsl(var(--border) / 0.72);
-  background: hsl(var(--secondary) / 0.78);
-  color: hsl(var(--muted-foreground));
-  box-shadow: none;
+  border-color: var(--bauhaus-ink);
+  background: transparent;
+  color: var(--bauhaus-ink);
+  box-shadow: var(--shadow-hard-sm);
 }
 
 .chat-input-send-ready:hover,
 .chat-input-send-ready:focus-visible {
-  background: hsl(var(--foreground) / 0.88);
-  box-shadow: none;
+  background: color-mix(in srgb, var(--bauhaus-blue) 88%, #ffffff);
+  border-color: var(--bauhaus-ink);
+  box-shadow: var(--shadow-hard);
   transform: none;
 }
 
+.chat-input-send-idle:hover,
+.chat-input-send-idle:focus-visible {
+  background: color-mix(in srgb, var(--bauhaus-ink) 8%, transparent);
+  border-color: var(--bauhaus-ink);
+}
+
 .chat-input-send-danger {
-  border-color: hsl(var(--tone-error-border) / 0.45);
+  border-color: var(--bauhaus-red, hsl(var(--tone-error-border) / 0.45));
   background: hsl(var(--tone-error-bg));
   color: hsl(var(--tone-error-strong));
+  box-shadow: var(--shadow-hard-sm);
+}
+
+html[data-theme='dark'] .chat-input-send-ready,
+html[data-theme='dark'] .chat-input-send-idle,
+html[data-theme='dark'] .chat-input-send-danger {
+  box-shadow: var(--shadow-hard-soft);
+}
+
+html[data-theme='dark'] .chat-input-send-ready:hover,
+html[data-theme='dark'] .chat-input-send-ready:focus-visible {
+  box-shadow: var(--shadow-hard-soft-lg, var(--shadow-hard-soft));
+}
+
+html[data-theme='dark'] .chat-input-send-idle {
+  color: var(--bauhaus-ink);
+  border-color: var(--bauhaus-ink);
 }
 
 .chat-input-send-label {
@@ -911,11 +953,15 @@ onBeforeUnmount(() => {
   width: min(28rem, calc(100vw - 3rem));
   max-height: min(34rem, calc(100dvh - 8rem));
   overflow-y: auto;
-  border: 1px solid hsl(var(--border));
-  border-radius: 0.25rem;
-  background: hsl(var(--card));
+  border: 2px solid var(--bauhaus-ink, hsl(var(--border)));
+  border-radius: var(--radius);
+  background: var(--bauhaus-card, hsl(var(--card)));
   padding: 0.9rem;
-  box-shadow: none;
+  box-shadow: var(--shadow-hard-lg);
+}
+
+html[data-theme='dark'] .studio-size-popover {
+  box-shadow: var(--shadow-hard-soft-lg, var(--shadow-hard-soft));
 }
 
 .studio-size-section + .studio-size-section {
@@ -941,7 +987,7 @@ onBeforeUnmount(() => {
 
 .studio-choice-button {
   min-height: 2.125rem;
-  border: 1px solid hsl(var(--border));
+  border: 2px solid var(--bauhaus-line-soft, hsl(var(--border)));
   border-radius: var(--radius);
   background: hsl(var(--background));
   color: hsl(var(--muted-foreground));
@@ -952,9 +998,9 @@ onBeforeUnmount(() => {
 
 .studio-choice-button:hover,
 .studio-choice-button.is-active {
-  border-color: hsl(var(--foreground) / 0.22);
-  background: hsl(var(--foreground));
-  color: hsl(var(--background));
+  border-color: var(--bauhaus-ink, hsl(var(--foreground) / 0.22));
+  background: var(--bauhaus-ink, hsl(var(--foreground)));
+  color: var(--bauhaus-paper, hsl(var(--background)));
 }
 
 .studio-size-current {
@@ -981,7 +1027,7 @@ onBeforeUnmount(() => {
 .studio-composer-error {
   width: min(100%, 48rem);
   margin: 0.625rem auto 0;
-  border: 1px solid hsl(var(--tone-error-border) / 0.45);
+  border: 2px solid color-mix(in srgb, var(--bauhaus-red, #ff4d4d) 55%, transparent);
   border-radius: var(--radius);
   background: hsl(var(--tone-error-bg));
   padding: 0.55rem 0.75rem;
@@ -997,7 +1043,7 @@ onBeforeUnmount(() => {
   }
 
   .chat-input-panel-shell {
-    border-radius: 0.25rem;
+    border-radius: var(--radius);
     padding: 0.6rem;
   }
 

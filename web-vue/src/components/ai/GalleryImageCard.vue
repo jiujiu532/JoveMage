@@ -190,17 +190,19 @@ defineEmits<{
 
 .media-badge {
   padding: 3px 7px;
-  border-radius: 999px;
+  border: 1px solid var(--bauhaus-ink);
+  border-radius: var(--radius);
   background: var(--gallery-badge-bg);
   color: var(--gallery-badge-fg);
   font-size: 10px;
   font-weight: 600;
-  box-shadow: var(--shadow-elevated);
+  box-shadow: var(--shadow-hard-sm);
   backdrop-filter: blur(8px);
 }
 
 .media-badge.danger {
-  background: hsl(0 84.2% 60.2%);
+  border-color: var(--bauhaus-red);
+  background: var(--bauhaus-red);
   color: white;
 }
 
@@ -226,23 +228,24 @@ defineEmits<{
   height: 30px;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--gallery-float-border);
-  border-radius: 999px;
+  border: 1.5px solid var(--bauhaus-ink);
+  border-radius: var(--radius);
   background: var(--gallery-float-bg);
   color: var(--gallery-float-fg);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, transform 0.15s;
+  transition: background 0.12s, color 0.12s, transform 0.08s, box-shadow 0.08s;
   backdrop-filter: blur(8px);
 }
 
 .overlay-btn:hover {
-  transform: translateY(-1px);
+  transform: translate(-1px, -1px);
+  box-shadow: 2px 2px 0 0 var(--bauhaus-ink);
   background: var(--gallery-float-hover-bg);
   color: var(--gallery-float-hover-fg);
 }
 
 .overlay-btn.danger:hover {
-  background: hsl(0 84.2% 60.2%);
+  background: var(--bauhaus-red);
   color: white;
 }
 

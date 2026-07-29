@@ -289,11 +289,15 @@ function formatConversationTime(conversation: StudioConversation) {
   flex-direction: column;
   gap: 0.625rem;
   overflow: hidden;
-  border: 1px solid hsl(var(--border));
-  border-radius: 0.25rem;
+  border: 2px solid var(--bauhaus-ink, hsl(var(--border)));
+  border-radius: var(--radius);
   background: hsl(var(--card) / 0.88);
   padding: 0.75rem;
-  box-shadow: none;
+  box-shadow: var(--shadow-hard-sm);
+}
+
+html[data-theme='dark'] .studio-history-panel {
+  box-shadow: var(--shadow-hard-soft);
 }
 
 @media (min-width: 1024px) {
@@ -334,7 +338,7 @@ function formatConversationTime(conversation: StudioConversation) {
   flex: 0 0 auto;
   align-items: center;
   gap: 0.5rem;
-  border: 1px solid hsl(var(--border));
+  border: 2px solid var(--bauhaus-line-soft, hsl(var(--border)));
   border-radius: var(--radius);
   background: hsl(var(--background));
   padding: 0 0.75rem;
@@ -343,8 +347,12 @@ function formatConversationTime(conversation: StudioConversation) {
 
 .studio-history-search:focus-within {
   border-color: var(--bauhaus-blue);
-  outline: 2px solid color-mix(in srgb, var(--bauhaus-blue) 28%, transparent);
-  outline-offset: 0;
+  outline: none;
+  box-shadow: 3px 3px 0 0 color-mix(in srgb, var(--bauhaus-blue) 45%, transparent);
+}
+
+html[data-theme='dark'] .studio-history-search:focus-within {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bauhaus-blue) 30%, transparent);
 }
 
 .studio-history-search input {
@@ -379,7 +387,7 @@ function formatConversationTime(conversation: StudioConversation) {
   align-items: center;
   overflow: hidden;
   border: 1px solid transparent;
-  border-radius: 0.25rem;
+  border-radius: var(--radius);
   padding: 0.5rem 0.625rem;
   color: hsl(var(--foreground));
   transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
@@ -428,15 +436,24 @@ function formatConversationTime(conversation: StudioConversation) {
 .studio-history-edit input {
   width: 100%;
   min-height: 2rem;
-  border: 1px solid hsl(var(--foreground) / 0.24);
-  border-radius: 0.25rem;
+  border: 2px solid var(--bauhaus-line-soft, hsl(var(--foreground) / 0.24));
+  border-radius: var(--radius);
   background: hsl(var(--background));
   padding: 0 0.625rem;
   color: hsl(var(--foreground));
   font-size: 0.8125rem;
   font-weight: 650;
   outline: none;
-  box-shadow: 0 0 0 3px hsl(var(--foreground) / 0.06);
+  box-shadow: none;
+}
+
+.studio-history-edit input:focus {
+  border-color: var(--bauhaus-blue);
+  box-shadow: 3px 3px 0 0 color-mix(in srgb, var(--bauhaus-blue) 45%, transparent);
+}
+
+html[data-theme='dark'] .studio-history-edit input:focus {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bauhaus-blue) 30%, transparent);
 }
 
 .studio-history-title {
@@ -496,7 +513,7 @@ function formatConversationTime(conversation: StudioConversation) {
   height: 1.5rem;
   align-items: center;
   justify-content: center;
-  border-radius: 0.25rem;
+  border-radius: var(--radius);
   color: hsl(var(--muted-foreground));
   transition: background 0.15s, color 0.15s;
 }

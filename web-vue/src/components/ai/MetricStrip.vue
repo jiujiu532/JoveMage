@@ -178,8 +178,34 @@ html[data-theme='dark'] .metric-strip-card {
   align-items: center;
   justify-content: center;
   border-radius: var(--radius);
-  border: 1px solid hsl(var(--border));
-  background: hsl(var(--secondary));
+  border: 2px solid var(--bauhaus-ink, #2d2d2d);
+  background: var(--bauhaus-paper-2, #f5f0e6);
+  color: var(--bauhaus-ink, #2d2d2d);
+}
+
+/* 与卡体顶边 tone 对齐：info / error / postit / paper */
+.metric-strip-card--tone-blue .metric-strip-icon {
+  background: hsl(var(--tone-info-bg));
+  color: var(--bauhaus-blue, #2d5da1);
+}
+
+.metric-strip-card--tone-red .metric-strip-icon {
+  background: hsl(var(--tone-error-bg));
+  color: var(--bauhaus-red, #ff4d4d);
+}
+
+.metric-strip-card--tone-yellow .metric-strip-icon {
+  background: var(--bauhaus-postit, #fff9c4);
+  color: var(--bauhaus-ink, #2d2d2d);
+}
+
+.metric-strip-card--tone-ink .metric-strip-icon {
+  background: var(--bauhaus-paper-2, #f5f0e6);
+  color: var(--bauhaus-ink, #2d2d2d);
+}
+
+html[data-theme='dark'] .metric-strip-icon {
+  border-color: var(--bauhaus-ink, #f2f2f2);
 }
 
 .metric-strip-card--compact .metric-strip-icon {

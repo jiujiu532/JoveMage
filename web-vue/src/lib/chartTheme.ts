@@ -132,11 +132,45 @@ export function filterValidModels(modelRequests: Record<string, number[]>): Reco
   return filtered
 }
 
-// 文本样式（奶油纸面墨灰）
-const textStyle = {
-  fontFamily: 'Noto Sans SC, Space Grotesk, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
-  color: '#6B6560',
-  fontSize: 11,
+/** 当前是否深色主题（读 html[data-theme]） */
+export function isDarkTheme(): boolean {
+  if (typeof document === 'undefined') return false
+  return document.documentElement.dataset.theme === 'dark'
+}
+
+function readCssVar(name: string, fallback: string): string {
+  if (typeof document === 'undefined') return fallback
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+  return value || fallback
+}
+
+/** 图表表面令牌：浅色硬阴影/纸面，深色 card + line-soft + soft shadow */
+export function getChartSurfaceTokens(isDark = isDarkTheme()) {
+  return {
+    isDark,
+    ink: readCssVar('--bauhaus-ink', isDark ? '#f2f2f2' : '#2d2d2d'),
+    card: readCssVar('--bauhaus-card', isDark ? '#212121' : '#ffffff'),
+    lineSoft: readCssVar('--bauhaus-line-soft', isDark ? '#3d3d3d' : '#c9c2b4'),
+    grey: readCssVar('--bauhaus-grey', isDark ? '#a3a3a3' : '#6b6560'),
+    paper: readCssVar('--bauhaus-paper', isDark ? '#1a1a1a' : '#fdfbf7'),
+    fontDisplay: readCssVar(
+      '--font-display',
+      '"Space Grotesk", "Noto Sans SC", "Helvetica Neue", Arial, sans-serif',
+    ),
+    fontBody: readCssVar(
+      '--font-body',
+      '"Noto Sans SC", "Space Grotesk", "Helvetica Neue", Arial, sans-serif',
+    ),
+  }
+}
+
+function getTextStyle(isDark = isDarkTheme()) {
+  const tokens = getChartSurfaceTokens(isDark)
+  return {
+    fontFamily: tokens.fontBody,
+    color: tokens.grey,
+    fontSize: 11,
+  }
 }
 
 // 网格配置
@@ -148,34 +182,57 @@ const gridConfig = {
   containLabel: true,
 }
 
-// 工具提示配置（白卡 + 墨边）
-const tooltipConfig = {
-  backgroundColor: 'rgba(255, 255, 255, 0.98)',
-  borderColor: '#2D2D2D',
-  borderWidth: 2,
-  textStyle: {
-    color: '#2D2D2D',
-    fontSize: 12,
-  },
-  padding: [8, 12],
-  extraCssText: 'border-radius: 2px; box-shadow: 2px 2px 0 0 #2d2d2d;',
+/** 工具提示：浅色硬墨边 + hard shadow；深色 card + line-soft + soft shadow */
+export function getTooltipConfig(isDark = isDarkTheme()) {
+  const tokens = getChartSurfaceTokens(isDark)
+  if (isDark) {
+    return {
+      backgroundColor: tokens.card,
+      borderColor: tokens.lineSoft,
+      borderWidth: 1,
+      textStyle: {
+        color: tokens.ink,
+        fontSize: 12,
+      },
+      padding: [8, 12] as [number, number],
+      extraCssText: 'border-radius: 2px; box-shadow: 0 3px 9px rgba(0, 0, 0, 0.55);',
+    }
+  }
+  return {
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+    borderColor: tokens.ink,
+    borderWidth: 2,
+    textStyle: {
+      color: tokens.ink,
+      fontSize: 12,
+    },
+    padding: [8, 12] as [number, number],
+    extraCssText: `border-radius: 2px; box-shadow: 2px 2px 0 0 ${tokens.ink};`,
+  }
 }
 
-// 图例配置
-const legendConfig = {
-  textStyle: {
-    ...textStyle,
-    fontSize: 11,
-  },
-  itemWidth: 14,
-  itemHeight: 14,
-  itemGap: 16,
+function getLegendConfig(isDark = isDarkTheme()) {
+  return {
+    textStyle: {
+      ...getTextStyle(isDark),
+      fontSize: 11,
+    },
+    itemWidth: 14,
+    itemHeight: 14,
+    itemGap: 16,
+  }
 }
 
 /**
- * 折线图主题配置
+ * 折线图主题配置（随 data-theme 切换）
  */
-export function getLineChartTheme() {
+export function getLineChartTheme(isDark = isDarkTheme()) {
+  const tokens = getChartSurfaceTokens(isDark)
+  const textStyle = getTextStyle(isDark)
+  const splitColor = isDark
+    ? 'rgba(61, 61, 61, 0.85)'
+    : 'rgba(201, 194, 180, 0.7)'
+
   return {
     animation: true,
     animationThreshold: 4000,
@@ -184,18 +241,18 @@ export function getLineChartTheme() {
     animationDurationUpdate: 420,
     animationEasingUpdate: 'cubicOut',
     tooltip: {
-      ...tooltipConfig,
+      ...getTooltipConfig(isDark),
       trigger: 'axis',
       axisPointer: {
         type: 'line',
         lineStyle: {
-          color: '#C9C2B4',
+          color: tokens.lineSoft,
           type: 'dashed',
         },
       },
     },
     legend: {
-      ...legendConfig,
+      ...getLegendConfig(isDark),
       right: 0,
       top: 0,
     },
@@ -205,7 +262,7 @@ export function getLineChartTheme() {
       boundaryGap: false,
       axisLine: {
         lineStyle: {
-          color: '#C9C2B4',
+          color: tokens.lineSoft,
         },
       },
       axisTick: {
@@ -230,7 +287,7 @@ export function getLineChartTheme() {
       },
       splitLine: {
         lineStyle: {
-          color: 'rgba(201, 194, 180, 0.7)',
+          color: splitColor,
           type: 'solid',
         },
       },
@@ -239,9 +296,11 @@ export function getLineChartTheme() {
 }
 
 /**
- * 饼图主题配置
+ * 饼图主题配置（随 data-theme 切换）
  */
-export function getPieChartTheme(isMobile = false) {
+export function getPieChartTheme(isMobile = false, isDark = isDarkTheme()) {
+  const tokens = getChartSurfaceTokens(isDark)
+  const textStyle = getTextStyle(isDark)
   const legendPosition = isMobile
     ? {
       left: 'center',
@@ -264,11 +323,11 @@ export function getPieChartTheme(isMobile = false) {
     animationDurationUpdate: 300,
     animationEasingUpdate: 'cubicOut',
     tooltip: {
-      ...tooltipConfig,
+      ...getTooltipConfig(isDark),
       trigger: 'item',
     },
     legend: {
-      ...legendConfig,
+      ...getLegendConfig(isDark),
       ...legendPosition,
       type: isMobile ? 'scroll' : 'plain',
       pageIconSize: 10,
@@ -284,19 +343,19 @@ export function getPieChartTheme(isMobile = false) {
       label: {
         show: true,
         fontSize: 11,
-        color: '#6B6560',
+        color: textStyle.color,
       },
       labelLine: {
         show: true,
         length: 12,
         length2: 10,
         lineStyle: {
-          color: '#C9C2B4',
+          color: tokens.lineSoft,
         },
       },
       itemStyle: {
         borderWidth: 2,
-        borderColor: '#FFFFFF',
+        borderColor: tokens.card,
         borderRadius: 2,
       },
       emphasis: {

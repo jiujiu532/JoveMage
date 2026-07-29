@@ -95,11 +95,15 @@ function formatTime(value: string) {
   flex-direction: column;
   gap: 0.75rem;
   overflow: hidden;
-  border: 1px solid hsl(var(--border));
-  border-radius: 0.25rem;
+  border: 2px solid var(--bauhaus-ink, hsl(var(--border)));
+  border-radius: var(--radius);
   background: hsl(var(--card));
   padding: 0.75rem;
-  box-shadow: none;
+  box-shadow: var(--shadow-hard-lg);
+}
+
+html[data-theme='dark'] .studio-mobile-history {
+  box-shadow: var(--shadow-hard-soft-lg, var(--shadow-hard-soft));
 }
 
 .studio-mobile-history-header {
@@ -117,7 +121,7 @@ function formatTime(value: string) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 0.5rem;
+  border-radius: var(--radius);
   color: hsl(var(--muted-foreground));
 }
 
@@ -136,14 +140,14 @@ function formatTime(value: string) {
 
 .studio-mobile-history-item {
   position: relative;
-  border: 1px solid transparent;
-  border-radius: 0.25rem;
+  border: 2px solid transparent;
+  border-radius: var(--radius);
   padding: 0.7rem 0.75rem;
 }
 
 .studio-mobile-history-item.is-active {
-  border-color: hsl(var(--primary) / 0.28);
-  background: hsl(var(--primary) / 0.08);
+  border-color: var(--bauhaus-ink, hsl(var(--primary) / 0.28));
+  background: color-mix(in srgb, var(--bauhaus-blue) 10%, transparent);
 }
 
 .studio-mobile-history-main {

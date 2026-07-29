@@ -1191,3 +1191,155 @@ a:not(.ui-btn):not([class*="ui-btn"]):hover {
     transform: none !important;
   }
 }
+
+/* ========== 通用表面合同（detail/surface 卡族，去 1px 软灰边） ==========
+ * 密集展示卡：ink/line-soft 描边 + card 底 + 可选轻硬阴影；深色改柔和投影。
+ * 不加 hover 上浮（避免与大面板动效打架），仅描边/阴影统一。 */
+.log-detail-summary,
+.detail-field-section,
+.detail-timeline,
+.detail-field-card,
+.detail-text-block,
+.code-block,
+.settings-result-box,
+.settings-status-chip,
+.settings-kv-item,
+.settings-panel-card,
+.settings-list-row,
+.settings-check-grid,
+.settings-doc-list,
+.settings-block--status,
+.debug-result-card,
+.debug-task-card,
+.debug-chat-box,
+.surface-box,
+.runtime-log-panel,
+.monitor-metric-group,
+.gallery-storage-card,
+.studio-history-panel,
+.studio-main,
+.prompt-picker-filter,
+.register-provider-section--soft {
+  border: 1px solid var(--bauhaus-line-soft) !important;
+  border-radius: var(--radius) !important;
+  background: hsl(var(--card)) !important;
+}
+
+/* 容器级（detail summary / 主表面）给轻硬阴影，拉开层次 */
+.log-detail-summary,
+.detail-field-section,
+.detail-timeline,
+.settings-panel-card,
+.studio-history-panel,
+.studio-main,
+.monitor-metric-group {
+  border-width: 2px !important;
+  border-color: var(--bauhaus-ink) !important;
+  box-shadow: var(--shadow-hard-sm) !important;
+}
+
+html[data-theme="dark"] .log-detail-summary,
+html[data-theme="dark"] .detail-field-section,
+html[data-theme="dark"] .detail-timeline,
+html[data-theme="dark"] .settings-panel-card,
+html[data-theme="dark"] .studio-history-panel,
+html[data-theme="dark"] .studio-main,
+html[data-theme="dark"] .monitor-metric-group {
+  box-shadow: var(--shadow-hard-soft) !important;
+}
+
+html[data-theme="dark"] .log-detail-summary,
+html[data-theme="dark"] .detail-field-section,
+html[data-theme="dark"] .detail-timeline,
+html[data-theme="dark"] .detail-field-card,
+html[data-theme="dark"] .detail-text-block,
+html[data-theme="dark"] .code-block,
+html[data-theme="dark"] .settings-result-box,
+html[data-theme="dark"] .settings-status-chip,
+html[data-theme="dark"] .settings-kv-item,
+html[data-theme="dark"] .settings-panel-card,
+html[data-theme="dark"] .settings-list-row,
+html[data-theme="dark"] .settings-check-grid,
+html[data-theme="dark"] .settings-doc-list,
+html[data-theme="dark"] .settings-block--status,
+html[data-theme="dark"] .debug-result-card,
+html[data-theme="dark"] .debug-task-card,
+html[data-theme="dark"] .debug-chat-box,
+html[data-theme="dark"] .surface-box,
+html[data-theme="dark"] .runtime-log-panel,
+html[data-theme="dark"] .monitor-metric-group,
+html[data-theme="dark"] .gallery-storage-card,
+html[data-theme="dark"] .studio-history-panel,
+html[data-theme="dark"] .studio-main,
+html[data-theme="dark"] .prompt-picker-filter,
+html[data-theme="dark"] .register-provider-section--soft {
+  background: var(--bauhaus-card) !important;
+}
+
+/* ========== 自写输入/文本域：对齐 ui-input 语言 ========== */
+.debug-textarea,
+.debug-select,
+.studio-history-search,
+.studio-history-edit input {
+  border: 2px solid var(--bauhaus-line-soft) !important;
+  border-radius: var(--radius) !important;
+  background: hsl(var(--card)) !important;
+  transition: border-color 0.12s ease, box-shadow 0.08s ease !important;
+}
+
+.debug-textarea:hover:not(:disabled),
+.debug-select:hover:not(:disabled),
+.studio-history-search:hover:not(:disabled),
+.studio-history-edit input:hover:not(:disabled) {
+  border-color: var(--bauhaus-ink) !important;
+}
+
+.debug-textarea:focus,
+.debug-select:focus,
+.studio-history-search:focus,
+.studio-history-search:focus-within,
+.studio-history-edit input:focus {
+  border-color: var(--bauhaus-blue) !important;
+  outline: none !important;
+  box-shadow: 3px 3px 0 0 color-mix(in srgb, var(--bauhaus-blue) 45%, transparent) !important;
+}
+
+html[data-theme="dark"] .debug-textarea,
+html[data-theme="dark"] .debug-select,
+html[data-theme="dark"] .studio-history-search,
+html[data-theme="dark"] .studio-history-edit input {
+  border-color: hsl(var(--foreground) / 0.28) !important;
+  background: var(--bauhaus-card) !important;
+}
+
+html[data-theme="dark"] .debug-textarea:hover:not(:disabled),
+html[data-theme="dark"] .debug-select:hover:not(:disabled),
+html[data-theme="dark"] .studio-history-search:hover:not(:disabled),
+html[data-theme="dark"] .studio-history-edit input:hover:not(:disabled) {
+  border-color: hsl(var(--foreground) / 0.55) !important;
+}
+
+html[data-theme="dark"] .debug-textarea:focus,
+html[data-theme="dark"] .debug-select:focus,
+html[data-theme="dark"] .studio-history-search:focus,
+html[data-theme="dark"] .studio-history-search:focus-within,
+html[data-theme="dark"] .studio-history-edit input:focus {
+  border-color: var(--bauhaus-blue) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bauhaus-blue) 30%, transparent) !important;
+}
+
+/* ========== 圆角清扫：散写 8px/0.25rem/0.5rem → 直边 ==========
+ * 保留圆形头像与 Login 几何圆（产品装饰），其余统一 var(--radius)。 */
+.prompt-card,
+.chat-message-bubble,
+.studio-code-block,
+.studio-search-drawer,
+.studio-compare-modal,
+.studio-mobile-history,
+.studio-size-popover,
+.chat-input-panel-shell,
+.chat-input,
+.register-provider-section,
+.debug-chat-box {
+  border-radius: var(--radius) !important;
+}

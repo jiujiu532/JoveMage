@@ -2666,7 +2666,7 @@ onBeforeUnmount(() => {
   min-height: 80px;
   width: 100%;
   resize: vertical;
-  border: 1px solid hsl(var(--border));
+  border: 2px solid var(--bauhaus-line-soft);
   border-radius: var(--radius);
   background: hsl(var(--card));
   padding: 10px 12px;
@@ -2675,6 +2675,11 @@ onBeforeUnmount(() => {
   line-height: 1.55;
   color: hsl(var(--foreground));
   outline: none;
+  transition: border-color 0.12s ease, box-shadow 0.08s ease;
+}
+
+.register-textarea:hover:not(:disabled) {
+  border-color: var(--bauhaus-ink);
 }
 
 .register-textarea--tall {
@@ -2682,13 +2687,27 @@ onBeforeUnmount(() => {
 }
 
 .register-textarea:focus {
-  border-color: hsl(var(--ring));
-  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.14);
+  border-color: var(--bauhaus-blue);
+  box-shadow: 3px 3px 0 0 color-mix(in srgb, var(--bauhaus-blue) 45%, transparent);
 }
 
 .register-textarea:disabled {
   cursor: not-allowed;
   opacity: 0.65;
+}
+
+html[data-theme="dark"] .register-textarea {
+  border-color: hsl(var(--foreground) / 0.28);
+  background: var(--bauhaus-card);
+}
+
+html[data-theme="dark"] .register-textarea:hover:not(:disabled) {
+  border-color: hsl(var(--foreground) / 0.55);
+}
+
+html[data-theme="dark"] .register-textarea:focus {
+  border-color: var(--bauhaus-blue);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bauhaus-blue) 30%, transparent);
 }
 
 .register-outlook-summary {

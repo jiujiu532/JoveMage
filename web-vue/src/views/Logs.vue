@@ -121,7 +121,7 @@
 
     <PagePanel v-else-if="activeLogView === 'system'" flush>
       <TableShell>
-        <table class="w-full min-w-[1120px] table-fixed text-left">
+        <table class="logs-table w-full min-w-[1120px] table-fixed text-left">
           <colgroup>
             <col class="w-12" />
             <col class="w-36" />
@@ -179,18 +179,18 @@
                 </Checkbox>
               </td>
               <td class="py-4 pr-5 align-middle text-xs text-muted-foreground">
-                <p class="whitespace-nowrap text-foreground">{{ item.time || '-' }}</p>
+                <p class="cell-time whitespace-nowrap">{{ item.time || '-' }}</p>
               </td>
               <td class="py-4 pr-5 align-middle">
                 <MetaChip size="xs" tone="muted">{{ typeLabel(item.type) }}</MetaChip>
               </td>
               <td class="py-4 pr-5 align-middle">
-                <p class="max-w-[12rem] truncate text-xs text-foreground" :title="tokenLabel(item)">
+                <p class="cell-token max-w-[12rem] truncate text-xs" :title="tokenLabel(item)">
                   {{ tokenLabel(item) || '-' }}
                 </p>
               </td>
-              <td class="py-4 pr-5 align-middle text-xs text-muted-foreground table-num">
-                {{ formatDuration(item.durationMs) || '-' }}
+              <td class="py-4 pr-5 align-middle text-xs text-muted-foreground">
+                <span class="cell-num">{{ formatDuration(item.durationMs) || '-' }}</span>
               </td>
               <td class="py-4 pr-5 align-middle">
                 <StateBadge :tone="statusTone(item)" shape="rounded" :bordered="false">
@@ -2096,8 +2096,11 @@ onBeforeUnmount(() => {
 }
 
 .log-detail-summary__duration strong {
+  font-family: var(--font-display);
   font-size: 20px;
-  font-weight: 650;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
   color: hsl(var(--foreground));
 }
 
@@ -2237,7 +2240,7 @@ onBeforeUnmount(() => {
 
 .detail-timeline-segments__segment--muted,
 .detail-timeline-segments__segment--info {
-  background: hsl(var(--muted-foreground) / 0.48);
+  background: color-mix(in srgb, var(--bauhaus-ink) 46%, transparent);
 }
 
 .detail-timeline-segments__segment--compact {
@@ -2249,48 +2252,50 @@ onBeforeUnmount(() => {
   display: none;
 }
 
+/* 阶段色：成功蓝 / 失败红 / 限流黄；其余 info·ink 阶梯可辨 */
 .detail-timeline-segments__segment--entry {
-  background: rgb(96 165 250 / 0.74);
+  background: color-mix(in srgb, hsl(var(--tone-info-strong)) 78%, transparent);
 }
 
 .detail-timeline-segments__segment--prepare {
-  background: rgb(20 184 166 / 0.72);
+  background: color-mix(in srgb, hsl(var(--tone-info-strong)) 68%, transparent);
 }
 
 .detail-timeline-segments__segment--network {
-  background: rgb(14 165 233 / 0.68);
+  background: color-mix(in srgb, var(--bauhaus-blue) 72%, transparent);
 }
 
 .detail-timeline-segments__segment--upstream {
-  background: rgb(99 102 241 / 0.72);
+  background: color-mix(in srgb, var(--bauhaus-ink) 58%, transparent);
 }
 
 .detail-timeline-segments__segment--resolve {
-  background: rgb(245 158 11 / 0.58);
-  color: rgb(74 45 0);
+  background: color-mix(in srgb, var(--bauhaus-postit) 88%, var(--bauhaus-yellow));
+  color: var(--bauhaus-ink);
 }
 
 .detail-timeline-segments__segment--download {
-  background: rgb(34 197 94 / 0.62);
-  color: rgb(4 52 24);
+  /* 成功语义 → pen 蓝 */
+  background: color-mix(in srgb, var(--bauhaus-blue) 82%, transparent);
 }
 
 .detail-timeline-segments__segment--retry {
-  background: rgb(249 115 22 / 0.66);
-  color: rgb(68 33 0);
+  background: color-mix(in srgb, var(--bauhaus-yellow) 70%, var(--bauhaus-postit));
+  color: var(--bauhaus-ink);
 }
 
 .detail-timeline-segments__segment--response {
-  background: hsl(var(--muted-foreground) / 0.46);
+  background: color-mix(in srgb, var(--bauhaus-ink) 42%, transparent);
 }
 
 .detail-timeline-segments__segment--warning {
-  background: rgb(245 158 11 / 0.84);
-  color: rgb(74 45 0);
+  /* 限流 / 警告 → postit 黄 */
+  background: color-mix(in srgb, var(--bauhaus-yellow) 86%, var(--bauhaus-postit));
+  color: var(--bauhaus-ink);
 }
 
 .detail-timeline-segments__segment--danger {
-  background: rgb(244 63 94 / 0.86);
+  background: color-mix(in srgb, var(--bauhaus-red) 88%, transparent);
   color: rgb(255 255 255 / 0.96);
 }
 
@@ -2309,55 +2314,58 @@ onBeforeUnmount(() => {
 }
 
 .detail-timeline-segments__legend-item i {
-  height: 7px;
-  width: 7px;
+  height: 8px;
+  width: 8px;
   flex: 0 0 auto;
-  border-radius: 999px;
-  background: hsl(var(--muted-foreground) / 0.54);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bauhaus-ink) 48%, transparent);
 }
 
 .detail-timeline-segments__legend-item--entry i {
-  background: rgb(96 165 250);
+  background: hsl(var(--tone-info-strong));
 }
 
 .detail-timeline-segments__legend-item--prepare i {
-  background: rgb(20 184 166);
+  background: color-mix(in srgb, hsl(var(--tone-info-strong)) 78%, var(--bauhaus-ink));
 }
 
 .detail-timeline-segments__legend-item--network i {
-  background: rgb(14 165 233);
+  background: var(--bauhaus-blue);
 }
 
 .detail-timeline-segments__legend-item--upstream i {
-  background: rgb(99 102 241);
+  background: color-mix(in srgb, var(--bauhaus-ink) 72%, var(--bauhaus-blue));
 }
 
 .detail-timeline-segments__legend-item--resolve i {
-  background: rgb(245 158 11);
+  background: var(--bauhaus-postit);
+  box-shadow: inset 0 0 0 1px var(--bauhaus-line-soft);
 }
 
 .detail-timeline-segments__legend-item--download i {
-  background: rgb(34 197 94);
+  background: var(--bauhaus-blue);
 }
 
 .detail-timeline-segments__legend-item--retry i {
-  background: rgb(249 115 22);
+  background: var(--bauhaus-yellow);
+  box-shadow: inset 0 0 0 1px var(--bauhaus-line-soft);
 }
 
 .detail-timeline-segments__legend-item--response i {
-  background: hsl(var(--muted-foreground));
+  background: color-mix(in srgb, var(--bauhaus-ink) 55%, transparent);
 }
 
 .detail-timeline-segments__legend-item--state i {
-  background: hsl(var(--muted-foreground));
+  background: color-mix(in srgb, var(--bauhaus-ink) 55%, transparent);
 }
 
 .detail-timeline-segments__legend-item--warning i {
-  background: rgb(245 158 11);
+  background: var(--bauhaus-yellow);
+  box-shadow: inset 0 0 0 1px var(--bauhaus-line-soft);
 }
 
 .detail-timeline-segments__legend-item--danger i {
-  background: rgb(244 63 94);
+  background: var(--bauhaus-red);
 }
 
 .detail-timeline__empty {
@@ -2571,6 +2579,36 @@ onBeforeUnmount(() => {
     padding-top: 0;
     text-align: left;
   }
+}
+
+/* ========== 日志表格数据文字：等宽 + 等宽数字，拉开与 label 的层次 ========== */
+.logs-table td {
+  vertical-align: middle;
+}
+
+.logs-table .cell-time {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  color: var(--bauhaus-ink);
+}
+
+.logs-table .cell-num {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  color: var(--bauhaus-ink);
+}
+
+.logs-table .cell-token {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  letter-spacing: -0.01em;
+  color: hsl(var(--foreground));
+}
+
+html[data-theme="dark"] .logs-table .cell-time,
+html[data-theme="dark"] .logs-table .cell-num {
+  color: hsl(var(--foreground));
 }
 
 </style>

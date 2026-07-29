@@ -877,10 +877,11 @@ watch([tagFilter, startDate, endDate, pageSize], () => {
   resetAndLoad()
 })
 const galleryMetricItems = computed(() => [
-  { label: '当前视图', value: totalItems.value, icon: 'lucide:image', iconClass: 'text-cyan-600', iconBgClass: 'bg-transparent' },
-  { label: '图库总量', value: storageStats.value ? storageStats.value.image_count : counts.value.all, icon: 'lucide:archive', iconClass: 'text-violet-600', iconBgClass: 'bg-transparent' },
-  { label: '当前占用', value: formatSize(totalSize.value), icon: 'lucide:database', iconClass: 'text-emerald-600', iconBgClass: 'bg-transparent' },
-  { label: '磁盘剩余', value: storageStats.value ? formatSize(storageStats.value.disk_free_mb * 1024 * 1024) : '-', icon: 'lucide:hard-drive', iconClass: 'text-amber-600', iconBgClass: 'bg-transparent' },
+  // 蓝 / 红 / 黄(可读 warning-strong) / ink；iconBg 透明保留（! 压过 MetricStrip tone 底），描边由组件 2px ink 统一
+  { label: '当前视图', value: totalItems.value, icon: 'lucide:image', iconClass: '!text-[var(--bauhaus-blue)]', iconBgClass: '!bg-transparent' },
+  { label: '图库总量', value: storageStats.value ? storageStats.value.image_count : counts.value.all, icon: 'lucide:archive', iconClass: '!text-[var(--bauhaus-red)]', iconBgClass: '!bg-transparent' },
+  { label: '当前占用', value: formatSize(totalSize.value), icon: 'lucide:database', iconClass: '!text-[hsl(var(--tone-warning-strong))]', iconBgClass: '!bg-transparent' },
+  { label: '磁盘剩余', value: storageStats.value ? formatSize(storageStats.value.disk_free_mb * 1024 * 1024) : '-', icon: 'lucide:hard-drive', iconClass: '!text-[var(--bauhaus-ink)]', iconBgClass: '!bg-transparent' },
 ])
 
 watch(pageSize, (value) => {

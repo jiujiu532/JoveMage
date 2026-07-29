@@ -70,13 +70,16 @@ const resolvedSummary = computed(() => props.summaryText || `已选择 ${props.s
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  border: 1px solid hsl(var(--border));
+  border: 2px solid var(--bauhaus-ink);
   border-radius: var(--radius);
-  background: hsl(var(--card) / 0.96);
+  background: hsl(var(--card));
   padding: 10px 12px 10px 16px;
-  box-shadow: var(--shadow-floating);
-  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow-hard-lg);
   pointer-events: auto;
+}
+
+html[data-theme="dark"] .selection-bulk-bar {
+  box-shadow: var(--shadow-hard-soft-lg);
 }
 
 .selection-bulk-bar--compact {
