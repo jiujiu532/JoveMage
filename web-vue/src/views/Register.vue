@@ -82,6 +82,18 @@
                 />
               </label>
 
+              <label class="register-field">
+                <span class="register-label">重登重试次数</span>
+                <Input
+                  v-model.number="registerConfig.max_relogin_retries"
+                  type="number"
+                  min="0"
+                  max="10"
+                  block
+                  :disabled="registerConfig.enabled"
+                />
+              </label>
+
               <label v-if="registerConfig.mode !== 'total'" class="register-field">
                 <span class="register-label">检查间隔（秒）</span>
                 <Input
@@ -142,18 +154,6 @@
                   :disabled="registerConfig.enabled"
                   @input="updateProxyPool(($event.target as HTMLTextAreaElement).value)"
                 ></textarea>
-              </label>
-
-              <label class="register-field">
-                <span class="register-label">重登重试次数</span>
-                <Input
-                  v-model.number="registerConfig.max_relogin_retries"
-                  type="number"
-                  min="0"
-                  max="10"
-                  block
-                  :disabled="registerConfig.enabled"
-                />
               </label>
             </div>
           </FormSection>
