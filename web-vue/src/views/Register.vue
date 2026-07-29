@@ -185,50 +185,52 @@
                   ></textarea>
                 </label>
 
-                <label class="register-field">
-                  <span class="register-label">抢注线程</span>
-                  <Input
-                    v-model.number="registerConfig.schedule.threads"
-                    type="number"
-                    min="1"
-                    block
-                    :disabled="registerConfig.enabled"
-                  />
-                </label>
+                <div class="register-form-grid register-form-grid--schedule-params register-field--full">
+                  <label class="register-field">
+                    <span class="register-label">抢注线程</span>
+                    <Input
+                      v-model.number="registerConfig.schedule.threads"
+                      type="number"
+                      min="1"
+                      block
+                      :disabled="registerConfig.enabled"
+                    />
+                  </label>
 
-                <label class="register-field">
-                  <span class="register-label">抢注重登重试</span>
-                  <Input
-                    v-model.number="registerConfig.schedule.max_relogin_retries"
-                    type="number"
-                    min="0"
-                    max="10"
-                    block
-                    :disabled="registerConfig.enabled"
-                  />
-                </label>
+                  <label class="register-field">
+                    <span class="register-label">抢注重登重试</span>
+                    <Input
+                      v-model.number="registerConfig.schedule.max_relogin_retries"
+                      type="number"
+                      min="0"
+                      max="10"
+                      block
+                      :disabled="registerConfig.enabled"
+                    />
+                  </label>
 
-                <label class="register-field">
-                  <span class="register-label">开始前收束（分）</span>
-                  <Input
-                    v-model.number="registerConfig.schedule.preempt_minutes"
-                    type="number"
-                    min="0"
-                    block
-                    :disabled="registerConfig.enabled"
-                  />
-                </label>
+                  <label class="register-field">
+                    <span class="register-label">开始前收束（分）</span>
+                    <Input
+                      v-model.number="registerConfig.schedule.preempt_minutes"
+                      type="number"
+                      min="0"
+                      block
+                      :disabled="registerConfig.enabled"
+                    />
+                  </label>
 
-                <label class="register-field">
-                  <span class="register-label">结束后最长等待（分）</span>
-                  <Input
-                    v-model.number="registerConfig.schedule.drain_timeout_minutes"
-                    type="number"
-                    min="0"
-                    block
-                    :disabled="registerConfig.enabled"
-                  />
-                </label>
+                  <label class="register-field">
+                    <span class="register-label">结束后最长等待（分）</span>
+                    <Input
+                      v-model.number="registerConfig.schedule.drain_timeout_minutes"
+                      type="number"
+                      min="0"
+                      block
+                      :disabled="registerConfig.enabled"
+                    />
+                  </label>
+                </div>
 
                 <p class="register-proxy-hint register-field--full">
                   时区 Asia/Shanghai。时段可写多行，每行一个 `HH:MM-HH:MM`（允许跨日）；到点开抢，到结束时刻停止。
@@ -2465,6 +2467,16 @@ onBeforeUnmount(() => {
   .register-form-grid--mail {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .register-form-grid--schedule-params {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.register-form-grid--schedule-params {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .register-form-grid--three {
