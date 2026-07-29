@@ -4,35 +4,80 @@
     :class="[
       `form-section--density-${density}`,
       muted ? 'form-section--surface-muted' : `form-section--surface-${surface}`,
+      collapsible && collapsed ? 'form-section--collapsed' : '',
     ]"
   >
-    <div v-if="title || subtitle || $slots.actions" class="form-section__header">
+    <div
+      v-if="title || subtitle || $slots.actions"
+      class="form-section__header"
+      :class="{ 'form-section__header--toggle': collapsible }"
+      :role="collapsible ? 'button' : undefined"
+      :tabindex="collapsible ? 0 : undefined"
+      :aria-expanded="collapsible ? (!collapsed).toString() : undefined"
+      @click="onHeaderClick"
+      @keydown="onHeaderKeydown"
+    >
       <div class="min-w-0">
         <p v-if="title" class="form-section__title">{{ title }}</p>
         <p v-if="subtitle" class="form-section__subtitle">{{ subtitle }}</p>
       </div>
-      <div v-if="$slots.actions" class="form-section__actions">
-        <slot name="actions" />
+      <div class="form-section__header-end">
+        <div v-if="$slots.actions" class="form-section__actions" @click.stop>
+          <slot name="actions" />
+        </div>
+        <span
+          v-if="collapsible"
+          class="form-section__chevron"
+          :class="{ 'is-open': !collapsed }"
+          aria-hidden="true"
+        />
       </div>
     </div>
-    <slot />
+    <div v-show="!collapsible || !collapsed" class="form-section__body">
+      <slot />
+    </div>
   </section>
 </template>
 
 <script setup lang="ts">
-withDefaults(defineProps<{
+import { ref } from 'vue'
+
+const props = withDefaults(defineProps<{
   title?: string
   subtitle?: string
   density?: 'compact' | 'normal' | 'roomy'
   surface?: 'card' | 'background' | 'muted' | 'plain'
   muted?: boolean
+  collapsible?: boolean
+  defaultOpen?: boolean
 }>(), {
   title: '',
   subtitle: '',
   density: 'normal',
   surface: 'card',
   muted: false,
+  collapsible: false,
+  defaultOpen: true,
 })
+
+const collapsed = ref(props.collapsible ? !props.defaultOpen : false)
+
+function toggle() {
+  if (!props.collapsible) return
+  collapsed.value = !collapsed.value
+}
+
+function onHeaderClick() {
+  toggle()
+}
+
+function onHeaderKeydown(e: KeyboardEvent) {
+  if (!props.collapsible) return
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault()
+    toggle()
+  }
+}
 </script>
 
 <style scoped>
@@ -89,6 +134,27 @@ withDefaults(defineProps<{
   border-bottom: 1px solid hsl(var(--border) / 0.75);
 }
 
+.form-section__header--toggle {
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+}
+
+.form-section__header--toggle:hover .form-section__title {
+  color: var(--bauhaus-blue, #2d5da1);
+}
+
+.form-section__header--toggle:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 45%, transparent);
+  outline-offset: 2px;
+}
+
+.form-section--collapsed .form-section__header {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom-color: transparent;
+}
+
 .form-section--surface-plain .form-section__header {
   border-bottom: none;
   padding-bottom: 0;
@@ -102,6 +168,7 @@ withDefaults(defineProps<{
   letter-spacing: -0.02em;
   text-transform: none;
   color: hsl(var(--foreground));
+  transition: color 0.12s ease;
 }
 
 .form-section__subtitle {
@@ -114,12 +181,43 @@ withDefaults(defineProps<{
   color: hsl(var(--muted-foreground) / 0.92);
 }
 
+.form-section__header-end {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+}
+
 .form-section__actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.form-section__chevron {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-top: 4px;
+  border-right: 1.5px solid hsl(var(--muted-foreground));
+  border-bottom: 1.5px solid hsl(var(--muted-foreground));
+  transform: rotate(-45deg);
+  transition: transform 0.14s ease, border-color 0.12s ease;
+}
+
+.form-section__chevron.is-open {
+  margin-top: 1px;
+  transform: rotate(45deg);
+}
+
+.form-section__header--toggle:hover .form-section__chevron {
+  border-color: var(--bauhaus-blue, #2d5da1);
+}
+
+.form-section__body {
+  min-width: 0;
 }
 
 /* 非 plain 表面左侧色条 */
@@ -144,5 +242,13 @@ html[data-theme='dark'] .form-section__title {
 
 html[data-theme='dark'] .form-section__subtitle {
   color: hsl(var(--muted-foreground) / 0.88);
+}
+
+html[data-theme='dark'] .form-section__header--toggle:hover .form-section__title {
+  color: hsl(var(--primary));
+}
+
+html[data-theme='dark'] .form-section__header--toggle:hover .form-section__chevron {
+  border-color: hsl(var(--primary));
 }
 </style>

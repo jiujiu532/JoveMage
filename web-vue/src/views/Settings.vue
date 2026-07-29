@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-6" @click="onSettingsBlockCollapseClick">
     <PagePanel v-if="localSettings" class="space-y-5">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -32,7 +32,7 @@
 
         <div class="grid gap-4 xl:grid-cols-3">
           <div class="space-y-4 xl:col-span-2">
-            <FormSection title="基础配置" subtitle="按连接、清理、生图超时拆开，先改常用项。">
+            <FormSection collapsible title="基础配置" subtitle="按连接、清理、生图超时拆开，先改常用项。">
               <div class="settings-block-stack">
                 <section class="settings-block">
                   <header class="settings-block__header">
@@ -191,7 +191,7 @@
               </div>
             </FormSection>
 
-            <FormSection title="稳定代理 / Cloudflare 清障" subtitle="先看运行状态，再改开关与出站参数。">
+            <FormSection collapsible title="稳定代理 / Cloudflare 清障" subtitle="先看运行状态，再改开关与出站参数。">
               <div class="settings-block-stack">
                 <section class="settings-block settings-block--status">
                   <header class="settings-block__header">
@@ -414,7 +414,7 @@
               </div>
             </FormSection>
 
-            <FormSection title="全局附加指令" subtitle="注入到每次请求的系统提示与敏感词拦截。">
+            <FormSection collapsible title="全局附加指令" subtitle="注入到每次请求的系统提示与敏感词拦截。">
               <div class="settings-block-stack">
                 <section class="settings-block">
                   <header class="settings-block__header">
@@ -449,7 +449,7 @@
           </div>
 
           <div class="space-y-4">
-            <FormSection title="账号策略" subtitle="异常与额度耗尽后的账号处理。">
+            <FormSection collapsible title="账号策略" subtitle="异常与额度耗尽后的账号处理。">
               <div class="settings-check-grid settings-check-grid--single">
                 <div class="settings-check-item">
                   <div class="settings-check-control">
@@ -466,7 +466,7 @@
               </div>
             </FormSection>
 
-            <FormSection title="图片确认" subtitle="结果稳定后再返回，可选清理官网会话。">
+            <FormSection collapsible title="图片确认" subtitle="结果稳定后再返回，可选清理官网会话。">
               <div class="settings-check-grid settings-check-grid--single">
                 <div class="settings-check-item">
                   <div class="settings-check-control">
@@ -495,7 +495,7 @@
               </div>
             </FormSection>
 
-            <FormSection title="控制台日志级别" subtitle="至少保留一类级别；全不选时回落默认 info / warning / error。">
+            <FormSection collapsible title="控制台日志级别" subtitle="至少保留一类级别；全不选时回落默认 info / warning / error。">
               <div class="settings-check-grid settings-check-grid--single">
                 <div
                   v-for="level in logLevelOptions"
@@ -519,7 +519,7 @@
       </div>
 
       <div v-else-if="activeSettingsTab === 'image-errors'" class="space-y-4">
-        <FormSection title="图片错误提示" subtitle="先决定是否友好化，再按场景改文案。">
+        <FormSection collapsible title="图片错误提示" subtitle="先决定是否友好化，再按场景改文案。">
           <div class="settings-block-stack">
             <section class="settings-block">
               <header class="settings-block__header">
@@ -576,7 +576,7 @@
 
       <div v-else-if="activeSettingsTab === 'storage'" class="grid gap-4 xl:grid-cols-3">
         <div class="xl:col-span-2">
-          <FormSection title="图片存储" subtitle="WebDAV 远端存储与公开访问前缀。">
+          <FormSection collapsible title="图片存储" subtitle="WebDAV 远端存储与公开访问前缀。">
           <div class="settings-block-stack">
             <section class="settings-block">
               <header class="settings-block__header">
@@ -654,7 +654,7 @@
           </FormSection>
         </div>
 
-        <FormSection title="AI 审核" subtitle="请求前的内容审核接入。">
+        <FormSection collapsible title="AI 审核" subtitle="请求前的内容审核接入。">
           <div class="settings-block-stack">
             <section class="settings-block">
               <header class="settings-block__header">
@@ -699,7 +699,7 @@
       </div>
 
       <div v-else-if="activeSettingsTab === 'backup'" class="space-y-4">
-        <FormSection title="R2 备份管理" subtitle="定时备份到 Cloudflare R2，可加密与轮转。">
+        <FormSection collapsible title="R2 备份管理" subtitle="定时备份到 Cloudflare R2，可加密与轮转。">
           <div class="settings-block-stack">
             <section class="settings-block">
               <header class="settings-block__header">
@@ -842,7 +842,7 @@
       </div>
 
       <div v-else-if="activeSettingsTab === 'canvas'" class="max-w-3xl">
-        <FormSection title="画布入口" subtitle="开启后顶部导航会显示无限画布入口，并自动带上当前接口地址和密钥。">
+        <FormSection collapsible title="画布入口" subtitle="开启后顶部导航会显示无限画布入口，并自动带上当前接口地址和密钥。">
           <div class="settings-block-stack">
             <section class="settings-block">
               <header class="settings-block__header">
@@ -876,7 +876,7 @@
       </div>
 
       <div v-else-if="activeSettingsTab === 'api-docs'" class="space-y-4">
-        <FormSection title="接口接入" subtitle="第三方应用按 OpenAI 兼容接口接入，使用同一套 Bearer 鉴权。">
+        <FormSection collapsible title="接口接入" subtitle="第三方应用按 OpenAI 兼容接口接入，使用同一套 Bearer 鉴权。">
           <div class="settings-kv-grid">
             <div class="settings-kv-item">
               <p class="settings-kv-label">服务地址</p>
@@ -897,7 +897,7 @@
           </div>
         </FormSection>
 
-        <FormSection title="常用接口" subtitle="点击展开查看说明与示例请求。">
+        <FormSection collapsible title="常用接口" subtitle="点击展开查看说明与示例请求。">
           <div class="settings-doc-list">
             <details
               v-for="item in apiDocItems"
@@ -2702,6 +2702,20 @@ onBeforeRouteLeave(async (_to, _from, next) => {
   next(false)
 })
 
+function onSettingsBlockCollapseClick(e: MouseEvent) {
+  const target = e.target as HTMLElement | null
+  if (!target) return
+  if (target.closest('button, a, input, textarea, select, label, .ui-btn, .form-section__actions')) return
+  const header = target.closest('.settings-block__header') as HTMLElement | null
+  if (!header) return
+  const block = header.closest('.settings-block') as HTMLElement | null
+  if (!block) return
+  const collapsed = block.classList.toggle('is-collapsed')
+  header.setAttribute('aria-expanded', collapsed ? 'false' : 'true')
+  header.setAttribute('role', 'button')
+  header.tabIndex = 0
+}
+
 const handleSave = async () => {
   if (!localSettings.value) return
   const confirmed = await confirmDialog.ask({
@@ -2754,7 +2768,51 @@ const handleSave = async () => {
 }
 
 .settings-block__header {
+  position: relative;
   margin-bottom: 10px;
+  padding-right: 18px;
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+}
+
+.settings-block__header::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  right: 2px;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid hsl(var(--muted-foreground));
+  border-bottom: 1.5px solid hsl(var(--muted-foreground));
+  transform: rotate(45deg);
+  transition: transform 0.14s ease, border-color 0.12s ease;
+}
+
+.settings-block.is-collapsed .settings-block__header {
+  margin-bottom: 0;
+}
+
+.settings-block.is-collapsed .settings-block__header::after {
+  top: 8px;
+  transform: rotate(-45deg);
+}
+
+.settings-block.is-collapsed > :not(.settings-block__header) {
+  display: none !important;
+}
+
+.settings-block__header:hover .settings-block__title {
+  color: var(--bauhaus-blue, #2d5da1);
+}
+
+.settings-block__header:hover::after {
+  border-color: var(--bauhaus-blue, #2d5da1);
+}
+
+.settings-block__header:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 45%, transparent);
+  outline-offset: 2px;
 }
 
 .settings-block__title {
@@ -2764,6 +2822,7 @@ const handleSave = async () => {
   letter-spacing: -0.01em;
   text-transform: none;
   color: hsl(var(--foreground));
+  transition: color 0.12s ease;
 }
 
 .settings-block__desc {
@@ -2772,6 +2831,14 @@ const handleSave = async () => {
   font-weight: 400;
   line-height: 1.45;
   color: hsl(var(--muted-foreground) / 0.9);
+}
+
+html[data-theme='dark'] .settings-block__header:hover .settings-block__title {
+  color: hsl(var(--primary));
+}
+
+html[data-theme='dark'] .settings-block__header:hover::after {
+  border-color: hsl(var(--primary));
 }
 
 .settings-block__note {
