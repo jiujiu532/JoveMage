@@ -4,10 +4,45 @@
     :class="{ 'runtime-log-panel--fill': fill }"
     :style="panelStyle"
   >
-    <div v-if="title || $slots.actions" class="runtime-log-panel__header">
-      <span v-if="title" class="runtime-log-panel__title">{{ title }}</span>
-      <div v-if="$slots.actions" class="runtime-log-panel__actions">
+    <div v-if="title || showToolbar || $slots.actions" class="runtime-log-panel__header">
+      <div class="runtime-log-panel__heading">
+        <span v-if="title" class="runtime-log-panel__title">{{ title }}</span>
+        <span
+          v-if="showToolbar && locked"
+          class="runtime-log-panel__lock-hint"
+          title="已锁定：新日志不会自动滚到底部"
+        >已锁定</span>
+      </div>
+      <div class="runtime-log-panel__actions">
         <slot name="actions" />
+        <template v-if="showToolbar">
+          <Button
+            size="xs"
+            variant="outline"
+            :disabled="isEmpty"
+            title="滚动到最新日志"
+            @click="scrollToBottom(true)"
+          >
+            滚动
+          </Button>
+          <Button
+            size="xs"
+            :variant="locked ? 'primary' : 'outline'"
+            :title="locked ? '解锁并跟随最新日志' : '锁定当前视图，停止自动滚动'"
+            @click="toggleLock"
+          >
+            {{ locked ? '解锁' : '锁定' }}
+          </Button>
+          <Button
+            size="xs"
+            variant="outline"
+            :disabled="isEmpty"
+            title="复制当前面板中的全部日志"
+            @click="copyLogs"
+          >
+            复制
+          </Button>
+        </template>
       </div>
     </div>
 
@@ -15,7 +50,12 @@
       <EmptyState plain :title="emptyTitle" :description="emptyDescription" />
     </div>
 
-    <div v-else class="runtime-log-panel__body scrollbar-slim">
+    <div
+      v-else
+      ref="bodyEl"
+      class="runtime-log-panel__body scrollbar-slim"
+      @scroll.passive="onBodyScroll"
+    >
       <pre v-if="rawText.trim()" class="runtime-log-panel__raw">{{ rawText }}</pre>
       <div v-else class="runtime-log-panel__lines">
         <div
@@ -36,8 +76,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { EmptyState } from 'nanocat-ui'
+import { computed, nextTick, ref, watch } from 'vue'
+import { Button, EmptyState } from 'nanocat-ui'
+import { useToast } from '@/composables/useToast'
 
 export type RuntimeLogPanelLine = {
   key?: string
@@ -55,6 +96,10 @@ const props = withDefaults(defineProps<{
   minHeight?: string
   maxHeight?: string
   fill?: boolean
+  /** 是否显示滚动 / 锁定 / 复制工具栏，默认开启 */
+  showToolbar?: boolean
+  /** 初始是否锁定自动滚动 */
+  defaultLocked?: boolean
 }>(), {
   title: '',
   rawText: '',
@@ -64,7 +109,16 @@ const props = withDefaults(defineProps<{
   minHeight: '16rem',
   maxHeight: 'min(60vh, 42rem)',
   fill: false,
+  showToolbar: true,
+  defaultLocked: false,
 })
+
+const toast = useToast()
+const bodyEl = ref<HTMLElement | null>(null)
+const locked = ref(Boolean(props.defaultLocked))
+/** 程序滚动时忽略 scroll 事件，避免误触锁定 */
+const ignoreScrollEvent = ref(false)
+const NEAR_BOTTOM_PX = 48
 
 const isEmpty = computed(() => !props.rawText.trim() && props.lines.length === 0)
 
@@ -72,6 +126,103 @@ const panelStyle = computed(() => ({
   '--runtime-log-min-height': props.minHeight,
   '--runtime-log-max-height': props.maxHeight,
 }))
+
+const contentFingerprint = computed(() => {
+  if (props.rawText.trim()) {
+    return `raw:${props.rawText.length}:${props.rawText.slice(-80)}`
+  }
+  const lines = props.lines
+  if (!lines.length) return 'empty'
+  const last = lines[lines.length - 1]
+  return `lines:${lines.length}:${last?.key || ''}:${last?.text || ''}`
+})
+
+const exportText = computed(() => {
+  if (props.rawText.trim()) return props.rawText
+  return props.lines
+    .map((line) => {
+      const time = String(line.time || '').trim()
+      const text = String(line.text || '').trimEnd()
+      return time ? `${time}  ${text}` : text
+    })
+    .join('\n')
+})
+
+function isNearBottom(el: HTMLElement) {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_BOTTOM_PX
+}
+
+function scrollToBottom(force = false) {
+  const el = bodyEl.value
+  if (!el) return
+  if (!force && locked.value) return
+  ignoreScrollEvent.value = true
+  el.scrollTop = el.scrollHeight
+  window.setTimeout(() => {
+    ignoreScrollEvent.value = false
+  }, 80)
+  if (force && locked.value) {
+    locked.value = false
+  }
+}
+
+function toggleLock() {
+  locked.value = !locked.value
+  if (!locked.value) {
+    void nextTick(() => scrollToBottom(true))
+  }
+}
+
+function onBodyScroll() {
+  if (ignoreScrollEvent.value) return
+  const el = bodyEl.value
+  if (!el) return
+  // 手动上滑离开底部 → 自动锁定，避免新日志把阅读位置拽走
+  if (!isNearBottom(el)) {
+    locked.value = true
+    return
+  }
+  // 滚回底部 → 自动解锁并继续跟随
+  if (locked.value) {
+    locked.value = false
+  }
+}
+
+async function copyLogs() {
+  const text = exportText.value.trim()
+  if (!text) {
+    toast.error('暂无日志可复制')
+    return
+  }
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+    } else {
+      const area = document.createElement('textarea')
+      area.value = text
+      area.setAttribute('readonly', 'true')
+      area.style.position = 'fixed'
+      area.style.left = '-9999px'
+      document.body.appendChild(area)
+      area.select()
+      document.execCommand('copy')
+      document.body.removeChild(area)
+    }
+    toast.success('日志已复制')
+  } catch {
+    toast.error('复制失败')
+  }
+}
+
+watch(
+  contentFingerprint,
+  async () => {
+    if (isEmpty.value || locked.value) return
+    await nextTick()
+    scrollToBottom(false)
+  },
+  { flush: 'post' },
+)
 </script>
 
 <style scoped>
@@ -101,16 +252,36 @@ const panelStyle = computed(() => ({
   background: hsl(var(--card));
 }
 
+.runtime-log-panel__heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.45rem;
+}
+
 .runtime-log-panel__title {
   font-size: 12px;
   font-weight: 500;
   color: hsl(var(--muted-foreground));
 }
 
+.runtime-log-panel__lock-hint {
+  flex: 0 0 auto;
+  border: 1px solid hsl(var(--border));
+  border-radius: 999px;
+  padding: 0.05rem 0.42rem;
+  color: hsl(var(--muted-foreground));
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 .runtime-log-panel__actions {
   display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .runtime-log-panel__empty {
