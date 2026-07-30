@@ -1905,9 +1905,27 @@ html[data-theme='dark'] .studio-scroll-latest {
   box-shadow: var(--shadow-hard-soft);
 }
 
+/* 平板及以下：图槽收窄 + 强制单列（桌面 clamp 双列不动） */
+@media (max-width: 1023px) {
+  .studio-chat-panel {
+    --studio-image-slot-size: min(14rem, calc(100vw - 5rem));
+  }
+
+  .studio-result-grid,
+  .studio-result-grid.is-single {
+    grid-template-columns: minmax(0, var(--studio-image-slot-size));
+  }
+
+  .studio-result-item,
+  .studio-result-grid.is-single .studio-result-item {
+    width: min(100%, var(--studio-image-slot-size));
+    max-width: 100%;
+  }
+}
+
 @media (max-width: 720px) {
   .studio-chat-scroll {
-    padding: 0.75rem 0.75rem calc(var(--studio-composer-height, 9rem) + 0.75rem);
+    padding: 0.65rem 0.65rem calc(var(--studio-composer-height, 9rem) + 0.65rem);
   }
 
   .studio-scroll-latest {
@@ -1915,23 +1933,33 @@ html[data-theme='dark'] .studio-scroll-latest {
   }
 
   .studio-turns {
-    gap: 1.15rem;
+    gap: 1rem;
   }
 
   .chat-message-container {
     max-width: 100%;
-    gap: 0.55rem;
+    gap: 0.45rem;
+  }
+
+  /* PC 仍为 min(100%, 40rem)；窄屏更贴边、为头像留白 */
+  .chat-message-container.is-user {
+    max-width: min(100%, calc(100vw - 4.25rem));
   }
 
   .chat-message-avatar {
-    width: 1.75rem;
-    height: 1.75rem;
-    flex-basis: 1.75rem;
+    width: 1.65rem;
+    height: 1.65rem;
+    flex: 0 0 1.65rem;
+    margin-top: 0.1rem;
   }
 
   .chat-message-avatar-mark {
-    width: 13px;
-    height: 13px;
+    width: 12px;
+    height: 12px;
+  }
+
+  .chat-message-bubble-user {
+    padding: 0.55rem 0.75rem;
   }
 
   .chat-message-container.is-pending-image-message {
@@ -1941,11 +1969,7 @@ html[data-theme='dark'] .studio-scroll-latest {
   }
 
   .studio-chat-panel {
-    --studio-image-slot-size: min(18rem, calc(100vw - 5rem));
-  }
-
-  .studio-result-grid {
-    grid-template-columns: minmax(0, var(--studio-image-slot-size));
+    --studio-image-slot-size: min(14rem, calc(100vw - 5rem));
   }
 
   .chat-message-actions {

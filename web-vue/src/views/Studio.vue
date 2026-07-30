@@ -1586,8 +1586,9 @@ onBeforeUnmount(() => {
   --ui-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   display: grid;
   box-sizing: border-box;
-  height: calc(100dvh - 11rem);
-  min-height: 34rem;
+  /* immersive 父级已满高：用 100% 填内容区，避免 calc(100dvh-11rem) 在壳内再扣一次产生底部空白 */
+  height: 100%;
+  min-height: 0;
   grid-template-columns: var(--studio-history-width) minmax(0, 1fr);
   gap: 0.75rem;
   overflow: hidden;
@@ -1726,8 +1727,8 @@ html[data-theme='dark'] .studio-main {
 
 @media (max-width: 1023px) {
   .studio-workspace {
-    height: calc(100dvh - 9.5rem);
-    min-height: 28rem;
+    height: 100%;
+    min-height: 0;
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -1741,6 +1742,11 @@ html[data-theme='dark'] .studio-main {
 
   .chat-header-name {
     max-width: 42vw;
+  }
+
+  .chat-header-bar {
+    min-height: 3.15rem;
+    padding: 0.5rem 0.7rem;
   }
 
 }

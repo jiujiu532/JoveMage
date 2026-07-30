@@ -1039,18 +1039,20 @@ html[data-theme='dark'] .studio-size-popover {
 
 @media (max-width: 720px) {
   .chat-input-panel {
-    padding: 0.5rem 0.625rem 0.75rem;
+    padding: 0.45rem 0.55rem calc(0.55rem + env(safe-area-inset-bottom, 0px));
   }
 
   .chat-input-panel-shell {
     border-radius: var(--radius);
-    padding: 0.6rem;
+    padding: 0.55rem;
+    gap: 0.5rem;
   }
 
   .chat-input-actions {
     align-items: flex-start;
     flex-direction: column;
-    gap: 0.55rem;
+    gap: 0.45rem;
+    padding-top: 0.45rem;
   }
 
   .chat-input-action-row {
@@ -1058,6 +1060,7 @@ html[data-theme='dark'] .studio-size-popover {
     flex-wrap: nowrap;
     overflow-x: auto;
     padding-bottom: 0.125rem;
+    -webkit-overflow-scrolling: touch;
   }
 
   .chat-input-status {
@@ -1077,7 +1080,7 @@ html[data-theme='dark'] .studio-size-popover {
   .studio-size-popover {
     position: fixed;
     right: 1rem;
-    bottom: 5.75rem;
+    bottom: calc(5.75rem + env(safe-area-inset-bottom, 0px));
     left: 1rem;
     width: auto;
     max-height: min(30rem, calc(100dvh - 7rem));
@@ -1106,6 +1109,11 @@ html[data-theme='dark'] .studio-size-popover {
 
   .attach-images {
     width: 100%;
+  }
+
+  /* 触控：参考图删除按钮始终可点 */
+  .chat-attachment-remove {
+    opacity: 0.92;
   }
 }
 </style>

@@ -85,13 +85,16 @@ function formatTime(value: string) {
   inset: 0;
   z-index: 260;
   background: rgb(15 23 42 / 0.36);
-  padding: 0.75rem;
+  padding: calc(0.75rem + env(safe-area-inset-top, 0px))
+    calc(0.75rem + env(safe-area-inset-right, 0px))
+    calc(0.75rem + env(safe-area-inset-bottom, 0px))
+    calc(0.75rem + env(safe-area-inset-left, 0px));
 }
 
 .studio-mobile-history {
   display: flex;
   width: min(24rem, 92vw);
-  max-height: calc(100dvh - 1.5rem);
+  max-height: calc(100dvh - 1.5rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   flex-direction: column;
   gap: 0.75rem;
   overflow: hidden;
