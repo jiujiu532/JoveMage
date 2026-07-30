@@ -973,31 +973,51 @@ html[data-theme='dark'] .monitor-table tbody tr:hover {
 }
 
 .monitor-metric-cell--primary .monitor-metric-cell__value {
-  font-size: 17px;
+  font-size: 22px;
 }
 
+/* 信息层级：数值=主角（大/粗/实色），标签=配角（小/弱），空值=近乎隐形。
+ * 让「有数据的格子」自己跳出来，空单元格退到背景。 */
 .monitor-metric-cell__label {
   overflow: hidden;
   font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: hsl(var(--muted-foreground));
+  color: hsl(var(--muted-foreground) / 0.85);
 }
 
 .monitor-metric-cell__value {
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 19px;
+  font-weight: 800;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
+  color: hsl(var(--foreground));
 }
 
+/* 空值 “-”：降级，几乎退到背景，不与真实数值抢视线 */
 .monitor-metric-cell__value--empty {
-  color: hsl(var(--muted-foreground));
+  color: hsl(var(--muted-foreground) / 0.4);
+  font-size: 14px;
   font-weight: 500;
+}
+
+/* 全空单元格：整体弱化（边框 + 顶彩条 + 标签淡化），重点留给有数据的格子 */
+.monitor-metric-cell:has(.monitor-metric-cell__value--empty) {
+  border-color: color-mix(in srgb, var(--bauhaus-line-soft, #c9c2b4) 55%, transparent);
+  box-shadow: none;
+}
+
+.monitor-metric-cell:has(.monitor-metric-cell__value--empty)::before {
+  opacity: 0.35;
+}
+
+.monitor-metric-cell:has(.monitor-metric-cell__value--empty) .monitor-metric-cell__label,
+.monitor-metric-cell:has(.monitor-metric-cell__value--empty) .monitor-metric-cell__meta {
+  color: hsl(var(--muted-foreground) / 0.55);
 }
 
 .monitor-metric-cell__meta {
