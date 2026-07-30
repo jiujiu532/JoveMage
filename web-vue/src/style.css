@@ -48,6 +48,9 @@
   --bauhaus-red: #ff4d4d;
   --bauhaus-yellow: #fff9c4;
   --bauhaus-ink: #2d2d2d;
+  --bauhaus-ink-fill: #2d2d2d;
+  --bauhaus-ink-on: #fdfbf7;
+  --bauhaus-line-strong: #2d2d2d;
   --bauhaus-paper: #fdfbf7;
   --bauhaus-paper-2: #f5f0e6;
   --bauhaus-card: #ffffff;
@@ -99,76 +102,91 @@
   --font-body: "Noto Sans SC", "Space Grotesk", "Helvetica Neue", Arial, sans-serif;
 }
 
+/* 深色 = 「高对比黑白 neo-brutalist」：近纯黑底 + 白硬框 + 三原色彩条。
+ * 结构/卡片/彩条保留浅色原版；描边用细亮线（非厚墨块），阴影收敛，
+ * 蓝/红/黄保持 Bauhaus 三原色，成功/警示用高对比点缀。 */
 html[data-theme="dark"] {
-  --background: 0 0% 10%;
+  /* 近纯黑底，卡片微提亮，层次靠亮度差 + 细亮线 */
+  --background: 0 0% 4%;
   --foreground: 0 0% 96%;
 
-  --card: 0 0% 13%;
+  --card: 0 0% 8%;
   --card-foreground: 0 0% 96%;
 
-  --primary: 207 80% 55%;
-  --primary-foreground: 0 0% 100%;
+  --primary: 0 0% 100%;
+  --primary-foreground: 0 0% 4%;
 
-  --secondary: 0 0% 16%;
+  --secondary: 0 0% 12%;
   --secondary-foreground: 0 0% 96%;
 
-  --muted: 0 0% 16%;
-  --muted-foreground: 0 0% 68%;
+  --muted: 0 0% 12%;
+  --muted-foreground: 0 0% 62%;
 
-  --accent: 207 40% 18%;
-  --accent-foreground: 207 80% 78%;
+  --accent: 0 0% 16%;
+  --accent-foreground: 0 0% 96%;
 
-  --destructive: 2 76% 55%;
-  --destructive-foreground: 0 0% 100%;
+  --destructive: 4 75% 60%;
+  --destructive-foreground: 0 0% 4%;
 
-  --border: 0 0% 26%;
-  --input: 0 0% 26%;
-  --ring: 207 80% 55%;
+  --border: 0 0% 22%;
+  --input: 0 0% 22%;
+  --ring: 0 0% 100%;
 
-  --bauhaus-blue: #3d8fd9;
-  --bauhaus-red: #ff6b6b;
-  --bauhaus-yellow: #3a3420;
+  /* Bauhaus 三原色：纯、亮、不荧光，用在彩条/点缀 */
+  --bauhaus-blue: #4f8ef7;
+  --bauhaus-red: #ff4d4d;
+  --bauhaus-yellow: #ffd400;
+  /* ink：深色下的亮描边/高亮文字，对应浅色 #2d2d2d 的“重色”角色 */
   --bauhaus-ink: #f2f2f2;
-  --bauhaus-paper: #1a1a1a;
-  --bauhaus-paper-2: #222222;
-  --bauhaus-card: #212121;
-  --bauhaus-grey: #a3a3a3;
-  --bauhaus-line-soft: #3d3d3d;
-  --bauhaus-postit: #3a3420;
+  /* 实心墨块（选中态 / 品牌块 / BH 色块）：深色=白底黑字反相 */
+  --bauhaus-ink-fill: #f2f2f2;
+  --bauhaus-ink-on: #0a0a0a;
+  /* 高对比描边线（壳层分隔、卡片硬框） */
+  --bauhaus-line-strong: #f2f2f2;
+  --bauhaus-paper: #050505;
+  --bauhaus-paper-2: #0d0d0d;
+  --bauhaus-card: #101010;
+  --bauhaus-grey: #9a9a9a;
+  --bauhaus-line-soft: #2e2e2e;
+  --bauhaus-postit: #1c1c1c;
 
-  --tone-success-border: 207 40% 32%;
-  --tone-success-bg: 207 35% 14%;
-  --tone-success-foreground: 207 80% 78%;
-  --tone-success-strong: 207 80% 62%;
+  /* 状态色：高对比纯色细线 + 暗底 tint */
+  --tone-success-border: 145 70% 45%;
+  --tone-success-bg: 145 50% 10%;
+  --tone-success-foreground: 145 80% 70%;
+  --tone-success-strong: 145 85% 62%;
 
-  --tone-warning-border: 48 50% 32%;
-  --tone-warning-bg: 48 40% 14%;
-  --tone-warning-foreground: 48 90% 72%;
-  --tone-warning-strong: 48 90% 58%;
+  --tone-warning-border: 48 95% 55%;
+  --tone-warning-bg: 48 70% 10%;
+  --tone-warning-foreground: 48 100% 70%;
+  --tone-warning-strong: 48 100% 60%;
 
-  --tone-error-border: 2 40% 32%;
-  --tone-error-bg: 2 30% 14%;
-  --tone-error-foreground: 2 80% 78%;
-  --tone-error-strong: 2 76% 62%;
+  --tone-error-border: 4 75% 58%;
+  --tone-error-bg: 4 55% 10%;
+  --tone-error-foreground: 4 90% 72%;
+  --tone-error-strong: 4 90% 64%;
 
-  --tone-info-border: 207 40% 32%;
-  --tone-info-bg: 207 35% 14%;
-  --tone-info-foreground: 207 80% 78%;
-  --tone-info-strong: 207 80% 62%;
+  --tone-info-border: 214 85% 60%;
+  --tone-info-bg: 214 60% 10%;
+  --tone-info-foreground: 214 90% 74%;
+  --tone-info-strong: 214 90% 66%;
 
   --shadow-inset-soft: 0 0 0 transparent;
   --shadow-elevated: none;
   --shadow-floating: none;
-  --shadow-toast: 0 2px 0 rgba(0, 0, 0, 0.45);
-  --overlay-backdrop: rgba(0, 0, 0, 0.72);
-  /* 深色 ink 近白，硬阴影变白框；统一改用柔和深色投影 */
-  --shadow-hard-sm: 0 2px 6px rgba(0, 0, 0, 0.5);
-  --shadow-hard: 0 3px 9px rgba(0, 0, 0, 0.55);
-  --shadow-hard-lg: 0 4px 14px rgba(0, 0, 0, 0.55);
-  --shadow-hard-soft: 0 3px 9px rgba(0, 0, 0, 0.55);
-  --shadow-hard-soft-lg: 0 4px 14px rgba(0, 0, 0, 0.55);
+  --shadow-toast: 2px 2px 0 0 rgba(255, 255, 255, 0.22);
+  --overlay-backdrop: rgba(0, 0, 0, 0.7);
+  /* 阴影收敛：细亮硬偏移即可，不要厚重墨块 */
+  --shadow-hard-sm: 2px 2px 0 0 rgba(255, 255, 255, 0.18);
+  --shadow-hard: 2px 2px 0 0 rgba(255, 255, 255, 0.22);
+  --shadow-hard-lg: 3px 3px 0 0 rgba(255, 255, 255, 0.22);
+  --shadow-hard-soft: 2px 2px 0 0 rgba(255, 255, 255, 0.14);
+  --shadow-hard-soft-lg: 3px 3px 0 0 rgba(255, 255, 255, 0.16);
   --shadow-card: var(--shadow-hard);
   --shadow-card-soft: var(--shadow-hard-soft-lg);
+
+  /* 深色点阵纸纹：极淡 */
+  --paper-dots: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
 }
 
 @layer base {
@@ -189,6 +207,14 @@ html[data-theme="dark"] {
 
   /* 浅色：奶油纸面点阵（与 ops-theme-preview 一致） */
   html:not([data-theme="dark"]) body {
+    background-color: var(--bauhaus-paper);
+    background-image: var(--paper-dots);
+    background-size: 24px 24px;
+    background-attachment: fixed;
+  }
+
+  /* 深色：暖墨纸面点阵（与浅色同语言） */
+  html[data-theme="dark"] body {
     background-color: var(--bauhaus-paper);
     background-image: var(--paper-dots);
     background-size: 24px 24px;
@@ -896,8 +922,13 @@ html[data-theme="dark"] label:has(> input[type="checkbox"].sr-only.peer) > span:
 }
 
 .bh-ink-block {
-  background: var(--bauhaus-ink);
-  color: var(--bauhaus-paper);
+  background: var(--bauhaus-ink-fill);
+  color: var(--bauhaus-ink-on);
+}
+
+html[data-theme="dark"] .bh-ink-block {
+  background: var(--bauhaus-ink-fill);
+  color: var(--bauhaus-ink-on);
 }
 
 .bh-blue-block {
@@ -912,15 +943,15 @@ html[data-theme="dark"] label:has(> input[type="checkbox"].sr-only.peer) > span:
 
 .bh-yellow-block {
   background: var(--bauhaus-yellow);
-  color: var(--bauhaus-ink);
-  border: 1px solid var(--bauhaus-ink);
+  color: var(--bauhaus-ink-on, #16120c);
+  border: 1px solid var(--bauhaus-line-strong, #6b6154);
 }
 
 /* ========== 壳层构图 ========== */
 .shell-header {
   position: relative;
   background: var(--bauhaus-paper-2, #f5f0e6) !important;
-  border-bottom: 2px solid var(--bauhaus-ink) !important;
+  border-bottom: 2px solid var(--bauhaus-line-strong, #6b6154) !important;
 }
 
 .shell-header::before {

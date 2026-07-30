@@ -1033,17 +1033,18 @@ html[data-theme='dark'] .monitor-table tbody tr:hover {
 }
 
 html[data-theme='dark'] .monitor-metric-group {
-  border-color: var(--bauhaus-line-soft, #3d3d3d);
-  background: color-mix(in srgb, var(--bauhaus-paper-2, #222) 88%, transparent);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  border-color: var(--bauhaus-line-soft);
+  background: var(--bauhaus-paper-2);
+  box-shadow: var(--shadow-hard);
 }
 
 html[data-theme='dark'] .monitor-metric-group__head {
-  border-bottom-color: var(--bauhaus-line-soft, #3d3d3d);
+  border-bottom-color: var(--bauhaus-line-soft);
 }
 
 html[data-theme='dark'] .monitor-metric-cell {
-  border-color: var(--bauhaus-line-soft, #3d3d3d);
+  border-color: var(--bauhaus-line-soft);
+  box-shadow: var(--shadow-hard-sm);
 }
 
 /* ===== 慢请求卡片：包豪斯锐边 + 顶部耗时状态条 ===== */
