@@ -229,8 +229,16 @@ html[data-theme="dark"] {
     font-weight: 700;
   }
 
+  html,
+  body {
+    height: 100%;
+  }
+
   #app {
-    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    min-height: 0;
   }
 
   button:disabled,

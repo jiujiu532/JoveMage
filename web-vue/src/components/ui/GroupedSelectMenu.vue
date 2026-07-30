@@ -50,7 +50,7 @@
           :disabled="option.disabled"
           @click="select(option.value)"
         >
-          <span>{{ option.label }}</span>
+          <span class="min-w-0 flex-1 truncate">{{ option.label }}</span>
           <svg
             v-if="isSelected(option.value) && selectedIndicator === 'check'"
             aria-hidden="true"
@@ -350,7 +350,8 @@ html[data-theme="dark"] .grouped-select-trigger:focus-visible {
 }
 
 .grouped-select-menu {
-  max-height: min(30rem, calc(100vh - 16px));
+  max-width: calc(100vw - 16px);
+  max-height: min(30rem, calc(100dvh - 16px));
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -366,6 +367,8 @@ html[data-theme="dark"] .grouped-select-trigger:focus-visible {
 }
 
 .grouped-select-option {
+  min-width: 0;
+  overflow: hidden;
   white-space: nowrap;
 }
 

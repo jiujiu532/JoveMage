@@ -95,7 +95,7 @@ const router = createRouter({
           path: 'studio',
           name: 'studio',
           component: () => import('@/views/Studio.vue'),
-          meta: {},
+          meta: { immersive: true },
         },
       ],
     },

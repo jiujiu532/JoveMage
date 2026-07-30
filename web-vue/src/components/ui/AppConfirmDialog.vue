@@ -3,7 +3,7 @@
     <div
       v-if="open"
       class="confirm-dialog"
-      @click.self="$emit('cancel')"
+      @click.self="emit('cancel')"
     >
       <div class="confirm-dialog__stage">
         <div
@@ -22,7 +22,7 @@
               size="xs"
               variant="outline"
               root-class="min-w-14 justify-center text-muted-foreground"
-              @click="$emit('cancel')"
+              @click="emit('cancel')"
             >
               {{ cancelText || '取消' }}
             </Button>
@@ -30,7 +30,7 @@
               size="xs"
               variant="primary"
               root-class="min-w-14 justify-center"
-              @click="$emit('confirm')"
+              @click="emit('confirm')"
             >
               {{ confirmText || '确定' }}
             </Button>
@@ -42,9 +42,10 @@
 </template>
 
 <script setup lang="ts">
+import { onBeforeUnmount, watch } from 'vue'
 import { Button } from 'nanocat-ui'
 
-defineProps<{
+const props = defineProps<{
   open: boolean
   title?: string
   message: string
@@ -52,10 +53,33 @@ defineProps<{
   cancelText?: string
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   confirm: []
   cancel: []
 }>()
+
+function handleKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && props.open) {
+    event.preventDefault()
+    emit('cancel')
+  }
+}
+
+watch(
+  () => props.open,
+  (isOpen) => {
+    if (isOpen) {
+      document.addEventListener('keydown', handleKeydown)
+      return
+    }
+    document.removeEventListener('keydown', handleKeydown)
+  },
+  { immediate: true },
+)
+
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', handleKeydown)
+})
 </script>
 
 <style scoped>
@@ -65,7 +89,11 @@ defineEmits<{
   z-index: 300;
   overflow-y: auto;
   background: var(--overlay-backdrop);
-  padding: 16px 12px;
+  padding:
+    max(16px, env(safe-area-inset-top, 0px))
+    max(12px, env(safe-area-inset-right, 0px))
+    max(16px, env(safe-area-inset-bottom, 0px))
+    max(12px, env(safe-area-inset-left, 0px));
 }
 
 .confirm-dialog__stage {

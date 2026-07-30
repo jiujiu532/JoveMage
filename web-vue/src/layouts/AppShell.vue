@@ -1,17 +1,20 @@
 ﻿<template>
-  <div class="min-h-screen">
-    <div class="flex min-h-screen flex-col lg:flex-row">
+  <div class="shell-root flex h-[100dvh] min-h-0 flex-col">
+    <div class="flex min-h-0 flex-1 flex-col lg:flex-row">
       <div
         v-if="isSidebarOpen"
         class="fixed inset-0 z-30 bg-black/20 lg:hidden"
         @click="isSidebarOpen = false"
       ></div>
       <aside
-        class="shell-sidebar fixed inset-y-0 left-0 z-40 w-64 -translate-x-full overflow-x-hidden bg-card border-r border-border
-               transition-[transform,width] duration-200 ease-out will-change-[transform,width] transform-gpu flex flex-col lg:static lg:translate-x-0 lg:w-[var(--sidebar-width)] lg:bg-card
-               lg:border-b-0 lg:border-r lg:sticky lg:top-0 lg:h-screen"
+        class="shell-sidebar fixed inset-y-0 left-0 z-40 flex w-64 -translate-x-full flex-col overflow-x-hidden border-r border-border bg-card
+               transition-[transform,width] duration-200 ease-out will-change-[transform,width] transform-gpu lg:static lg:h-full lg:w-[var(--sidebar-width)] lg:translate-x-0 lg:bg-card
+               lg:sticky lg:top-0 lg:border-b-0 lg:border-r"
         :class="[isSidebarOpen ? 'translate-x-0' : '']"
         :style="sidebarStyle"
+        :role="isSidebarOpen ? 'dialog' : undefined"
+        :aria-modal="isSidebarOpen ? 'true' : undefined"
+        :aria-label="isSidebarOpen ? '导航菜单' : undefined"
       >
         <!-- 侧栏顶：三原色功能条 -->
         <div class="grid h-1.5 shrink-0 grid-cols-3" aria-hidden="true">
@@ -128,7 +131,7 @@
               size="xs"
               variant="outline"
               icon-only
-              root-class="shrink-0 rounded-sm text-muted-foreground"
+              root-class="hidden shrink-0 rounded-sm text-muted-foreground lg:inline-flex"
               @click="isSidebarCollapsed = !isSidebarCollapsed"
               :title="isSidebarCollapsed ? '展开侧边栏' : '收起侧边栏'"
             >
@@ -145,7 +148,7 @@
         </div>
       </aside>
 
-      <main class="relative min-w-0 flex-1 overflow-hidden lg:ml-0">
+      <main class="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden lg:ml-0">
         <div
           v-if="isRoutePending"
           class="route-pending-bar"
@@ -155,14 +158,14 @@
 
         <header
           v-if="!isImmersivePage"
-          class="shell-header min-w-0 flex flex-col gap-4 border-b border-border bg-card px-6 py-5 lg:flex-row lg:items-center lg:justify-between lg:px-10"
+          class="shell-header flex min-w-0 shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-3 py-3 sm:gap-3 sm:px-4 sm:py-4 lg:gap-4 lg:px-10 lg:py-5"
         >
-          <div class="flex items-center gap-3">
+          <div class="flex min-w-0 items-center gap-2 sm:gap-3">
             <Button
               size="xs"
               variant="outline"
               icon-only
-              root-class="lg:hidden"
+              root-class="shrink-0 lg:hidden"
               @click="isSidebarOpen = true"
               aria-label="打开导航"
             >
@@ -170,26 +173,29 @@
                 <path d="M4 6h16v2H4V6zm0 5h16v2H4v-2zm0 5h16v2H4v-2z" />
               </svg>
             </Button>
-            <BauhausBrandMark :size="36" root-class="shrink-0 text-foreground" />
-            <div class="flex min-w-0 flex-wrap items-center gap-2">
-              <h2 class="text-xl font-semibold tracking-tight text-foreground lg:text-2xl">
+            <BauhausBrandMark :size="32" root-class="shrink-0 text-foreground lg:hidden" />
+            <BauhausBrandMark :size="36" root-class="hidden shrink-0 text-foreground lg:block" />
+            <div class="flex min-w-0 items-center gap-2">
+              <h2 class="truncate text-lg font-semibold tracking-tight text-foreground sm:text-xl lg:text-2xl">
                 {{ currentPageTitle }}
               </h2>
             </div>
           </div>
-          <div class="flex flex-wrap items-center gap-3">
+          <div class="flex shrink-0 items-center gap-1.5 sm:gap-2 lg:gap-3">
             <Button
               size="sm"
               variant="outline"
               @click="cycleThemeMode"
               :title="themeButtonTitle"
             >
-              {{ themeButtonText }}
+              <span class="sm:hidden">{{ themeButtonText.charAt(0) }}</span>
+              <span class="hidden sm:inline">{{ themeButtonText }}</span>
             </Button>
             <Button
               v-if="canvasHref"
               size="sm"
               variant="outline"
+              root-class="hidden sm:inline-flex"
               @click="openInfiniteCanvas"
               title="打开外部无限画布"
             >
@@ -201,12 +207,14 @@
               @click="refreshPage"
               title="刷新"
             >
-              刷新
+              <span class="sm:hidden">刷</span>
+              <span class="hidden sm:inline">刷新</span>
             </Button>
             <Button
               size="sm"
               variant="outline"
               v-if="authStore.isAdmin"
+              root-class="hidden sm:inline-flex"
               @click="openUpdateDialog"
               title="查看版本更新"
             >
@@ -216,21 +224,48 @@
               size="sm"
               variant="outline"
               v-if="authStore.isAdmin"
+              root-class="hidden md:inline-flex"
               @click="openApiInfo"
             >
-              接口信息
+              <span class="lg:hidden">接口</span>
+              <span class="hidden lg:inline">接口信息</span>
             </Button>
           </div>
         </header>
 
+        <!-- immersive：仅移动端保留极简汉堡，lg 无顶栏 -->
+        <header
+          v-else
+          class="shell-header shell-header--immersive flex shrink-0 items-center gap-2 border-b border-border bg-card px-3 py-2 lg:hidden"
+        >
+          <Button
+            size="xs"
+            variant="outline"
+            icon-only
+            root-class="shrink-0"
+            @click="isSidebarOpen = true"
+            aria-label="打开导航"
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24" class="h-5 w-5" fill="currentColor">
+              <path d="M4 6h16v2H4V6zm0 5h16v2H4v-2zm0 5h16v2H4v-2z" />
+            </svg>
+          </Button>
+          <p class="truncate text-sm font-semibold tracking-tight text-foreground">
+            {{ currentPageTitle }}
+          </p>
+        </header>
+
         <div
-          class="shell-content relative h-full overflow-y-auto overflow-x-hidden bg-background"
-          :class="isImmersivePage ? 'p-0' : 'px-4 pb-10 pt-6 lg:px-10 lg:pt-10'"
+          class="shell-content relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-background"
+          :class="isImmersivePage ? 'p-0' : 'px-3 pb-6 pt-4 lg:px-10 lg:pb-10 lg:pt-10'"
         >
           <RouterView v-slot="{ Component, route: currentRoute }">
             <Suspense :timeout="120">
               <template #default>
-                <div class="route-view-content" :class="{ 'h-full': isImmersivePage }">
+                <div
+                  class="route-view-content"
+                  :class="isImmersivePage ? 'h-full min-h-0' : ''"
+                >
                   <KeepAlive :include="cachedRouteNames" :max="cachedRouteMax">
                     <component
                       :is="Component"
@@ -791,11 +826,22 @@ watch(
   }
 )
 
+watch(isSidebarOpen, (open) => {
+  if (typeof document === 'undefined') return
+  document.body.style.overflow = open ? 'hidden' : ''
+})
+
 isSidebarCollapsed.value = getBooleanPreference(preferenceKeys.sidebarCollapsed, false)
 
 watch(isSidebarCollapsed, (value) => {
   setBooleanPreference(preferenceKeys.sidebarCollapsed, value)
 })
+
+function handleSidebarEscape(event: KeyboardEvent) {
+  if (event.key === 'Escape' && isSidebarOpen.value) {
+    isSidebarOpen.value = false
+  }
+}
 
 function buildThirdPartyHref(appUrl: string, baseUrl: string, apiKey: string) {
   const url = appUrl.trim()
@@ -1060,6 +1106,7 @@ onMounted(() => {
   applyThemeMode(themeMode.value)
   setupSystemThemeListener()
   setupRoutePendingGuards()
+  document.addEventListener('keydown', handleSidebarEscape)
   void loadCurrentVersion()
   void loadThirdPartyApps()
 })
@@ -1067,6 +1114,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   systemThemeMedia?.removeEventListener('change', handleSystemThemeChange)
   systemThemeMedia = null
+  document.removeEventListener('keydown', handleSidebarEscape)
+  document.body.style.overflow = ''
   teardownRoutePendingGuards()
 })
 
@@ -1075,6 +1124,35 @@ onBeforeUnmount(() => {
 <style scoped>
 .route-view-content {
   min-width: 0;
+}
+
+.shell-sidebar {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+}
+
+.shell-header {
+  padding-top: max(0.75rem, env(safe-area-inset-top, 0px));
+  padding-right: max(0.75rem, env(safe-area-inset-right, 0px));
+}
+
+@media (min-width: 640px) {
+  .shell-header {
+    padding-top: max(1rem, env(safe-area-inset-top, 0px));
+    padding-right: max(1rem, env(safe-area-inset-right, 0px));
+  }
+}
+
+@media (min-width: 1024px) {
+  .shell-header {
+    padding-top: max(1.25rem, env(safe-area-inset-top, 0px));
+    padding-right: max(2.5rem, env(safe-area-inset-right, 0px));
+  }
+
+  .shell-header--immersive {
+    display: none;
+  }
 }
 
 /* ========== 侧栏导航切换动效 ========== */
