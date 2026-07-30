@@ -169,6 +169,7 @@ import { useModelCatalog } from '@/composables/useModelCatalog'
 import { useSettingsStore } from '@/stores/settings'
 import { useToast } from '@/composables/useToast'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import { useMediaQuery } from '@/composables/useMediaQuery'
 import {
   getBooleanPreference,
   getJsonPreference,
@@ -220,7 +221,9 @@ const composerError = ref('')
 const editingMessageId = ref('')
 const isSending = ref(false)
 const isStreaming = ref(false)
-const isFullscreen = ref(getBooleanPreference(preferenceKeys.studioFullscreen, false))
+/** PC 不自动全屏；仅窄屏恢复上次全屏偏好。手动点全屏仍会写入偏好。 */
+const isNarrowStudio = useMediaQuery('(max-width: 1023px)')
+const isFullscreen = ref(false)
 const isMobileHistoryOpen = ref(false)
 const isFetchingTasks = ref(false)
 const sidebarWidth = ref(getNumberPreference(preferenceKeys.studioSidebarWidth, defaultSidebarWidth, { min: 220, max: 380 }))
@@ -349,6 +352,12 @@ watch(activeConversationId, schedulePersistActiveConversationId)
 watch(requestedImageTaskIds, () => scheduleImageTaskRefresh())
 watch(pendingImageTaskIds, scheduleImagePoll)
 watch(isFullscreen, (value) => setBooleanPreference(preferenceKeys.studioFullscreen, value))
+watch(isNarrowStudio, (narrow) => {
+  // 回到桌面宽度时强制退出全屏，避免壳层被 fixed 盖住
+  if (!narrow && isFullscreen.value) {
+    isFullscreen.value = false
+  }
+})
 watch(sidebarWidth, (value) => setNumberPreference(preferenceKeys.studioSidebarWidth, value))
 watch(() => imageForm.model, (model) => {
   setStringPreference(preferenceKeys.studioImageModel, model || DEFAULT_IMAGE_MODEL)
@@ -1534,6 +1543,10 @@ function disposeStudio() {
 }
 
 onMounted(() => {
+  // useMediaQuery 已在 setup 注册，此处 matches 已同步；仅手机端恢复全屏偏好
+  if (isNarrowStudio.value && getBooleanPreference(preferenceKeys.studioFullscreen, false)) {
+    isFullscreen.value = true
+  }
   initializeStudio()
 })
 

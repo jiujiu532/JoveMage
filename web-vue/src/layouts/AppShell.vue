@@ -316,14 +316,16 @@
 
         <div
           class="shell-content relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-background"
-          :class="isImmersivePage ? 'p-0' : 'px-3 pb-6 pt-4 lg:px-10 lg:pb-10 lg:pt-10'"
+          :class="isImmersivePage || isStudioLayoutPage
+            ? (isImmersivePage ? 'p-0' : 'px-3 pb-4 pt-3 lg:px-6 lg:pb-6 lg:pt-5')
+            : 'px-3 pb-6 pt-4 lg:px-10 lg:pb-10 lg:pt-10'"
         >
           <RouterView v-slot="{ Component, route: currentRoute }">
             <Suspense :timeout="120">
               <template #default>
                 <div
                   class="route-view-content"
-                  :class="isImmersivePage ? 'h-full min-h-0' : ''"
+                  :class="isStudioLayoutPage ? 'h-full min-h-0' : ''"
                 >
                   <KeepAlive :include="cachedRouteNames" :max="cachedRouteMax">
                     <component
@@ -634,6 +636,7 @@ import ModalHeader from '@/components/ai/ModalHeader.vue'
 import ModalShell from '@/components/ai/ModalShell.vue'
 import PageLoadingState from '@/components/ai/PageLoadingState.vue'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import { useMediaQuery } from '@/composables/useMediaQuery'
 import { useToast } from '@/composables/useToast'
 import { getBooleanPreference, preferenceKeys, setBooleanPreference } from '@/lib/preferences'
 import { applyThemeMode, getStoredThemeMode, setStoredThemeMode, type ThemeMode } from '@/lib/theme'
@@ -781,8 +784,11 @@ function titleForRoute(name: unknown, path: string) {
   return item?.label || routeTitleMap[routeName] || '页面'
 }
 
-const isImmersivePage = computed(() => Boolean(route.meta.immersive))
-const isSidebarRail = computed(() => isSidebarCollapsed.value || isImmersivePage.value)
+/** Studio 等沉浸路由：仅 <lg 隐藏壳顶栏；PC 保留完整侧栏+顶栏 */
+const isNarrowShell = useMediaQuery('(max-width: 1023px)')
+const isStudioLayoutPage = computed(() => Boolean(route.meta.immersive))
+const isImmersivePage = computed(() => isStudioLayoutPage.value && isNarrowShell.value)
+const isSidebarRail = computed(() => isSidebarCollapsed.value)
 const sidebarStyle = computed(() => ({
   '--sidebar-width': isSidebarRail.value ? '4rem' : '16rem',
 }))
