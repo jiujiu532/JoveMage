@@ -419,6 +419,80 @@ const diagnosticGroups = computed(() => {
   ]
 })
 
+/** 空窗口时注入混合模拟指标，方便预览「有值亮 / 空值暗」层级；有真实完成记录时不覆盖。 */
+function withDemoMetricsIfEmpty(data: RealtimeMonitorResponse): RealtimeMonitorResponse {
+  const summary = data.summary
+  if (!summary) return data
+  const completed = Number(summary.completed || 0)
+  const p95 = summary.metric_p95 || {}
+  const hasReal = completed > 0 || Object.values(p95).some((v) => Number(v) > 0)
+  if (hasReal) return data
+
+  return {
+    ...data,
+    updated_at: `${data.updated_at || ''} · demo`,
+    window: {
+      ...(data.window || { completed: 0, completed_capacity: 500, events: 0, event_capacity: 1000 }),
+      completed: 12,
+    },
+    summary: {
+      ...summary,
+      active: 2,
+      completed: 12,
+      success: 10,
+      failed: 2,
+      success_rate: 83.3,
+      avg_duration_ms: 18400,
+      p95_duration_ms: 42600,
+      bottleneck: { key: 'conversation_stream_ms', label: '上游生成中', value_ms: 31200 },
+      metric_p95: {
+        // 入口 / 账号：有值
+        handler_queue_ms: 420,
+        stream_first_queue_ms: 0, // 空 → 应暗淡
+        account_wait_ms: 2800,
+        egress_wait_ms: 960,
+        egress_acquire_ms: 140,
+        // 上游准备：部分有值、部分空
+        upload_ms: 0,
+        bootstrap_ms: 680,
+        requirements_ms: 1240,
+        prepare_conversation_ms: 0,
+        generation_start_ms: 2100,
+        http_dns_ms: 18,
+        http_tcp_ms: 45,
+        http_tls_ms: 210,
+        http_wait_ms: 860,
+        http_ttfb_ms: 1120,
+        // 生成结果：主路径有值，断流/下载部分空
+        sse_first_event_ms: 320,
+        sse_max_gap_ms: 0,
+        conversation_stream_ms: 31200,
+        stream_error_ms: 0,
+        resolve_ms: 5400,
+        download_ms: 0,
+        stream_ms: 36800,
+        total_ms: 41200,
+      },
+      slow_counts: {
+        handler_queue: 1,
+        stream_first_queue: 0,
+        account_wait: 2,
+        egress_wait: 1,
+        total_over_120s: 0,
+        local_reject_or_busy: 1,
+      },
+      active_by_stage: {
+        上游生成中: 1,
+        等待账号: 1,
+      },
+      active_by_egress: {
+        'default:warp-1': 1,
+        direct: 1,
+      },
+    },
+  }
+}
+
 async function loadMonitor(silent = true, source: 'auto' | 'manual' = silent ? 'auto' : 'manual') {
   const autoRequest = source === 'auto'
   const runId = refreshRunId
@@ -428,7 +502,7 @@ async function loadMonitor(silent = true, source: 'auto' | 'manual' = silent ? '
   try {
     const data = await monitorApi.realtime()
     if (autoRequest && (!autoRefresh.value || runId !== refreshRunId)) return
-    monitorData.value = data
+    monitorData.value = withDemoMetricsIfEmpty(data)
     loadError.value = ''
   } catch (error: any) {
     if (autoRequest && (!autoRefresh.value || runId !== refreshRunId)) return
