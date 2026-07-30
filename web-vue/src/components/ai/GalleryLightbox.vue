@@ -10,22 +10,26 @@
           :alt="file.filename"
           class="lightbox-media"
         />
-        <div class="lightbox-info">
-          <span class="max-w-[24rem] truncate" :title="file.path">{{ file.filename }}</span>
-          <span v-if="sizeLabel">{{ sizeLabel }}</span>
-          <span v-if="file.created_at">{{ file.created_at }}</span>
-          <button v-if="canShowDownload" class="lightbox-btn" @click="emitFile('download')">
-            <Icon icon="lucide:download" />
-            下载
-          </button>
-          <button v-if="canShowCopy" class="lightbox-btn" @click="emitFile('copy')">
-            <Icon :icon="copied ? 'lucide:check' : 'lucide:copy'" />
-            {{ copied ? '已复制' : '复制链接' }}
-          </button>
-          <button v-if="canShowTag" class="lightbox-btn" @click="emitFile('edit-tags')">
-            <Icon icon="lucide:tag" />
-            标签
-          </button>
+        <div class="lightbox-footer">
+          <div class="lightbox-meta">
+            <span class="lightbox-meta__name" :title="file.path">{{ file.filename }}</span>
+            <span v-if="sizeLabel" class="lightbox-meta__item">{{ sizeLabel }}</span>
+            <span v-if="file.created_at" class="lightbox-meta__item">{{ file.created_at }}</span>
+          </div>
+          <div v-if="canShowDownload || canShowCopy || canShowTag" class="lightbox-actions">
+            <button v-if="canShowDownload" class="lightbox-btn" @click="emitFile('download')">
+              <Icon icon="lucide:download" />
+              下载
+            </button>
+            <button v-if="canShowCopy" class="lightbox-btn" @click="emitFile('copy')">
+              <Icon :icon="copied ? 'lucide:check' : 'lucide:copy'" />
+              {{ copied ? '已复制' : '复制链接' }}
+            </button>
+            <button v-if="canShowTag" class="lightbox-btn" @click="emitFile('edit-tags')">
+              <Icon icon="lucide:tag" />
+              标签
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -119,15 +123,45 @@ function emitFile(event: 'download' | 'copy' | 'edit-tags') {
   object-fit: contain;
 }
 
-.lightbox-info {
+.lightbox-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: min(100%, 42rem);
+  margin-top: 12px;
+}
+
+.lightbox-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  margin-top: 12px;
+  gap: 8px 12px;
+  max-width: 100%;
   font-size: 12px;
+  line-height: 1.4;
   color: rgba(255, 255, 255, 0.78);
+  text-align: center;
+}
+
+.lightbox-meta__name {
+  max-width: min(100%, 28rem);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lightbox-meta__item {
+  white-space: nowrap;
+}
+
+.lightbox-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .lightbox-btn {
@@ -176,14 +210,23 @@ function emitFile(event: 'download' | 'copy' | 'edit-tags') {
   }
 
   .lightbox-media {
-    max-height: min(70vh, calc(100dvh - 9rem));
+    max-height: min(70vh, calc(100dvh - 11rem));
   }
 
-  .lightbox-info {
+  .lightbox-footer {
     gap: 8px;
     margin-top: 10px;
     padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .lightbox-meta {
+    gap: 6px 10px;
     font-size: 12px;
+  }
+
+  .lightbox-actions {
+    gap: 8px;
+    width: 100%;
   }
 
   .lightbox-btn {
