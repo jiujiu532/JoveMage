@@ -578,6 +578,10 @@ onBeforeUnmount(() => {
   z-index: 1;
   display: flex;
   width: min(100%, var(--studio-content-width, 88rem));
+  margin: 0 auto;
+  flex-direction: column;
+  gap: 0.6rem;
+  border: 2px solid var(--bauhaus-ink, hsl(var(--border) / 0.82));
   border-radius: var(--radius);
   background: var(--bauhaus-card, hsl(var(--card)));
   padding: 0.7rem;
