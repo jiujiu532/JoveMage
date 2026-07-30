@@ -33,7 +33,7 @@
               :all-selected="allVisibleSelected"
               :total-count="accountListTotal"
               :selected-count="selectedCount"
-              :view-mode="viewMode"
+              :view-mode="effectiveViewMode"
               @toggle-all="toggleSelectAllVisible"
               @update:view-mode="setViewMode"
             />
@@ -92,7 +92,7 @@
       />
 
       <!-- 紧凑：表格式 -->
-      <TableShell v-else-if="viewMode === 'compact'">
+      <TableShell v-else-if="effectiveViewMode === 'compact'">
         <table class="account-compact-table min-w-[1080px] w-full text-left text-sm">
           <thead>
             <tr>
@@ -214,7 +214,7 @@
       </TableShell>
 
       <!-- 卡片：多列网格 -->
-      <div v-else-if="viewMode === 'cards'" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div v-else-if="effectiveViewMode === 'cards'" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         <div v-if="!loading && filteredAccounts.length === 0" class="col-span-full">
           <EmptyState
             plain
@@ -320,7 +320,7 @@
       <div
         v-else
         class="account-stream-grid"
-        :class="viewMode === 'double' ? 'account-stream-grid--double' : 'account-stream-grid--single'"
+        :class="effectiveViewMode === 'double' ? 'account-stream-grid--double' : 'account-stream-grid--single'"
       >
         <div v-if="!loading && filteredAccounts.length === 0" class="col-span-full">
           <EmptyState
@@ -332,7 +332,7 @@
 
         <AccountStreamCard
           v-for="item in pagedAccounts"
-          :key="`${item.id}-${viewMode}`"
+          :key="`${item.id}-${effectiveViewMode}`"
           :item="item"
           :selected="isSelected(item.id)"
           :status-detail="accountStatusDetailText(item)"
@@ -340,7 +340,7 @@
           :refreshing="refreshingAccountId === item.id"
           :resetting="resettingAccountId === item.id"
           :relogin-busy="reloginAccountId === item.id"
-          :density="viewMode === 'double' ? 'dense' : 'comfortable'"
+          :density="effectiveViewMode === 'double' ? 'dense' : 'comfortable'"
           @toggle-select="(checked) => toggleSelect(item.id, checked)"
           @copy-token="copyAccountToken(item)"
           @edit="openEditModal(item)"
@@ -866,6 +866,7 @@ const {
   batchBusy,
   batchActionLabel,
   viewMode,
+  effectiveViewMode,
   refreshingAccountId,
   resettingAccountId,
   reloginAccountId,
@@ -1243,6 +1244,40 @@ function handleRemoteImportDone() {
 .accounts-toolbar-group-refresh {
   margin-left: auto;
   justify-content: flex-end;
+}
+
+@media (max-width: 767px) {
+  .accounts-toolbar {
+    gap: 10px;
+    padding-bottom: 12px;
+  }
+
+  .accounts-toolbar-row-main {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .accounts-toolbar-filters {
+    min-width: 0;
+    flex: 1 1 auto;
+    width: 100%;
+  }
+
+  .accounts-toolbar-summary {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .accounts-toolbar-row-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .accounts-toolbar-group-refresh {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 
 .account-compact-table {

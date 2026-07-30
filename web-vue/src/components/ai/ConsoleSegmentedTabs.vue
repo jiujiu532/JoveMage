@@ -107,16 +107,34 @@ html[data-theme='dark'] .console-segmented-tabs :deep(.ui-segmented) {
   color: #ffffff;
 }
 
-@media (max-width: 640px) {
+/* 多 Tab（设置页等）窄屏横滑，避免 wrap 占半屏 */
+@media (max-width: 768px) {
+  .console-segmented-tabs {
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+  }
+
   .console-segmented-tabs :deep(.ui-segmented) {
+    flex-wrap: nowrap;
+    width: max-content;
+    min-width: 100%;
     border-width: 1.5px;
   }
 
   .console-segmented-tabs :deep(.ui-segmented-btn) {
     min-height: 36px;
-    padding: 0 10px;
+    flex: 0 0 auto;
+    padding: 0 12px;
     font-size: 10px;
     letter-spacing: 0.08em;
+  }
+
+  .console-segmented-tabs--stretch :deep(.ui-segmented-btn) {
+    flex: 0 0 auto;
   }
 
   .console-segmented-tabs--content {
@@ -125,12 +143,8 @@ html[data-theme='dark'] .console-segmented-tabs :deep(.ui-segmented) {
   }
 
   .console-segmented-tabs--content :deep(.ui-segmented) {
-    width: 100%;
-  }
-
-  .console-segmented-tabs--content :deep(.ui-segmented-btn) {
-    flex: 1 1 0;
-    justify-content: center;
+    width: max-content;
+    min-width: 100%;
   }
 }
 </style>

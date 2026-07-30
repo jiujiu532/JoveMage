@@ -12,6 +12,7 @@ import type {
   Account,
 } from '@/api/accounts'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import { useMediaQuery } from '@/composables/useMediaQuery'
 import { useToast } from '@/composables/useToast'
 import { saveBlob } from '@/lib/downloads'
 import {
@@ -218,6 +219,12 @@ export function useAccountsPage() {
   const batchBusy = ref(false)
   const batchActionLabel = ref('')
   const viewMode = ref<AccountsViewMode>('compact')
+  /** ≤767 时 compact 表过宽，展示降级为 cards，不改写用户偏好 */
+  const isTabletDown = useMediaQuery('(max-width: 767px)')
+  const effectiveViewMode = computed<AccountsViewMode>(() => {
+    if (isTabletDown.value && viewMode.value === 'compact') return 'cards'
+    return viewMode.value
+  })
   const refreshingAccountId = ref('')
   const resettingAccountId = ref('')
   const reloginAccountId = ref('')
@@ -1690,6 +1697,7 @@ export function useAccountsPage() {
     batchBusy,
     batchActionLabel,
     viewMode,
+    effectiveViewMode,
     refreshingAccountId,
     resettingAccountId,
     reloginAccountId,

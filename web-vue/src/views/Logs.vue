@@ -120,122 +120,196 @@
     </PagePanel>
 
     <PagePanel v-else-if="activeLogView === 'system'" flush>
-      <TableShell>
-        <table class="logs-table w-full min-w-[1120px] table-fixed text-left">
-          <colgroup>
-            <col class="w-12" />
-            <col class="w-36" />
-            <col class="w-24" />
-            <col class="w-40" />
-            <col class="w-28" />
-            <col class="w-24" />
-            <col class="w-28" />
-            <col />
-            <col class="w-36" />
-          </colgroup>
-          <thead>
-            <tr>
-              <th class="py-3 pl-4 pr-2">
-                <Checkbox
-                  :model-value="allVisibleLogsSelected"
-                  :disabled="visibleLogs.length === 0"
-                  @update:model-value="toggleSelectAllVisibleLogs"
-                >
-                  <span class="sr-only">全选当前页日志</span>
-                </Checkbox>
-              </th>
-              <th class="py-3 pr-5">时间</th>
-              <th class="py-3 pr-5">类型</th>
-              <th class="py-3 pr-5">令牌名称</th>
-              <th class="py-3 pr-5 table-num">调用耗时</th>
-              <th class="py-3 pr-5">状态</th>
-              <th class="py-3 pr-5">图片</th>
-              <th class="py-3 pr-5">简述</th>
-              <th class="py-3 pr-4 text-right">操作</th>
-            </tr>
-          </thead>
-          <tbody class="text-sm text-foreground">
-            <tr v-if="!isFetching && logs.length === 0">
-              <td colspan="9" class="py-8">
-                <EmptyState
-                  plain
-                  :title="logsLoadError ? '日志加载失败' : '暂无日志'"
-                  :description="logsLoadError || '换个筛选条件或刷新后再看。'"
-                />
-              </td>
-            </tr>
-            <tr
-              v-for="item in visibleLogs"
-              :key="item.id"
-              class="border-t border-border"
-              :class="{ 'is-selected': isLogSelected(item.id) }"
-            >
-              <td class="py-4 pl-4 pr-2 align-middle">
-                <Checkbox
-                  :model-value="isLogSelected(item.id)"
-                  @update:model-value="(checked) => toggleLogSelection(item.id, checked)"
-                >
-                  <span class="sr-only">选择日志 {{ item.time || item.id }}</span>
-                </Checkbox>
-              </td>
-              <td class="py-4 pr-5 align-middle text-xs text-muted-foreground">
-                <p class="cell-time whitespace-nowrap">{{ item.time || '-' }}</p>
-              </td>
-              <td class="py-4 pr-5 align-middle">
-                <MetaChip size="xs" tone="muted">{{ typeLabel(item.type) }}</MetaChip>
-              </td>
-              <td class="py-4 pr-5 align-middle">
-                <p class="cell-token max-w-[12rem] truncate text-xs" :title="tokenLabel(item)">
-                  {{ tokenLabel(item) || '-' }}
-                </p>
-              </td>
-              <td class="py-4 pr-5 align-middle text-xs text-muted-foreground">
-                <span class="cell-num">{{ formatDuration(item.durationMs) || '-' }}</span>
-              </td>
-              <td class="py-4 pr-5 align-middle">
-                <StateBadge :tone="statusTone(item)" shape="rounded" :bordered="false">
-                  {{ statusLabel(item) }}
-                </StateBadge>
-              </td>
-              <td class="py-4 pr-5 align-middle">
-                <LogImagePreviewCell
-                  :image-urls="item.imageUrls"
-                  :first-image-broken="isPreviewBroken(item.imageUrls[0] || '')"
-                  :alt="item.preview || '日志结果图片'"
-                  @preview-click="openDetail(item)"
-                  @image-error="markPreviewBroken"
-                />
-              </td>
-              <td class="py-4 pr-5 align-middle">
-                <p class="max-w-[28rem] truncate text-xs text-foreground" :class="{ 'text-rose-600': isFailed(item) }" :title="summaryText(item)">
-                  {{ summaryText(item) || '-' }}
-                </p>
-              </td>
-              <td class="py-4 pr-4 text-right align-middle">
-                <div class="flex justify-end gap-1.5">
-                  <Button size="xs" variant="outline" @click="openDetail(item)">
-                    查看详情
-                  </Button>
-                  <Button size="xs" variant="ghost" root-class="text-rose-600 hover:text-rose-700" @click="requestDeleteLog(item)">
-                    删除
-                  </Button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        <template #footer>
-        <ListPagination
-          v-model:page="currentPage"
-          v-model:page-size="filters.limit"
-          :total-count="logMeta.total"
-          :page-size-options="systemLogPageSizeOptions"
-          unit="条日志"
-          :disabled="isFetching"
+      <div v-if="!isFetching && logs.length === 0" class="p-4">
+        <EmptyState
+          plain
+          :title="logsLoadError ? '日志加载失败' : '暂无日志'"
+          :description="logsLoadError || '换个筛选条件或刷新后再看。'"
         />
-        </template>
-      </TableShell>
+      </div>
+
+      <div v-else class="logs-desktop-table">
+        <TableShell>
+          <table class="logs-table w-full min-w-[1120px] table-fixed text-left">
+            <colgroup>
+              <col class="w-12" />
+              <col class="w-36" />
+              <col class="w-24" />
+              <col class="w-40" />
+              <col class="w-28" />
+              <col class="w-24" />
+              <col class="w-28" />
+              <col />
+              <col class="w-36" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th class="py-3 pl-4 pr-2">
+                  <Checkbox
+                    :model-value="allVisibleLogsSelected"
+                    :disabled="visibleLogs.length === 0"
+                    @update:model-value="toggleSelectAllVisibleLogs"
+                  >
+                    <span class="sr-only">全选当前页日志</span>
+                  </Checkbox>
+                </th>
+                <th class="py-3 pr-5">时间</th>
+                <th class="py-3 pr-5">类型</th>
+                <th class="py-3 pr-5">令牌名称</th>
+                <th class="py-3 pr-5 table-num">调用耗时</th>
+                <th class="py-3 pr-5">状态</th>
+                <th class="py-3 pr-5">图片</th>
+                <th class="py-3 pr-5">简述</th>
+                <th class="py-3 pr-4 text-right">操作</th>
+              </tr>
+            </thead>
+            <tbody class="text-sm text-foreground">
+              <tr
+                v-for="item in visibleLogs"
+                :key="item.id"
+                class="border-t border-border"
+                :class="{ 'is-selected': isLogSelected(item.id) }"
+              >
+                <td class="py-4 pl-4 pr-2 align-middle">
+                  <Checkbox
+                    :model-value="isLogSelected(item.id)"
+                    @update:model-value="(checked) => toggleLogSelection(item.id, checked)"
+                  >
+                    <span class="sr-only">选择日志 {{ item.time || item.id }}</span>
+                  </Checkbox>
+                </td>
+                <td class="py-4 pr-5 align-middle text-xs text-muted-foreground">
+                  <p class="cell-time whitespace-nowrap">{{ item.time || '-' }}</p>
+                </td>
+                <td class="py-4 pr-5 align-middle">
+                  <MetaChip size="xs" tone="muted">{{ typeLabel(item.type) }}</MetaChip>
+                </td>
+                <td class="py-4 pr-5 align-middle">
+                  <p class="cell-token max-w-[12rem] truncate text-xs" :title="tokenLabel(item)">
+                    {{ tokenLabel(item) || '-' }}
+                  </p>
+                </td>
+                <td class="py-4 pr-5 align-middle text-xs text-muted-foreground">
+                  <span class="cell-num">{{ formatDuration(item.durationMs) || '-' }}</span>
+                </td>
+                <td class="py-4 pr-5 align-middle">
+                  <StateBadge :tone="statusTone(item)" shape="rounded" :bordered="false">
+                    {{ statusLabel(item) }}
+                  </StateBadge>
+                </td>
+                <td class="py-4 pr-5 align-middle">
+                  <LogImagePreviewCell
+                    :image-urls="item.imageUrls"
+                    :first-image-broken="isPreviewBroken(item.imageUrls[0] || '')"
+                    :alt="item.preview || '日志结果图片'"
+                    @preview-click="openDetail(item)"
+                    @image-error="markPreviewBroken"
+                  />
+                </td>
+                <td class="py-4 pr-5 align-middle">
+                  <p class="max-w-[28rem] truncate text-xs text-foreground" :class="{ 'text-rose-600': isFailed(item) }" :title="summaryText(item)">
+                    {{ summaryText(item) || '-' }}
+                  </p>
+                </td>
+                <td class="py-4 pr-4 text-right align-middle">
+                  <div class="flex justify-end gap-1.5">
+                    <Button size="xs" variant="outline" @click="openDetail(item)">
+                      查看详情
+                    </Button>
+                    <Button size="xs" variant="ghost" root-class="text-rose-600 hover:text-rose-700" @click="requestDeleteLog(item)">
+                      删除
+                    </Button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <template #footer>
+            <ListPagination
+              v-model:page="currentPage"
+              v-model:page-size="filters.limit"
+              :total-count="logMeta.total"
+              :page-size-options="systemLogPageSizeOptions"
+              unit="条日志"
+              :disabled="isFetching"
+            />
+          </template>
+        </TableShell>
+      </div>
+
+      <div v-if="logs.length > 0" class="logs-mobile-cards">
+        <div class="logs-mobile-select-bar">
+          <Checkbox
+            :model-value="allVisibleLogsSelected"
+            :disabled="visibleLogs.length === 0"
+            @update:model-value="toggleSelectAllVisibleLogs"
+          >
+            全选当前页
+          </Checkbox>
+        </div>
+        <div class="logs-mobile-list">
+          <article
+            v-for="item in visibleLogs"
+            :key="`m-${item.id}`"
+            class="logs-mobile-card"
+            :class="{ 'is-selected': isLogSelected(item.id) }"
+          >
+            <div class="logs-mobile-card__head">
+              <Checkbox
+                :model-value="isLogSelected(item.id)"
+                @update:model-value="(checked) => toggleLogSelection(item.id, checked)"
+              >
+                <span class="sr-only">选择日志 {{ item.time || item.id }}</span>
+              </Checkbox>
+              <p class="logs-mobile-card__time cell-time">{{ item.time || '-' }}</p>
+              <StateBadge :tone="statusTone(item)" shape="rounded" :bordered="false">
+                {{ statusLabel(item) }}
+              </StateBadge>
+            </div>
+            <div class="logs-mobile-card__meta">
+              <MetaChip size="xs" tone="muted">{{ typeLabel(item.type) }}</MetaChip>
+              <span class="cell-num text-xs text-muted-foreground">{{ formatDuration(item.durationMs) || '-' }}</span>
+              <p class="cell-token min-w-0 flex-1 truncate text-xs" :title="tokenLabel(item)">
+                {{ tokenLabel(item) || '-' }}
+              </p>
+            </div>
+            <div class="logs-mobile-card__body">
+              <LogImagePreviewCell
+                v-if="item.imageUrls?.length"
+                :image-urls="item.imageUrls"
+                :first-image-broken="isPreviewBroken(item.imageUrls[0] || '')"
+                :alt="item.preview || '日志结果图片'"
+                @preview-click="openDetail(item)"
+                @image-error="markPreviewBroken"
+              />
+              <p
+                class="logs-mobile-card__summary"
+                :class="{ 'text-rose-600': isFailed(item) }"
+                :title="summaryText(item)"
+              >
+                {{ summaryText(item) || '-' }}
+              </p>
+            </div>
+            <div class="logs-mobile-card__actions">
+              <Button size="xs" variant="outline" @click="openDetail(item)">查看详情</Button>
+              <Button size="xs" variant="ghost" root-class="text-rose-600 hover:text-rose-700" @click="requestDeleteLog(item)">
+                删除
+              </Button>
+            </div>
+          </article>
+        </div>
+        <div class="logs-mobile-pagination">
+          <ListPagination
+            v-model:page="currentPage"
+            v-model:page-size="filters.limit"
+            :total-count="logMeta.total"
+            :page-size-options="systemLogPageSizeOptions"
+            unit="条日志"
+            :disabled="isFetching"
+          />
+        </div>
+      </div>
     </PagePanel>
 
     <PagePanel v-else-if="runtimeFetching && runtimeLogs.length === 0">
@@ -2028,6 +2102,140 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.logs-mobile-cards {
+  display: none;
+}
+
+.logs-mobile-select-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid hsl(var(--border));
+  padding: 10px 12px;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+}
+
+.logs-mobile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
+.logs-mobile-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 2px solid var(--bauhaus-ink, #2d2d2d);
+  border-radius: var(--radius);
+  background: hsl(var(--card));
+  box-shadow: 2px 2px 0 0 var(--bauhaus-ink, #2d2d2d);
+  padding: 10px 12px;
+}
+
+.logs-mobile-card.is-selected {
+  border-color: var(--bauhaus-blue, #2d5da1);
+  box-shadow: 2px 2px 0 0 var(--bauhaus-blue, #2d5da1);
+}
+
+.logs-mobile-card__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logs-mobile-card__time {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--bauhaus-ink, #2d2d2d);
+}
+
+.logs-mobile-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.logs-mobile-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.logs-mobile-card__summary {
+  margin: 0;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  font-size: 12px;
+  line-height: 1.45;
+  color: hsl(var(--foreground));
+  overflow-wrap: anywhere;
+}
+
+.logs-mobile-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.logs-mobile-pagination {
+  border-top: 1px solid hsl(var(--border));
+  padding: 8px 10px 10px;
+}
+
+html[data-theme='dark'] .logs-mobile-card {
+  border-color: hsl(var(--border));
+  box-shadow: 2px 2px 0 0 hsl(var(--border));
+}
+
+html[data-theme='dark'] .logs-mobile-card.is-selected {
+  border-color: var(--bauhaus-blue, #2d5da1);
+  box-shadow: 2px 2px 0 0 var(--bauhaus-blue, #2d5da1);
+}
+
+html[data-theme='dark'] .logs-mobile-card__time {
+  color: hsl(var(--foreground));
+}
+
+@media (max-width: 640px) {
+  .logs-desktop-table {
+    display: none;
+  }
+
+  .logs-mobile-cards {
+    display: block;
+  }
+
+  .log-control-panel {
+    gap: 12px;
+  }
+
+  :deep(.log-search-input) {
+    min-width: 100%;
+    flex: 1 1 100%;
+  }
+
+  .log-date-pair {
+    width: 100%;
+    --date-range-input-min-width: 0;
+  }
+
+  .log-filter-select {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+  }
 }
 
 :deep(.log-search-input) {

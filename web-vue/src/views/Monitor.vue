@@ -105,7 +105,7 @@
           {{ item.label }} {{ item.count }}
         </MetaChip>
       </div>
-      <TableShell v-if="activeRows.length">
+      <TableShell v-if="activeRows.length" class="monitor-desktop-table">
         <table class="monitor-table">
           <thead>
             <tr>
@@ -147,7 +147,30 @@
           </tbody>
         </table>
       </TableShell>
-      <div v-else class="px-4 pb-4">
+      <div v-if="activeRows.length" class="monitor-mobile-list">
+        <article v-for="row in activeRows" :key="`m-active-${row.call_id}`" class="monitor-mobile-card">
+          <div class="monitor-mobile-card__head">
+            <div class="min-w-0 flex-1">
+              <p class="font-mono text-xs text-foreground">{{ shortCallId(row.call_id) }}</p>
+              <p class="mt-1 truncate text-[11px] text-muted-foreground">{{ row.endpoint || '-' }}</p>
+            </div>
+            <StateBadge tone="info" shape="rounded" :bordered="false">
+              {{ row.stage_label || row.stage || '运行中' }}
+            </StateBadge>
+          </div>
+          <div class="monitor-mobile-card__meta">
+            <MetaChip size="xs" tone="muted">{{ row.model || '-' }}</MetaChip>
+            <span class="monitor-running-value">
+              <span class="monitor-running-dot" aria-hidden="true" />
+              {{ formatMs(row.elapsed_ms) }}
+            </span>
+            <MetaChip size="xs" tone="muted">{{ egressText(row) }}</MetaChip>
+          </div>
+          <p class="monitor-mobile-card__line truncate" :title="metricDigest(row)">{{ metricDigest(row) }}</p>
+          <p class="monitor-mobile-card__line truncate text-muted-foreground">{{ row.account_email || '-' }}</p>
+        </article>
+      </div>
+      <div v-if="!activeRows.length" class="px-4 pb-4">
         <StateBlock compact dashed title="暂无活跃请求" description="开始压测或发起图片请求后，这里会实时出现运行中的调用。" />
       </div>
     </PagePanel>
@@ -166,7 +189,7 @@
           </div>
         </div>
         <div v-if="recentRows.length" class="monitor-paired-body">
-          <TableShell class="monitor-paired-table">
+          <TableShell class="monitor-paired-table monitor-desktop-table">
             <table class="monitor-table">
               <thead>
                 <tr>
@@ -197,6 +220,29 @@
               </tbody>
             </table>
           </TableShell>
+          <div class="monitor-mobile-list monitor-mobile-list--inset">
+            <article
+              v-for="row in recentRows"
+              :key="`m-recent-${row.call_id}-${row.ended_at}`"
+              class="monitor-mobile-card"
+            >
+              <div class="monitor-mobile-card__head">
+                <div class="min-w-0 flex-1">
+                  <p class="font-mono text-xs text-foreground">{{ shortCallId(row.call_id) }}</p>
+                  <p class="mt-1 text-[11px] text-muted-foreground">{{ row.ended_at || row.updated_at || '-' }}</p>
+                </div>
+                <StateBadge :tone="statusTone(row.status)" shape="rounded" :bordered="false">
+                  {{ statusLabel(row.status) }}
+                </StateBadge>
+              </div>
+              <div class="monitor-mobile-card__meta">
+                <span class="text-xs">{{ row.model || '-' }}</span>
+                <span class="table-num text-xs font-semibold">{{ formatMs(row.duration_ms) }}</span>
+                <span class="text-xs text-muted-foreground">入口 {{ formatMs(metricValue(row, 'handler_queue_ms')) }}</span>
+              </div>
+              <p class="monitor-mobile-card__line truncate text-muted-foreground">{{ accountEgressDigest(row) }}</p>
+            </article>
+          </div>
         </div>
         <div v-else class="monitor-paired-body px-4 pb-4">
           <StateBlock compact dashed title="暂无完成记录" description="当前容器启动后还没有图片相关请求完成。" />
@@ -270,7 +316,7 @@
           </template>
         </PanelHeader>
       </div>
-      <TableShell v-if="eventRows.length">
+      <TableShell v-if="eventRows.length" class="monitor-desktop-table">
         <table class="monitor-table">
           <thead>
             <tr>
@@ -292,7 +338,24 @@
           </tbody>
         </table>
       </TableShell>
-      <div v-else class="px-4 pb-4">
+      <div v-if="eventRows.length" class="monitor-mobile-list">
+        <article
+          v-for="(row, index) in eventRows"
+          :key="`m-event-${row.call_id}-${row.event}-${index}`"
+          class="monitor-mobile-card monitor-mobile-card--compact"
+        >
+          <div class="monitor-mobile-card__head">
+            <p class="table-num text-xs text-muted-foreground">{{ row.time || '-' }}</p>
+            <p class="table-num text-xs font-semibold">{{ eventMetricText(row) }}</p>
+          </div>
+          <div class="monitor-mobile-card__meta">
+            <span class="font-mono text-xs">{{ shortCallId(row.call_id) }}</span>
+            <span class="min-w-0 flex-1 truncate text-xs">{{ row.model || '-' }}</span>
+          </div>
+          <p class="monitor-mobile-card__line">{{ row.label || row.event }}</p>
+        </article>
+      </div>
+      <div v-if="!eventRows.length" class="px-4 pb-4">
         <StateBlock compact dashed title="暂无阶段事件" description="有图片请求进入后会开始记录。" />
       </div>
     </PagePanel>
@@ -1262,6 +1325,89 @@ html[data-theme='dark'] .monitor-slow-card__chip--normal {
     padding-top: 0;
   }
 
+  .monitor-metric-group__head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .monitor-metric-group__meta {
+    white-space: normal;
+  }
+
+  .monitor-metric-group__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .monitor-paired-body {
+    height: auto;
+    max-height: none;
+    min-height: 0;
+  }
+
+  .monitor-desktop-table {
+    display: none;
+  }
+
+  .monitor-mobile-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0 12px 12px;
+  }
+
+  .monitor-mobile-list--inset {
+    padding: 0 12px 12px;
+  }
+}
+
+.monitor-mobile-list {
+  display: none;
+}
+
+.monitor-mobile-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 2px solid var(--bauhaus-ink, #2d2d2d);
+  border-radius: var(--radius);
+  background: hsl(var(--card));
+  box-shadow: 2px 2px 0 0 var(--bauhaus-ink, #2d2d2d);
+  padding: 10px 12px;
+}
+
+.monitor-mobile-card--compact {
+  gap: 4px;
+  padding: 8px 10px;
+}
+
+.monitor-mobile-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.monitor-mobile-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.monitor-mobile-card__line {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: hsl(var(--foreground));
+  overflow-wrap: anywhere;
+}
+
+html[data-theme='dark'] .monitor-mobile-card {
+  border-color: hsl(var(--border));
+  box-shadow: 2px 2px 0 0 hsl(var(--border));
 }
 
 </style>
