@@ -577,11 +577,7 @@ onBeforeUnmount(() => {
   position: relative;
   z-index: 1;
   display: flex;
-  width: min(100%, 48rem);
-  margin: 0 auto;
-  flex-direction: column;
-  gap: 0.6rem;
-  border: 2px solid var(--bauhaus-ink, hsl(var(--border) / 0.82));
+  width: min(100%, var(--studio-content-width, 88rem));
   border-radius: var(--radius);
   background: var(--bauhaus-card, hsl(var(--card)));
   padding: 0.7rem;
@@ -1025,7 +1021,7 @@ html[data-theme='dark'] .studio-size-popover {
 }
 
 .studio-composer-error {
-  width: min(100%, 48rem);
+  width: min(100%, var(--studio-content-width, 88rem));
   margin: 0.625rem auto 0;
   border: 2px solid color-mix(in srgb, var(--bauhaus-red, #ff4d4d) 55%, transparent);
   border-radius: var(--radius);

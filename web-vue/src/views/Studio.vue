@@ -1556,7 +1556,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .studio-workspace {
-  --studio-content-width: min(100%, 66rem);
+  --studio-content-width: min(100%, 88rem);
   --ui-card-border: hsl(var(--border));
   --ui-card-bg: hsl(var(--card));
   --ui-panel-border: hsl(var(--border));

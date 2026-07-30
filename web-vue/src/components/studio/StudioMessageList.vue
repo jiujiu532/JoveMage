@@ -808,7 +808,7 @@ defineExpose({
   min-height: 0;
   flex: 1 1 auto;
   flex-direction: column;
-  --studio-image-slot-size: clamp(12rem, 28vw, 18rem);
+  --studio-image-slot-size: clamp(15rem, 34vw, 26rem);
   --studio-image-aspect-ratio: 1 / 1;
   --studio-image-grid-columns: 1;
 }
@@ -818,7 +818,7 @@ defineExpose({
   flex: 1;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 1rem clamp(0.75rem, 2.4vw, 1.75rem) calc(var(--studio-composer-height, 10rem) + 1rem);
+  padding: 1rem clamp(0.85rem, 1.6vw, 1.35rem) calc(var(--studio-composer-height, 10rem) + 1rem);
 }
 
 .studio-chat-empty {
@@ -853,7 +853,8 @@ defineExpose({
 .studio-turns {
   margin: 0 auto;
   display: flex;
-  width: min(100%, 52rem);
+  width: 100%;
+  max-width: var(--studio-content-width, min(100%, 88rem));
   flex-direction: column;
   gap: 1.55rem;
   padding-bottom: 0.5rem;
@@ -902,7 +903,7 @@ defineExpose({
 .chat-message-container {
   display: flex;
   min-width: 0;
-  max-width: min(100%, 48rem);
+  max-width: 100%;
   width: fit-content;
   align-items: flex-start;
   gap: 0.7rem;
@@ -911,15 +912,23 @@ defineExpose({
 .chat-message-container.is-pending-image-message {
   width: fit-content;
   min-width: 0;
-  max-width: min(100%, 48rem);
+  max-width: 100%;
 }
 
 .chat-message-container.is-user {
   flex-direction: row-reverse;
+  max-width: min(100%, 40rem);
 }
 
 .chat-message-container.is-assistant {
   flex-direction: row;
+  width: 100%;
+  max-width: 100%;
+}
+
+.chat-message-container.is-assistant.is-image-message {
+  width: fit-content;
+  max-width: 100%;
 }
 
 .chat-message-main {
@@ -1932,7 +1941,7 @@ html[data-theme='dark'] .studio-scroll-latest {
   }
 
   .studio-chat-panel {
-    --studio-image-slot-size: min(14rem, calc(100vw - 5.5rem));
+    --studio-image-slot-size: min(18rem, calc(100vw - 5rem));
   }
 
   .studio-result-grid {
