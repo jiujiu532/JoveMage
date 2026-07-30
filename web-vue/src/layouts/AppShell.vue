@@ -60,16 +60,16 @@
               @click="handleNavClick"
             >
               <span
-                class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border transition-colors"
+                class="nav-icon inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border transition-all duration-200 ease-out"
                 :class="navIconClass(item.path)"
               >
-                <svg aria-hidden="true" viewBox="0 0 24 24" class="h-4 w-4" fill="currentColor">
+                <svg aria-hidden="true" viewBox="0 0 24 24" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
                   <path :d="item.icon" />
                 </svg>
               </span>
               <span
                 v-if="!isSidebarRail"
-                class="flex-1 min-w-0 truncate font-[family-name:var(--font-display)] tracking-wide"
+                class="nav-label flex-1 min-w-0 truncate font-[family-name:var(--font-display)] tracking-wide transition-all duration-200"
               >{{ item.label }}</span>
             </RouterLink>
           </div>
@@ -92,16 +92,16 @@
                 @focus="prefetchRouteView(item.path)"
               >
                 <span
-                  class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border transition-colors"
+                  class="nav-icon inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border transition-all duration-200 ease-out"
                   :class="navIconClass(item.path)"
                 >
-                  <svg aria-hidden="true" viewBox="0 0 24 24" class="h-4 w-4" fill="currentColor">
+                  <svg aria-hidden="true" viewBox="0 0 24 24" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
                     <path :d="item.icon" />
                   </svg>
                 </span>
                 <span
                   v-if="!isSidebarRail"
-                  class="flex-1 min-w-0 truncate font-[family-name:var(--font-display)] tracking-wide"
+                  class="nav-label flex-1 min-w-0 truncate font-[family-name:var(--font-display)] tracking-wide transition-all duration-200"
                 >{{ item.label }}</span>
               </RouterLink>
             </div>
@@ -590,47 +590,56 @@ const menuItems = [
   {
     path: '/',
     label: '概览中心',
-    icon: 'M4 4h7v7H4V4zm9 0h7v4h-7V4zm0 6h7v10h-7V10zM4 13h7v7H4v-7z',
+    // 四宫格仪表盘
+    icon: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z',
   },
   {
     path: '/monitor',
     label: '实时监控',
-    icon: 'M4 5h3v14H4V5zm5 6h3v8H9v-8zm5-4h3v12h-3V7zm5 7h3v5h-3v-5z',
+    // 心跳/脉冲线
+    icon: 'M3 12h4l2.5-6 4 12 2.5-6h5',
   },
   {
     path: '/studio',
     label: '对话画图',
-    icon: 'M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-5l-4 4v-4H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm1 3v6h12V7H6zm2 2 2.1 2.8 2.4-3.1L17 14H7l1-5z',
+    // 气泡 + 画笔
+    icon: 'M4 5h13a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H9l-4 3.5V15H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zm10 8 5-5M13 16l2 2 5-5-2-2z',
   },
   {
     path: '/accounts',
     label: '账号管理',
-    icon: 'M12 12a3.5 3.5 0 1 0-3.5-3.5A3.5 3.5 0 0 0 12 12zm0 2c-4.1 0-7.5 2.2-7.5 5v1h15v-1c0-2.8-3.4-5-7.5-5z',
+    // 用户 + 小徽章
+    icon: 'M12 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM5 20c0-3.3 3.1-5.5 7-5.5s7 2.2 7 5.5',
   },
   {
     path: '/register',
     label: '注册账号',
-    icon: 'M7 3h10a2 2 0 0 1 2 2v3h-2V5H7v14h10v-3h2v3a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm8.6 5.4L20.2 13l-4.6 4.6-1.4-1.4 2.2-2.2H9v-2h7.4l-2.2-2.2 1.4-1.4z',
+    // 用户加号
+    icon: 'M10 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM3.5 20c0-3.3 2.9-5.5 6.5-5.5 1.5 0 2.9.4 4 1.1M18 14v6M15 17h6',
   },
   {
     path: '/logs',
     label: '日志管理',
-    icon: 'M4 6h16v2H4V6zm0 5h16v2H4v-2zm0 5h10v2H4v-2z',
+    // 列表行
+    icon: 'M8 6h13M8 12h13M8 18h13M3.5 6h.5M3.5 12h.5M3.5 18h.5',
   },
   {
     path: '/gallery',
     label: '图片管理',
-    icon: 'M22 16V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2zm-11-4 2.03 2.71L16 11l4 5H8l3-3zM2 6v14a2 2 0 0 0 2 2h14v-2H4V6H2z',
+    // 图片（山+太阳）
+    icon: 'M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm4 4.5A1.5 1.5 0 1 0 8 6.5a1.5 1.5 0 0 0 0 3zM3 17l5-4 4 3 4-4 5 4',
   },
   {
     path: '/proxy',
     label: '代理管理',
-    icon: 'M12 3a5 5 0 0 1 5 5v2h1a3 3 0 0 1 3 3v5a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-5a3 3 0 0 1 3-3h1V8a5 5 0 0 1 5-5zm-3 7h6V8a3 3 0 0 0-6 0v2zm-3 2a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1H6z',
+    // 盾牌 + 锁孔
+    icon: 'M12 3l7 3v5c0 4.5-3 8-7 9.5C8 19 5 15.5 5 11V6zm0 6.5a1.5 1.5 0 0 1 1 2.8V15h-2v-2.7a1.5 1.5 0 0 1 1-2.8z',
   },
   {
     path: '/settings',
     label: '系统设置',
-    icon: 'M4 6h10v2H4V6zm12 0h4v2h-4V6zM4 11h6v2H4v-2zm8 0h8v2h-8v-2zM4 16h10v2H4v-2zm12 0h4v2h-4v-2z',
+    // 齿轮
+    icon: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm7.5-3a7.6 7.6 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7.7 7.7 0 0 0-2-1.2L14.5 3h-5l-.6 2.7a7.7 7.7 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5a7.6 7.6 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-1a7.7 7.7 0 0 0 2 1.2l.6 2.7h5l.6-2.7a7.7 7.7 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5c.06-.4.1-.8.1-1.2z',
   },
 ]
 
@@ -638,7 +647,8 @@ const utilityMenuItems = [
   {
     path: '/debug',
     label: '调试中心',
-    icon: 'M5 4h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-5l-4 4v-4H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm1 3v2h8V7H6zm0 4v2h5v-2H6zm11-4h-2v2h2V7zm0 4h-2v2h2v-2z',
+    // 扳手 + 螺丝刀（工具）
+    icon: 'M14.5 6.5a4 4 0 0 0-5.6 5L4 16.4V20h3.6l4.9-4.9a4 4 0 0 0 5-5.6l-2.8 2.8-2.1-2.1zM17 3l4 4-1.5 1.5-4-4z',
   },
 ]
 
@@ -707,7 +717,7 @@ const isNavActive = (path: string) => {
 const navItemClass = (path: string) => {
   const base = navItemBaseClass.value
   if (isNavActive(path)) {
-    return `${base} rounded-sm border-l-[4px] border-l-[var(--bauhaus-blue)] border-y-transparent border-r-transparent bg-[color-mix(in_srgb,var(--bauhaus-blue)_12%,transparent)] font-semibold text-foreground`
+    return `${base} nav-item--active rounded-sm border-y-transparent border-r-transparent bg-[color-mix(in_srgb,var(--bauhaus-blue)_12%,transparent)] font-semibold text-foreground`
   }
   return `${base} rounded-sm border-transparent text-muted-foreground hover:bg-secondary hover:text-foreground`
 }
@@ -1065,6 +1075,84 @@ onBeforeUnmount(() => {
 <style scoped>
 .route-view-content {
   min-width: 0;
+}
+
+/* ========== 侧栏导航切换动效 ========== */
+/* 选中项：左侧指示条滑入 + 整体轻移，图标缩放上色 */
+.group {
+  position: relative;
+}
+
+.group::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  height: 0;
+  width: 4px;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--bauhaus-blue);
+  transform: translateY(-50%) scaleY(0.3);
+  opacity: 0;
+  transition: height 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.18s ease;
+}
+
+.group.nav-item--active::before {
+  height: 62%;
+  transform: translateY(-50%) scaleY(1);
+  opacity: 1;
+}
+
+.group .nav-icon {
+  transform: translateX(0) scale(1);
+}
+
+.group.nav-item--active {
+  transition: background-color 0.22s ease, color 0.18s ease;
+}
+
+.group.nav-item--active .nav-icon {
+  transform: scale(1.04);
+  box-shadow: 2px 2px 0 0 var(--bauhaus-ink);
+  animation: nav-icon-pop 0.26s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+html[data-theme='dark'] .group.nav-item--active .nav-icon {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+.group.nav-item--active .nav-label {
+  transform: translateX(2px);
+}
+
+.group:not(.nav-item--active):hover .nav-icon {
+  transform: translateX(1px);
+  transition: transform 0.18s ease;
+}
+
+@keyframes nav-icon-pop {
+  0% {
+    transform: scale(0.82);
+  }
+  60% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1.04);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .group::before,
+  .group.nav-item--active .nav-icon,
+  .group.nav-item--active .nav-label,
+  .group:not(.nav-item--active):hover .nav-icon {
+    transition: none;
+    animation: none;
+    transform: none;
+  }
 }
 
 .route-pending-bar {
