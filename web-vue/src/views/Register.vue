@@ -2745,6 +2745,10 @@ html[data-theme="dark"] .register-textarea:focus {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+  /* 与上方统计卡拉开呼吸间距，避免贴死 */
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid hsl(var(--border) / 0.7);
 }
 
 @media (max-width: 1279px) {
