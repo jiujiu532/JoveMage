@@ -341,4 +341,35 @@ watch(
 .runtime-log-panel__line--warning {
   color: #fde68a;
 }
+
+@media (max-width: 640px) {
+  .runtime-log-panel__header {
+    gap: 8px;
+    padding: 6px 10px;
+    flex-wrap: wrap;
+  }
+
+  .runtime-log-panel__title {
+    font-size: 11px;
+  }
+
+  .runtime-log-panel__actions {
+    gap: 4px;
+  }
+
+  .runtime-log-panel__body {
+    padding: 10px 12px;
+    font-size: 11px;
+    line-height: 1.55;
+  }
+
+  .runtime-log-panel__line {
+    grid-template-columns: 4.5rem minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .runtime-log-panel__empty {
+    padding: 12px;
+  }
+}
 </style>

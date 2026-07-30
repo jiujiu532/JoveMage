@@ -148,4 +148,49 @@ function emitFile(event: 'download' | 'copy' | 'edit-tags') {
   border-color: rgba(255, 255, 255, 0.65);
   background: rgba(255, 255, 255, 0.1);
 }
+
+/* 窄屏：关闭钮收进画面内，操作钮加大，尊重 safe-area */
+@media (max-width: 640px) {
+  .lightbox {
+    padding:
+      max(12px, env(safe-area-inset-top, 0px))
+      max(12px, env(safe-area-inset-right, 0px))
+      max(16px, env(safe-area-inset-bottom, 0px))
+      max(12px, env(safe-area-inset-left, 0px));
+  }
+
+  .lightbox-content {
+    max-width: 100%;
+    max-height: 100%;
+    width: 100%;
+  }
+
+  .lightbox-close {
+    top: 8px;
+    right: 8px;
+    z-index: 3;
+    width: 40px;
+    height: 40px;
+    border-width: 1.5px;
+    background: rgba(0, 0, 0, 0.45);
+  }
+
+  .lightbox-media {
+    max-height: min(70vh, calc(100dvh - 9rem));
+  }
+
+  .lightbox-info {
+    gap: 8px;
+    margin-top: 10px;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    font-size: 12px;
+  }
+
+  .lightbox-btn {
+    min-height: 40px;
+    padding: 8px 14px;
+    font-size: 13px;
+    gap: 6px;
+  }
+}
 </style>

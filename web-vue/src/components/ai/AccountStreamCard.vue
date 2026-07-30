@@ -374,4 +374,65 @@ html[data-theme='dark'] .account-stream-card.is-selected {
     justify-content: flex-start;
   }
 }
+
+@media (max-width: 640px) {
+  .account-stream-card {
+    border-width: 1.5px;
+    box-shadow: 1.5px 1.5px 0 0 var(--bauhaus-ink, #2d2d2d);
+    gap: 0.5rem 0.65rem;
+  }
+
+  .account-stream-card--comfortable {
+    padding: 0.65rem 0.75rem;
+  }
+
+  .account-stream-card--dense {
+    padding: 0.45rem 0.55rem;
+  }
+
+  .account-stream-card:hover {
+    transform: none;
+    box-shadow: 2px 2px 0 0 var(--bauhaus-ink, #2d2d2d);
+  }
+
+  .account-stream-card.is-selected {
+    box-shadow: 2px 2px 0 0 var(--bauhaus-blue, #2d5da1);
+  }
+
+  .account-stream-card__quota {
+    min-width: 3.2rem;
+    padding: 0.35rem 0.4rem;
+    border-width: 1.5px;
+  }
+
+  .account-stream-card__quota-value {
+    font-size: 0.95rem;
+  }
+
+  .account-stream-card__title {
+    font-size: 0.85rem;
+  }
+
+  .account-stream-card__sub {
+    font-size: 0.68rem;
+  }
+
+  .account-stream-card__tags {
+    margin-top: 0.3rem;
+    gap: 0.28rem;
+  }
+
+  .account-stream-card__meta {
+    gap: 0.4rem 0.85rem;
+  }
+
+  html[data-theme='dark'] .account-stream-card {
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  }
+
+  html[data-theme='dark'] .account-stream-card:hover,
+  html[data-theme='dark'] .account-stream-card.is-selected {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  }
+}
 </style>

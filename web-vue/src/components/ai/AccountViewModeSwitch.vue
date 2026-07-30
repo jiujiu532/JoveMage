@@ -116,14 +116,31 @@ html[data-theme='dark'] .account-view-mode {
 }
 
 @media (max-width: 640px) {
+  .account-view-mode {
+    border-width: 1.5px;
+    box-shadow: none;
+  }
+
   .account-view-mode__label {
     display: none;
   }
 
   .account-view-mode__btn {
-    min-width: 2.1rem;
+    min-width: 36px;
+    min-height: 36px;
     justify-content: center;
-    padding: 0 0.55rem;
+    gap: 0;
+    padding: 0 0.4rem;
+    border-right-width: 1.5px;
+  }
+
+  .account-view-mode__icon {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  html[data-theme='dark'] .account-view-mode {
+    box-shadow: none;
   }
 }
 </style>

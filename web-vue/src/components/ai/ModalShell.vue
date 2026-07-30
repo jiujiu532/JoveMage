@@ -96,7 +96,21 @@ function handleBackdropClick() {
 
 @media (max-width: 640px) {
   .modal-shell {
-    padding: 12px;
+    padding:
+      max(10px, env(safe-area-inset-top, 0px))
+      max(10px, env(safe-area-inset-right, 0px))
+      max(10px, env(safe-area-inset-bottom, 0px))
+      max(10px, env(safe-area-inset-left, 0px));
+  }
+
+  .modal-shell__panel {
+    border-width: 1.5px;
+    /* 窄屏减轻硬阴影，桌面默认不变 */
+    box-shadow: 2px 2px 0 0 var(--bauhaus-ink);
+  }
+
+  :global(html[data-theme='dark']) .modal-shell__panel {
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.5);
   }
 }
 </style>

@@ -227,4 +227,43 @@ html[data-theme='dark'] .form-section__header--toggle:hover .form-section__title
 html[data-theme='dark'] .form-section__header--toggle:hover .form-section__chevron {
   border-color: hsl(var(--primary));
 }
+
+@media (max-width: 640px) {
+  .form-section--density-compact {
+    padding: 10px 10px 10px 14px;
+  }
+
+  .form-section--density-normal {
+    padding: 12px 12px 12px 14px;
+  }
+
+  .form-section--density-roomy {
+    padding: 14px 14px 14px 16px;
+  }
+
+  .form-section:not(.form-section--surface-plain)::before {
+    width: 3px;
+  }
+
+  .form-section__header {
+    gap: 8px;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    flex-wrap: wrap;
+  }
+
+  .form-section__title {
+    font-size: 14px;
+    letter-spacing: -0.01em;
+  }
+
+  .form-section__subtitle {
+    margin-top: 4px;
+    font-size: 11px;
+  }
+
+  .form-section__actions {
+    gap: 6px;
+  }
+}
 </style>

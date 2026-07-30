@@ -60,8 +60,21 @@ withDefaults(defineProps<{
 }
 
 @media (max-width: 640px) {
+  .panel-header {
+    gap: 8px;
+    padding-bottom: 2px;
+    margin-bottom: 2px;
+    border-bottom-width: 1.5px;
+  }
+
+  .panel-header-title {
+    font-size: clamp(1.15rem, 1.05rem + 0.6vw, 1.4rem);
+    letter-spacing: -0.03em;
+  }
+
   .panel-header-actions {
     width: 100%;
+    gap: 6px;
   }
 
   .panel-header-actions :slotted(*) {

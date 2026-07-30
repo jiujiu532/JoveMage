@@ -319,6 +319,47 @@ defineEmits<{
   color: hsl(var(--foreground));
 }
 
+/* 触控 / 窄屏：hover-only 操作常显，保证可点 */
+@media (hover: none), (max-width: 640px) {
+  .media-overlay {
+    opacity: 1;
+  }
+
+  .overlay-btn {
+    width: 34px;
+    height: 34px;
+  }
+
+  .gallery-item:hover {
+    transform: none;
+  }
+
+  .gallery-item:hover .media-content {
+    transform: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .file-info {
+    height: auto;
+    min-height: 72px;
+    padding: 8px;
+  }
+
+  .file-name {
+    font-size: 11px;
+  }
+
+  .file-meta {
+    margin-top: 4px;
+    font-size: 10px;
+  }
+
+  .tag-row {
+    margin-top: 6px;
+  }
+}
+
 @media (max-width: 420px) {
   .file-info {
     padding: 8px;

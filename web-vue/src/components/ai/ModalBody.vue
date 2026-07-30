@@ -28,4 +28,18 @@ withDefaults(defineProps<{
 .modal-body--density-roomy {
   padding: 20px;
 }
+
+@media (max-width: 640px) {
+  .modal-body--density-compact {
+    padding: 10px 12px;
+  }
+
+  .modal-body--density-normal {
+    padding: 12px 14px;
+  }
+
+  .modal-body--density-roomy {
+    padding: 14px;
+  }
+}
 </style>

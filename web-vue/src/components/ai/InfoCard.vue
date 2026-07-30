@@ -126,4 +126,49 @@ html[data-theme='dark'] .info-card {
 .info-card__header + .info-card__body {
   margin-top: 12px;
 }
+
+@media (max-width: 640px) {
+  .info-card {
+    border-width: 1.5px;
+    box-shadow: 2px 2px 0 0 var(--bauhaus-ink, #2d2d2d);
+  }
+
+  html[data-theme='dark'] .info-card {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+
+  .info-card::before {
+    width: 3px;
+  }
+
+  .info-card--density-compact {
+    padding: 10px 10px 10px 14px;
+  }
+
+  .info-card--density-normal {
+    padding: 12px 12px 12px 16px;
+  }
+
+  .info-card--density-roomy {
+    padding: 14px 14px 14px 18px;
+  }
+
+  .info-card__header {
+    gap: 8px;
+  }
+
+  .info-card__title {
+    font-size: 13px;
+    letter-spacing: -0.01em;
+  }
+
+  .info-card__description {
+    margin-top: 4px;
+    font-size: 11px;
+  }
+
+  .info-card__header + .info-card__body {
+    margin-top: 10px;
+  }
+}
 </style>

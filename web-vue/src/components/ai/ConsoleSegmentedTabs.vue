@@ -106,4 +106,31 @@ html[data-theme='dark'] .console-segmented-tabs :deep(.ui-segmented) {
   background: rgba(255, 255, 255, 0.22);
   color: #ffffff;
 }
+
+@media (max-width: 640px) {
+  .console-segmented-tabs :deep(.ui-segmented) {
+    border-width: 1.5px;
+  }
+
+  .console-segmented-tabs :deep(.ui-segmented-btn) {
+    min-height: 36px;
+    padding: 0 10px;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+  }
+
+  .console-segmented-tabs--content {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .console-segmented-tabs--content :deep(.ui-segmented) {
+    width: 100%;
+  }
+
+  .console-segmented-tabs--content :deep(.ui-segmented-btn) {
+    flex: 1 1 0;
+    justify-content: center;
+  }
+}
 </style>

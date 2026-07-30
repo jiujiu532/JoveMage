@@ -115,18 +115,47 @@ html[data-theme="dark"] .selection-bulk-bar {
 
 @media (max-width: 640px) {
   .selection-bulk-bar-host {
-    bottom: 12px;
-    padding-inline: 12px;
+    bottom: max(10px, env(safe-area-inset-bottom, 0px));
+    padding-inline: max(10px, env(safe-area-inset-left, 0px)) max(10px, env(safe-area-inset-right, 0px));
   }
 
   .selection-bulk-bar {
-    align-items: stretch;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 10px;
+    border-width: 1.5px;
     border-radius: var(--radius);
-    padding: 12px;
+    padding: 10px 12px;
+    /* 窄屏减轻硬阴影，避免压住内容 */
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .selection-bulk-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  html[data-theme="dark"] .selection-bulk-bar {
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  }
+
+  .selection-bulk-bar__summary {
+    flex: 0 0 auto;
+  }
+
+  .selection-bulk-bar__title {
+    font-size: 13px;
+    white-space: nowrap;
   }
 
   .selection-bulk-bar__actions {
-    width: 100%;
+    width: auto;
+    flex: 1 1 auto;
+    min-width: max-content;
   }
 }
 </style>
