@@ -28,13 +28,176 @@
               message.isPendingImageMessage ? 'is-pending-image-message' : '',
             ]"
           >
-            <div class="chat-message-header" :class="{ 'is-user': message.role === 'user' }">
-              <div
-                class="chat-message-avatar"
-                :class="{ 'chat-message-avatar-user': message.role === 'user' }"
-                aria-hidden="true"
+            <div
+              class="chat-message-avatar"
+              :class="message.role === 'user' ? 'chat-message-avatar-user' : 'chat-message-avatar-assistant'"
+              aria-hidden="true"
+            >
+              <!-- ChatGPT / OpenAI mark -->
+              <svg
+                v-if="message.role === 'assistant'"
+                class="chat-message-avatar-mark"
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                fill="currentColor"
               >
-                <Icon :icon="message.role === 'user' ? 'lucide:user' : 'lucide:bot'" class="h-4 w-4" />
+                <path d="M22.282 9.821a5.985 5.985 0 0 0-.516-4.91 6.046 6.046 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a5.985 5.985 0 0 0-3.998 2.9 6.046 6.046 0 0 0 .743 7.097 5.98 5.98 0 0 0 .51 4.911 6.051 6.051 0 0 0 6.515 2.9A5.985 5.985 0 0 0 13.26 24a6.056 6.056 0 0 0 5.772-4.206 5.99 5.99 0 0 0 3.997-2.9 6.056 6.056 0 0 0-.747-7.073zM13.26 22.43a4.476 4.476 0 0 1-2.876-1.04l.141-.081 4.779-2.758a.795.795 0 0 0 .392-.681v-6.737l2.02 1.168a.071.071 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494zM3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085 4.783 2.759a.771.771 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646zM2.34 7.896a4.485 4.485 0 0 1 2.366-1.973V11.6a.766.766 0 0 0 .388.676l5.815 3.355-2.02 1.168a.076.076 0 0 1-.071 0l-4.83-2.786A4.504 4.504 0 0 1 2.34 7.872zm16.597 3.855l-5.833-3.387L15.119 7.2a.076.076 0 0 1 .071 0l4.83 2.791a4.494 4.494 0 0 1-.676 8.105v-5.678a.79.79 0 0 0-.407-.667zm2.01-3.023l-.141-.085-4.774-2.782a.776.776 0 0 0-.785 0L9.409 9.23V6.897a.066.066 0 0 1 .028-.061l4.83-2.787a4.5 4.5 0 0 1 6.68 4.66zm-12.64 4.135l-2.02-1.164a.08.08 0 0 1-.038-.057V6.075a4.5 4.5 0 0 1 7.375-3.453l-.142.08L8.704 5.46a.795.795 0 0 0-.393.681zm1.097-2.365 2.602-1.5 2.607 1.5v2.999l-2.597 1.5-2.607-1.5z" />
+              </svg>
+              <!-- Bauhaus user monogram -->
+              <svg
+                v-else
+                class="chat-message-avatar-mark"
+                viewBox="0 0 24 24"
+                width="15"
+                height="15"
+                fill="none"
+              >
+                <circle cx="12" cy="8.2" r="3.4" fill="currentColor" />
+                <path d="M5.2 19.2c.7-3.4 3.2-5.2 6.8-5.2s6.1 1.8 6.8 5.2" stroke="currentColor" stroke-width="2.2" stroke-linecap="square" />
+              </svg>
+            </div>
+
+            <div class="chat-message-main">
+              <div class="chat-message-bubble-wrap">
+                <div
+                  class="chat-message-bubble"
+                  :class="[
+                    message.role === 'user' ? 'chat-message-bubble-user' : 'chat-message-bubble-assistant',
+                    message.isImageMessage ? 'chat-message-bubble-image' : '',
+                    message.isPendingImageMessage ? 'chat-message-bubble-image-pending' : '',
+                    message.status === 'error' ? 'chat-message-bubble-error' : '',
+                  ]"
+                  :style="message.imagePreviewStyle"
+                >
+                  <div
+                    class="chat-message-content"
+                    :class="{
+                      'is-collapsible': message.isCollapsible,
+                      'is-collapsed': message.isCollapsed,
+                    }"
+                  >
+                    <template v-if="message.role === 'user'">
+                      <p v-if="message.content" class="studio-user-prompt">{{ message.content }}</p>
+                      <div v-if="message.attachments?.length" class="studio-attachment-line">
+                        <Icon icon="lucide:paperclip" class="h-3.5 w-3.5" />
+                        {{ message.attachments.join('、') }}
+                      </div>
+                    </template>
+
+                    <template v-else-if="message.mode !== 'image'">
+                      <StudioMarkdownContent
+                        v-if="message.content || message.status === 'streaming'"
+                        :content="message.content || ' '"
+                        @citation-click="scrollToCitationSource"
+                      />
+                      <span v-if="message.status === 'streaming'" class="studio-cursor"></span>
+                      <p v-if="message.error && !message.content.includes(message.error)" class="studio-error-text">
+                        {{ message.error }}
+                      </p>
+                      <button
+                        v-if="message.mode === 'search' && message.searchSources?.length"
+                        type="button"
+                        class="studio-search-source-chip"
+                        @click="openSearchSourcePanel(message)"
+                      >
+                        <Icon icon="lucide:link" class="studio-search-source-chip-icon h-3.5 w-3.5" />
+                        <span class="studio-search-source-chip-label">参考来源</span>
+                        <strong>{{ message.searchSources.length }}</strong>
+                        <small>查看</small>
+                      </button>
+                      <div v-if="message.mode === 'search' && message.searchImageGroups?.length" class="studio-search-image-groups">
+                        <div
+                          v-for="(group, groupIndex) in message.searchImageGroups"
+                          :key="`${message.id}-image-group-${groupIndex}`"
+                          class="studio-search-image-group"
+                        >
+                          <span class="studio-search-image-group-title">
+                            <Icon icon="lucide:image" class="h-3.5 w-3.5" />
+                            图片参考<span v-if="group.aspectRatio"> {{ group.aspectRatio }}</span>
+                          </span>
+                          <span class="studio-search-image-group-queries">
+                            <span v-for="query in group.queries" :key="query" class="studio-search-image-query">{{ query }}</span>
+                          </span>
+                        </div>
+                      </div>
+                    </template>
+
+                    <template v-else>
+                      <template v-if="!message.task || message.task.status === 'queued' || message.task.status === 'running'">
+                        <div class="studio-result-block studio-result-block-pending">
+                          <div class="studio-result-grid" :class="{ 'is-single': message.imageSlotCount <= 1 }">
+                            <div
+                              v-for="slot in message.pendingSlots"
+                              :key="`${message.id}-pending-${slot}`"
+                              class="studio-result-item"
+                            >
+                              <div class="studio-result-media studio-result-placeholder">
+                                <Icon icon="lucide:loader-circle" class="h-5 w-5 animate-spin" />
+                                <span>正在处理图片</span>
+                                <small>{{ message.imagePendingStageText }}</small>
+                              </div>
+                              <div v-if="message.imageSlotCount > 1" class="studio-result-caption">
+                                <span>图片 {{ slot + 1 }}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </template>
+
+                      <template v-else>
+                        <div v-if="message.task?.status === 'error'" class="studio-image-status is-error">
+                          <Icon icon="lucide:circle-alert" class="h-4 w-4" />
+                          <span>{{ message.primaryMessage || '上游没有返回可用图片。' }}</span>
+                        </div>
+
+                        <div v-else class="studio-result-block">
+                          <div class="studio-result-grid" :class="{ 'is-single': message.assets.length <= 1 }">
+                            <div
+                              v-for="(asset, assetIndex) in message.assets"
+                              :key="`${message.id}-${assetIndex}`"
+                              class="studio-result-item"
+                            >
+                              <button
+                                type="button"
+                                class="studio-result-media"
+                                :class="{ 'has-image': Boolean(assetUrl(asset)) }"
+                                @click="emit('preview', assetUrl(asset), `结果 ${assetIndex + 1}`, String(asset.path || ''))"
+                              >
+                                <img v-if="assetUrl(asset)" :src="assetUrl(asset)" :alt="`结果 ${assetIndex + 1}`" loading="lazy" />
+                                <span v-else>无图片 URL</span>
+                              </button>
+                              <div v-if="message.assets.length > 1" class="studio-result-caption">
+                                <span>结果 {{ assetIndex + 1 }}</span>
+                                <button
+                                  v-if="assetIndex > 0"
+                                  type="button"
+                                  class="chat-input-action studio-result-compare"
+                                  title="对比结果 1"
+                                  aria-label="对比结果 1"
+                                  @click.stop="emitCompareImage(message, 0, assetIndex)"
+                                >
+                                  <Icon icon="lucide:columns-2" class="h-3.5 w-3.5" />
+                                  <span>对比</span>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </template>
+                    </template>
+                  </div>
+
+                  <button
+                    v-if="message.isCollapsible"
+                    type="button"
+                    class="chat-message-expand"
+                    @click.stop="toggleMessageExpanded(message)"
+                  >
+                    {{ message.isCollapsed ? '展开全部' : '收起' }}
+                    <Icon :icon="message.isCollapsed ? 'lucide:chevron-down' : 'lucide:chevron-up'" class="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
 
               <div class="chat-message-actions">
@@ -50,147 +213,6 @@
                 >
                   <span class="icon"><Icon :icon="action.icon" class="h-3.5 w-3.5" /></span>
                   <span class="text">{{ action.label }}</span>
-                </button>
-              </div>
-            </div>
-
-            <div class="chat-message-bubble-wrap">
-              <div
-                class="chat-message-bubble"
-                :class="[
-                  message.role === 'user' ? 'chat-message-bubble-user' : 'chat-message-bubble-assistant',
-                  message.isImageMessage ? 'chat-message-bubble-image' : '',
-                  message.isPendingImageMessage ? 'chat-message-bubble-image-pending' : '',
-                  message.status === 'error' ? 'chat-message-bubble-error' : '',
-                ]"
-                :style="message.imagePreviewStyle"
-              >
-                <div
-                  class="chat-message-content"
-                  :class="{
-                    'is-collapsible': message.isCollapsible,
-                    'is-collapsed': message.isCollapsed,
-                  }"
-                >
-                  <template v-if="message.role === 'user'">
-                    <p v-if="message.content" class="studio-user-prompt">{{ message.content }}</p>
-                    <div v-if="message.attachments?.length" class="studio-attachment-line">
-                      <Icon icon="lucide:paperclip" class="h-3.5 w-3.5" />
-                      {{ message.attachments.join('、') }}
-                    </div>
-                  </template>
-
-                  <template v-else-if="message.mode !== 'image'">
-                    <StudioMarkdownContent
-                      v-if="message.content || message.status === 'streaming'"
-                      :content="message.content || ' '"
-                      @citation-click="scrollToCitationSource"
-                    />
-                    <span v-if="message.status === 'streaming'" class="studio-cursor"></span>
-                    <p v-if="message.error && !message.content.includes(message.error)" class="studio-error-text">
-                      {{ message.error }}
-                    </p>
-                    <button
-                      v-if="message.mode === 'search' && message.searchSources?.length"
-                      type="button"
-                      class="studio-search-source-chip"
-                      @click="openSearchSourcePanel(message)"
-                    >
-                      <Icon icon="lucide:link" class="studio-search-source-chip-icon h-3.5 w-3.5" />
-                      <span class="studio-search-source-chip-label">参考来源</span>
-                      <strong>{{ message.searchSources.length }}</strong>
-                      <small>查看</small>
-                    </button>
-                    <div v-if="message.mode === 'search' && message.searchImageGroups?.length" class="studio-search-image-groups">
-                      <div
-                        v-for="(group, groupIndex) in message.searchImageGroups"
-                        :key="`${message.id}-image-group-${groupIndex}`"
-                        class="studio-search-image-group"
-                      >
-                        <span class="studio-search-image-group-title">
-                          <Icon icon="lucide:image" class="h-3.5 w-3.5" />
-                          图片参考<span v-if="group.aspectRatio"> {{ group.aspectRatio }}</span>
-                        </span>
-                        <span class="studio-search-image-group-queries">
-                          <span v-for="query in group.queries" :key="query" class="studio-search-image-query">{{ query }}</span>
-                        </span>
-                      </div>
-                    </div>
-                  </template>
-
-                  <template v-else>
-                    <template v-if="!message.task || message.task.status === 'queued' || message.task.status === 'running'">
-                      <div class="studio-result-block studio-result-block-pending">
-                        <div class="studio-result-grid" :class="{ 'is-single': message.imageSlotCount <= 1 }">
-                          <div
-                            v-for="slot in message.pendingSlots"
-                            :key="`${message.id}-pending-${slot}`"
-                            class="studio-result-item"
-                          >
-                            <div class="studio-result-media studio-result-placeholder">
-                              <Icon icon="lucide:loader-circle" class="h-5 w-5 animate-spin" />
-                              <span>正在处理图片</span>
-                              <small>{{ message.imagePendingStageText }}</small>
-                            </div>
-                            <div v-if="message.imageSlotCount > 1" class="studio-result-caption">
-                              <span>图片 {{ slot + 1 }}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </template>
-
-                    <template v-else>
-                      <div v-if="message.task?.status === 'error'" class="studio-image-status is-error">
-                        <Icon icon="lucide:circle-alert" class="h-4 w-4" />
-                        <span>{{ message.primaryMessage || '上游没有返回可用图片。' }}</span>
-                      </div>
-
-                      <div v-else class="studio-result-block">
-                        <div class="studio-result-grid" :class="{ 'is-single': message.assets.length <= 1 }">
-                          <div
-                            v-for="(asset, assetIndex) in message.assets"
-                            :key="`${message.id}-${assetIndex}`"
-                            class="studio-result-item"
-                          >
-                            <button
-                              type="button"
-                              class="studio-result-media"
-                              :class="{ 'has-image': Boolean(assetUrl(asset)) }"
-                              @click="emit('preview', assetUrl(asset), `结果 ${assetIndex + 1}`, String(asset.path || ''))"
-                            >
-                              <img v-if="assetUrl(asset)" :src="assetUrl(asset)" :alt="`结果 ${assetIndex + 1}`" loading="lazy" />
-                              <span v-else>无图片 URL</span>
-                            </button>
-                            <div v-if="message.assets.length > 1" class="studio-result-caption">
-                              <span>结果 {{ assetIndex + 1 }}</span>
-                              <button
-                                v-if="assetIndex > 0"
-                                type="button"
-                                class="chat-input-action studio-result-compare"
-                                title="对比结果 1"
-                                aria-label="对比结果 1"
-                                @click.stop="emitCompareImage(message, 0, assetIndex)"
-                              >
-                                <Icon icon="lucide:columns-2" class="h-3.5 w-3.5" />
-                                <span>对比</span>
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </template>
-                  </template>
-                </div>
-
-                <button
-                  v-if="message.isCollapsible"
-                  type="button"
-                  class="chat-message-expand"
-                  @click.stop="toggleMessageExpanded(message)"
-                >
-                  {{ message.isCollapsed ? '展开全部' : '收起' }}
-                  <Icon :icon="message.isCollapsed ? 'lucide:chevron-down' : 'lucide:chevron-up'" class="h-3.5 w-3.5" />
                 </button>
               </div>
             </div>
@@ -831,9 +853,9 @@ defineExpose({
 .studio-turns {
   margin: 0 auto;
   display: flex;
-  width: var(--studio-content-width);
+  width: min(100%, 52rem);
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1.55rem;
   padding-bottom: 0.5rem;
 }
 
@@ -866,6 +888,7 @@ defineExpose({
 
 .chat-message-row {
   display: flex;
+  width: 100%;
 }
 
 .chat-message-row.is-user {
@@ -879,56 +902,84 @@ defineExpose({
 .chat-message-container {
   display: flex;
   min-width: 0;
-  max-width: min(100%, 44rem);
+  max-width: min(100%, 48rem);
   width: fit-content;
-  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.7rem;
 }
 
 .chat-message-container.is-pending-image-message {
   width: fit-content;
   min-width: 0;
-  max-width: 100%;
+  max-width: min(100%, 48rem);
 }
 
 .chat-message-container.is-user {
-  align-items: flex-end;
+  flex-direction: row-reverse;
 }
 
 .chat-message-container.is-assistant {
-  align-items: flex-start;
+  flex-direction: row;
 }
 
-.chat-message-header {
+.chat-message-main {
   display: flex;
-  min-height: 1.75rem;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.25rem;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.28rem;
 }
 
-.chat-message-header.is-user {
-  flex-direction: row-reverse;
+.chat-message-container.is-user .chat-message-main {
+  align-items: flex-end;
+}
+
+.chat-message-container.is-assistant .chat-message-main {
+  align-items: flex-start;
 }
 
 .chat-message-avatar {
   display: flex;
-  width: 1.75rem;
-  height: 1.75rem;
-  flex: 0 0 1.75rem;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 2rem;
   align-items: center;
   justify-content: center;
-  border: 2px solid var(--bauhaus-ink, var(--ui-control-border, hsl(var(--border))));
-  border-radius: 999px; /* 产品头像保留圆形 */
-  background: var(--ui-control-bg, hsl(var(--background)));
-  color: var(--ui-fg-muted, hsl(var(--muted-foreground)));
-  font-size: 0.6875rem;
-  font-weight: 600;
+  margin-top: 0.15rem;
+  border: 2px solid var(--bauhaus-ink, #2d2d2d);
+  border-radius: 999px;
+  box-shadow: 2px 2px 0 0 var(--bauhaus-ink, #2d2d2d);
+  color: #fff;
+  overflow: hidden;
+}
+
+.chat-message-avatar-mark {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.chat-message-avatar-assistant {
+  background: #10a37f;
+  border-color: var(--bauhaus-ink, #2d2d2d);
+  color: #fff;
 }
 
 .chat-message-avatar-user {
-  border-color: var(--bauhaus-ink, var(--ui-accent-border, hsl(var(--foreground) / 0.18)));
-  background: var(--ui-accent-soft, hsl(var(--secondary)));
-  color: var(--ui-accent-strong, hsl(var(--foreground)));
+  background: var(--bauhaus-blue, #2d5da1);
+  border-color: var(--bauhaus-ink, #2d2d2d);
+  color: #fff;
+}
+
+html[data-theme='dark'] .chat-message-avatar {
+  box-shadow: 2px 2px 0 0 color-mix(in srgb, var(--bauhaus-ink, #e8e4dc) 55%, transparent);
+}
+
+html[data-theme='dark'] .chat-message-avatar-assistant {
+  background: #0f8f6f;
+}
+
+html[data-theme='dark'] .chat-message-avatar-user {
+  background: color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 88%, #000);
 }
 
 .chat-message-actions {
@@ -937,9 +988,13 @@ defineExpose({
   max-width: min(26rem, calc(100vw - 8rem));
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.2rem;
   opacity: 1;
   transition: opacity var(--ui-duration-normal, 180ms) var(--ui-ease-out, ease);
+}
+
+.chat-message-container.is-user .chat-message-actions {
+  justify-content: flex-end;
 }
 
 @media (min-width: 640px) {
@@ -1021,18 +1076,18 @@ defineExpose({
 
 .chat-message-bubble {
   max-width: 100%;
-  border: 2px solid var(--bauhaus-line-soft, var(--ui-panel-border, hsl(var(--border))));
+  border: 0;
   border-radius: var(--radius);
-  background: var(--ui-panel-bg, hsl(var(--card)));
+  background: transparent;
   box-shadow: none;
   color: var(--ui-fg-strong, hsl(var(--foreground)));
-  padding: 0.625rem 0.875rem;
-  font-size: 0.875rem;
-  line-height: 1.75;
+  padding: 0.15rem 0;
+  font-size: 0.9375rem;
+  line-height: 1.7;
 }
 
 html[data-theme='dark'] .chat-message-bubble {
-  border-color: var(--bauhaus-line-soft, hsl(var(--border)));
+  border-color: transparent;
 }
 
 .chat-message-bubble-wrap {
@@ -1085,30 +1140,54 @@ html[data-theme='dark'] .chat-message-bubble {
 }
 
 .chat-message-bubble-user {
-  --studio-bubble-fade-bg: hsl(var(--secondary));
-  border-color: var(--bauhaus-ink, var(--ui-accent-border, hsl(var(--foreground) / 0.16)));
-  background: var(--ui-accent-soft, hsl(var(--secondary)));
+  --studio-bubble-fade-bg: color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 10%, hsl(var(--card)));
+  border: 2px solid var(--bauhaus-ink, #2d2d2d);
+  background: color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 10%, hsl(var(--card)));
+  box-shadow: 3px 3px 0 0 var(--bauhaus-ink, #2d2d2d);
+  padding: 0.7rem 0.95rem;
 }
 
 .chat-message-bubble-assistant {
-  --studio-bubble-fade-bg: hsl(var(--card));
-  border-color: var(--bauhaus-line-soft, var(--ui-panel-border, hsl(var(--border))));
+  --studio-bubble-fade-bg: hsl(var(--background));
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0.2rem 0 0;
 }
 
 .chat-message-bubble-image {
   width: fit-content;
   min-width: 0;
-  padding: 0.75rem;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
 }
 
 .chat-message-bubble-image-pending {
+  border: 2px solid var(--bauhaus-line-soft, hsl(var(--border)));
+  background: hsl(var(--card));
   padding: 0.75rem;
 }
 
 .chat-message-bubble-error {
   --studio-bubble-fade-bg: rgb(254 242 242);
-  border-color: rgb(254 202 202);
-  background: rgb(254 242 242);
+  border: 2px solid color-mix(in srgb, var(--bauhaus-red, #c0392b) 45%, #fff);
+  background: color-mix(in srgb, var(--bauhaus-red, #c0392b) 8%, #fff);
+  box-shadow: none;
+  padding: 0.7rem 0.9rem;
+}
+
+html[data-theme='dark'] .chat-message-bubble-user {
+  --studio-bubble-fade-bg: color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 18%, hsl(var(--card)));
+  background: color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 18%, hsl(var(--card)));
+  box-shadow: 3px 3px 0 0 color-mix(in srgb, var(--bauhaus-ink, #e8e4dc) 45%, transparent);
+}
+
+html[data-theme='dark'] .chat-message-bubble-error {
+  --studio-bubble-fade-bg: color-mix(in srgb, var(--bauhaus-red, #c0392b) 16%, hsl(var(--card)));
+  border-color: color-mix(in srgb, var(--bauhaus-red, #c0392b) 50%, transparent);
+  background: color-mix(in srgb, var(--bauhaus-red, #c0392b) 14%, hsl(var(--card)));
 }
 
 .studio-user-prompt {
@@ -1720,15 +1799,16 @@ html[data-theme='dark'] .studio-search-source-card.is-highlighted {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border: 2px solid var(--bauhaus-line-soft, hsl(var(--border) / 0.72));
+  border: 2px solid var(--bauhaus-ink, #2d2d2d);
   border-radius: var(--radius);
-  background: hsl(var(--secondary) / 0.35);
+  background: hsl(var(--secondary) / 0.28);
+  box-shadow: 3px 3px 0 0 var(--bauhaus-ink, #2d2d2d);
   color: inherit;
   cursor: zoom-in;
 }
 
 .studio-result-media.has-image {
-  background: hsl(var(--secondary) / 0.18);
+  background: hsl(var(--card));
   padding: 0;
 }
 
@@ -1738,8 +1818,12 @@ html[data-theme='dark'] .studio-search-source-card.is-highlighted {
   height: 100%;
   max-width: none;
   max-height: none;
-  border-radius: var(--radius);
-  object-fit: contain;
+  border-radius: 0;
+  object-fit: cover;
+}
+
+html[data-theme='dark'] .studio-result-media {
+  box-shadow: 3px 3px 0 0 color-mix(in srgb, var(--bauhaus-ink, #e8e4dc) 45%, transparent);
 }
 
 .studio-result-media span {
@@ -1822,11 +1906,23 @@ html[data-theme='dark'] .studio-scroll-latest {
   }
 
   .studio-turns {
-    gap: 1rem;
+    gap: 1.15rem;
   }
 
   .chat-message-container {
-    max-width: min(100%, 38rem);
+    max-width: 100%;
+    gap: 0.55rem;
+  }
+
+  .chat-message-avatar {
+    width: 1.75rem;
+    height: 1.75rem;
+    flex-basis: 1.75rem;
+  }
+
+  .chat-message-avatar-mark {
+    width: 13px;
+    height: 13px;
   }
 
   .chat-message-container.is-pending-image-message {
