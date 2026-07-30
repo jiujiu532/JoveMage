@@ -40,13 +40,15 @@ export const quotaOrder: QuotaKey[] = ['fast', 'thinking', 'pro', 'image', 'musi
 
 const laneOrder: AccountLane[] = ['fast', 'thinking', 'pro']
 
-/* 成功=蓝（对齐 StateBadge）；字色走 bauhaus/tone 令牌，避免 *-700 深色糊 */
+/* 状态徽标走 Bauhaus「实色块」语言（对齐 StateBadge）：正常=蓝实底白字、
+ * 异常=红实底白字、受限=黄实底墨字、禁用=灰实底，深浅两色都一眼可辨。
+ * 不再用 12% 淡底 + 彩字（深色糊、浅色弱）。 */
 const PILL_TONE_CLASS = {
-  success: 'border-[color-mix(in_srgb,var(--bauhaus-blue)_40%,transparent)] bg-[color-mix(in_srgb,var(--bauhaus-blue)_12%,transparent)] text-[var(--bauhaus-blue)]',
-  warning: 'border-[hsl(var(--tone-warning-border)/0.45)] bg-[hsl(var(--tone-warning-bg))] text-[hsl(var(--tone-warning-foreground))]',
-  danger: 'border-[hsl(var(--tone-error-border)/0.45)] bg-[hsl(var(--tone-error-bg))] text-[hsl(var(--tone-error-foreground))]',
-  info: 'border-[hsl(var(--tone-info-border)/0.45)] bg-[hsl(var(--tone-info-bg))] text-[hsl(var(--tone-info-foreground))]',
-  neutral: 'border-border bg-muted/20 text-muted-foreground',
+  success: 'border-transparent bg-[var(--bauhaus-blue)] text-white font-bold',
+  warning: 'border-transparent bg-[var(--bauhaus-yellow)] text-[#221c12] font-bold',
+  danger: 'border-transparent bg-[var(--bauhaus-red)] text-white font-bold',
+  info: 'border-transparent bg-[var(--bauhaus-blue)] text-white font-bold',
+  neutral: 'border-transparent bg-[hsl(var(--muted-foreground)/0.35)] text-[hsl(var(--foreground))] font-bold',
 } as const
 
 const IMAGE_UNAVAILABLE_HINTS = [
