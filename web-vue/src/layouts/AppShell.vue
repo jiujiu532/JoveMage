@@ -185,11 +185,56 @@
             <Button
               size="sm"
               variant="outline"
+              icon-only
+              root-class="shell-header-icon-btn"
               @click="cycleThemeMode"
               :title="themeButtonTitle"
+              :aria-label="themeButtonTitle"
             >
-              <span class="sm:hidden">{{ themeButtonText.charAt(0) }}</span>
-              <span class="hidden sm:inline">{{ themeButtonText }}</span>
+              <!-- light: 太阳 -->
+              <svg
+                v-if="themeMode === 'light'"
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                class="h-[18px] w-[18px]"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <circle cx="12" cy="12" r="4" />
+                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+              </svg>
+              <!-- dark: 月亮 -->
+              <svg
+                v-else-if="themeMode === 'dark'"
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                class="h-[18px] w-[18px]"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M21 14.5A8.5 8.5 0 0 1 9.5 3 7 7 0 1 0 21 14.5z" />
+              </svg>
+              <!-- system: 显示器 -->
+              <svg
+                v-else
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                class="h-[18px] w-[18px]"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <rect x="3" y="4" width="18" height="12" rx="1.5" />
+                <path d="M8 20h8M12 16v4" />
+              </svg>
             </Button>
             <Button
               v-if="canvasHref"
@@ -204,11 +249,25 @@
             <Button
               size="sm"
               variant="outline"
+              icon-only
+              root-class="shell-header-icon-btn"
               @click="refreshPage"
               title="刷新"
+              aria-label="刷新"
             >
-              <span class="sm:hidden">刷</span>
-              <span class="hidden sm:inline">刷新</span>
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                class="h-[18px] w-[18px]"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+                <path d="M21 3v6h-6" />
+              </svg>
             </Button>
             <Button
               size="sm"
@@ -1137,10 +1196,23 @@ onBeforeUnmount(() => {
   padding-right: max(0.75rem, env(safe-area-inset-right, 0px));
 }
 
+.shell-header-icon-btn {
+  min-width: 2.25rem;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+}
+
 @media (min-width: 640px) {
   .shell-header {
     padding-top: max(1rem, env(safe-area-inset-top, 0px));
     padding-right: max(1rem, env(safe-area-inset-right, 0px));
+  }
+
+  .shell-header-icon-btn {
+    min-width: 2.5rem;
+    width: 2.5rem;
+    height: 2.5rem;
   }
 }
 
