@@ -25,12 +25,7 @@
         <div v-if="$slots.actions" class="form-section__actions" @click.stop>
           <slot name="actions" />
         </div>
-        <span
-          v-if="collapsible"
-          class="form-section__chevron"
-          :class="{ 'is-open': !collapsed }"
-          aria-hidden="true"
-        />
+        <CollapseCaret v-if="collapsible" :open="!collapsed" />
       </div>
     </div>
     <div v-show="!collapsible || !collapsed" class="form-section__body">
@@ -41,6 +36,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import CollapseCaret from '@/components/ai/CollapseCaret.vue'
 
 const props = withDefaults(defineProps<{
   title?: string
@@ -194,26 +190,6 @@ function onHeaderKeydown(e: KeyboardEvent) {
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-}
-
-.form-section__chevron {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  margin-top: 4px;
-  border-right: 1.5px solid hsl(var(--muted-foreground));
-  border-bottom: 1.5px solid hsl(var(--muted-foreground));
-  transform: rotate(-45deg);
-  transition: transform 0.14s ease, border-color 0.12s ease;
-}
-
-.form-section__chevron.is-open {
-  margin-top: 1px;
-  transform: rotate(45deg);
-}
-
-.form-section__header--toggle:hover .form-section__chevron {
-  border-color: var(--bauhaus-blue, #2d5da1);
 }
 
 .form-section__body {

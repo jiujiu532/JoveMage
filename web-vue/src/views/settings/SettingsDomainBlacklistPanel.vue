@@ -127,7 +127,7 @@
             </div>
             <div class="flex shrink-0 items-center gap-2">
               <MetaChip size="xs" tone="muted">{{ group.entries.length }} 条</MetaChip>
-              <span class="text-xs text-muted-foreground">{{ collapsed[group.key] ? '展开' : '收起' }}</span>
+              <CollapseCaret :open="!collapsed[group.key]" />
             </div>
           </button>
 
@@ -236,6 +236,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { Button, Checkbox, FormField, Input } from 'nanocat-ui'
+import CollapseCaret from '@/components/ai/CollapseCaret.vue'
 import FormSection from '@/components/ai/FormSection.vue'
 import {
   domainBlacklistProviderRef,

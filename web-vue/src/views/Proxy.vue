@@ -190,11 +190,7 @@
             :aria-expanded="isGroupExpanded(group.id)"
             @click="toggleGroupExpanded(group.id)"
           >
-            <span class="proxy-group__caret" aria-hidden="true">
-              <svg viewBox="0 0 12 12" width="12" height="12" fill="none">
-                <path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" />
-              </svg>
-            </span>
+            <CollapseCaret :open="isGroupExpanded(group.id)" />
 
             <span class="proxy-group__main">
               <span class="proxy-group__name-row">
@@ -429,6 +425,7 @@ import type { ActionMenuItem } from 'nanocat-ui'
 import { prepareSettingsForEdit, settingsApi } from '@/api/settings'
 import { parseProxyReference, proxyApi, serializeProxyReference, type ProxyGroup, type ProxyNode, type ProxyTestResult } from '@/api/proxy'
 import ActionRow from '@/components/ai/ActionRow.vue'
+import CollapseCaret from '@/components/ai/CollapseCaret.vue'
 import FloatingActionMenu from '@/components/ai/FloatingActionMenu.vue'
 import FormSection from '@/components/ai/FormSection.vue'
 import ModalBody from '@/components/ai/ModalBody.vue'
@@ -1431,24 +1428,6 @@ onActivated(() => {
 .proxy-group__summary:focus-visible {
   outline: 2px solid var(--bauhaus-blue, #2d5da1);
   outline-offset: -2px;
-}
-
-.proxy-group__caret {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  flex: 0 0 auto;
-  border: 1.5px solid var(--bauhaus-ink, #2d2d2d);
-  border-radius: var(--radius);
-  color: var(--bauhaus-ink, #2d2d2d);
-  transition: transform 0.18s ease, background 0.15s ease;
-}
-.proxy-group--open .proxy-group__caret {
-  transform: rotate(180deg);
-  background: var(--bauhaus-blue, #2d5da1);
-  color: var(--bauhaus-card, #fff);
 }
 
 .proxy-group__main {
