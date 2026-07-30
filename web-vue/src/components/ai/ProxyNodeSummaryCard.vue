@@ -10,7 +10,10 @@
       </span>
     </div>
     <p class="proxy-node-summary-card__url">{{ maskedUrl || emptyText }}</p>
-    <p class="proxy-node-summary-card__meta">图片并发 {{ imageLimit > 0 ? imageLimit : '不限' }}</p>
+    <p class="proxy-node-summary-card__meta">
+      <span class="proxy-node-summary-card__meta-key">图片并发</span>
+      <span class="proxy-node-summary-card__meta-value">{{ imageLimit > 0 ? imageLimit : '不限' }}</span>
+    </p>
   </article>
 </template>
 
@@ -39,15 +42,33 @@ function maskProxy(value: unknown) {
 
 <style scoped>
 .proxy-node-summary-card {
+  position: relative;
   min-width: 0;
-  border: 1px solid hsl(var(--border));
+  overflow: hidden;
+  border: 1.5px solid var(--bauhaus-ink, #2d2d2d);
   border-radius: var(--radius);
   background: hsl(var(--card));
-  padding: 8px 10px;
+  box-shadow: var(--shadow-hard-sm, 2px 2px 0 0 var(--bauhaus-ink, #2d2d2d));
+  padding: 8px 10px 8px;
+}
+/* 顶部 Bauhaus 色条 */
+.proxy-node-summary-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 3px;
+  background: var(--bauhaus-blue, #2d5da1);
 }
 
 .proxy-node-summary-card--disabled {
-  background: hsl(var(--muted) / 0.2);
+  background: color-mix(in srgb, var(--bauhaus-ink, #2d2d2d) 5%, hsl(var(--card)));
+  box-shadow: none;
+  border-color: color-mix(in srgb, var(--bauhaus-ink, #2d2d2d) 40%, transparent);
+}
+.proxy-node-summary-card--disabled::before {
+  background: color-mix(in srgb, var(--bauhaus-ink, #2d2d2d) 40%, transparent);
 }
 
 .proxy-node-summary-card__header {
@@ -56,6 +77,7 @@ function maskProxy(value: unknown) {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  margin-top: 2px;
 }
 
 .proxy-node-summary-card__name {
@@ -63,18 +85,23 @@ function maskProxy(value: unknown) {
   overflow: hidden;
   color: hsl(var(--foreground));
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.proxy-node-summary-card--disabled .proxy-node-summary-card__name {
+  color: hsl(var(--muted-foreground));
 }
 
 .proxy-node-summary-card__status {
   flex: 0 0 auto;
-  font-size: 11px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
 }
 
 .proxy-node-summary-card__status--enabled {
-  color: hsl(var(--success, 142 71% 45%));
+  color: var(--bauhaus-blue, #2d5da1);
 }
 
 .proxy-node-summary-card__status--disabled {
@@ -86,14 +113,27 @@ function maskProxy(value: unknown) {
   overflow-wrap: anywhere;
   color: hsl(var(--muted-foreground));
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 11px;
-  line-height: 1.35;
+  font-size: 10.5px;
+  line-height: 1.4;
 }
 
 .proxy-node-summary-card__meta {
-  margin-top: 4px;
+  margin-top: 5px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+.proxy-node-summary-card__meta-key {
   color: hsl(var(--muted-foreground));
-  font-size: 11px;
-  line-height: 1.35;
+}
+.proxy-node-summary-card__meta-value {
+  color: var(--bauhaus-ink, #2d2d2d);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.proxy-node-summary-card--disabled .proxy-node-summary-card__meta-value {
+  color: hsl(var(--muted-foreground));
 }
 </style>

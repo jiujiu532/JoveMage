@@ -40,34 +40,36 @@
       </PanelHeader>
 
       <div class="grid gap-3 xl:grid-cols-2">
-        <div
+        <section
           v-for="group in diagnosticGroups"
           :key="group.key"
           class="monitor-metric-group"
         >
-          <div class="flex items-center justify-between gap-3">
-            <p class="text-sm font-semibold text-foreground">{{ group.title }}</p>
-            <p class="text-xs text-muted-foreground">{{ group.meta }}</p>
-          </div>
-          <div class="mt-3 grid gap-2 sm:grid-cols-2 2xl:grid-cols-4">
+          <header class="monitor-metric-group__head">
+            <h3 class="monitor-metric-group__title">{{ group.title }}</h3>
+            <p class="monitor-metric-group__meta">{{ group.meta }}</p>
+          </header>
+          <div class="monitor-metric-group__grid">
             <div
               v-for="item in group.items"
               :key="`${group.key}-${item.key}`"
               class="monitor-metric-cell"
+              :class="[
+                item.primary ? 'monitor-metric-cell--primary' : 'monitor-metric-cell--quiet',
+                `monitor-metric-cell--tone-${item.tone || 'ink'}`,
+              ]"
             >
-              <p class="truncate text-xs text-muted-foreground">{{ item.label }}</p>
+              <p class="monitor-metric-cell__label">{{ item.label }}</p>
               <p
-                class="mt-1 text-base font-semibold leading-none tabular-nums"
-                :class="item.value === '-' ? 'text-muted-foreground' : item.valueClass"
+                class="monitor-metric-cell__value"
+                :class="item.value === '-' ? 'monitor-metric-cell__value--empty' : item.valueClass"
               >
                 {{ item.value }}
               </p>
-              <p v-if="item.meta" class="mt-1 truncate text-[11px] text-muted-foreground">
-                {{ item.meta }}
-              </p>
+              <p v-if="item.meta" class="monitor-metric-cell__meta">{{ item.meta }}</p>
             </div>
           </div>
-        </div>
+        </section>
       </div>
 
       <StateBlock
@@ -130,8 +132,13 @@
                   {{ row.stage_label || row.stage || '运行中' }}
                 </StateBadge>
               </td>
-              <td class="table-num">{{ formatMs(row.elapsed_ms) }}</td>
-              <td class="table-num">{{ metricDigest(row) }}</td>
+              <td class="table-num">
+                <span class="monitor-running-value">
+                  <span class="monitor-running-dot" aria-hidden="true" />
+                  {{ formatMs(row.elapsed_ms) }}
+                </span>
+              </td>
+              <td class="table-num max-w-[22rem] truncate" :title="metricDigest(row)">{{ metricDigest(row) }}</td>
               <td>
                 <MetaChip size="xs" tone="muted">{{ egressText(row) }}</MetaChip>
               </td>
@@ -159,7 +166,7 @@
           </div>
         </div>
         <div v-if="recentRows.length" class="monitor-paired-body">
-          <TableShell>
+          <TableShell class="monitor-paired-table">
             <table class="monitor-table">
               <thead>
                 <tr>
@@ -212,36 +219,39 @@
           <div
             v-for="row in slowRows"
             :key="`slow-${row.call_id}-${row.ended_at}`"
-            class="rounded-sm border border-border bg-background px-3 py-3"
+            class="monitor-slow-card"
           >
-            <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0">
-                <p class="truncate text-sm font-medium text-foreground">
-                  {{ row.model || '-' }}
-                  <span class="font-mono text-xs text-muted-foreground">{{ shortCallId(row.call_id) }}</span>
-                </p>
-                <p class="mt-1 text-xs text-muted-foreground">{{ row.endpoint || '-' }}</p>
+            <span class="monitor-slow-card__stripe" :class="`monitor-slow-card__stripe--${statusTone(row.status)}`" aria-hidden="true" />
+            <div class="monitor-slow-card__body">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="truncate text-sm font-medium text-foreground">
+                    {{ row.model || '-' }}
+                    <span class="font-mono text-xs text-muted-foreground">{{ shortCallId(row.call_id) }}</span>
+                  </p>
+                  <p class="mt-1 text-xs text-muted-foreground">{{ row.endpoint || '-' }}</p>
+                </div>
+                <StateBadge :tone="statusTone(row.status)" size="xs" shape="rounded" :bordered="false">
+                  {{ formatMs(row.duration_ms) }}
+                </StateBadge>
               </div>
-              <StateBadge :tone="statusTone(row.status)" size="xs" shape="rounded" :bordered="false">
-                {{ formatMs(row.duration_ms) }}
-              </StateBadge>
+              <div class="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                <span
+                  v-for="item in slowMetricItems(row)"
+                  :key="`${row.call_id}-${item.key}`"
+                  class="monitor-slow-card__chip"
+                  :class="item.important ? 'monitor-slow-card__chip--hot' : 'monitor-slow-card__chip--normal'"
+                >
+                  {{ item.label }} {{ item.value }}
+                </span>
+              </div>
+              <p v-if="slowRowReason(row)" class="mt-2 text-xs text-muted-foreground">
+                {{ slowRowReason(row) }}
+              </p>
+              <p v-if="row.error" class="mt-2 line-clamp-2 text-xs text-muted-foreground">
+                {{ row.error }}
+              </p>
             </div>
-            <div class="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
-              <span
-                v-for="item in slowMetricItems(row)"
-                :key="`${row.call_id}-${item.key}`"
-                class="rounded-sm px-2 py-1"
-                :class="item.important ? 'bg-primary/10 text-primary' : 'bg-muted/60'"
-              >
-                {{ item.label }} {{ item.value }}
-              </span>
-            </div>
-            <p v-if="slowRowReason(row)" class="mt-2 text-xs text-muted-foreground">
-              {{ slowRowReason(row) }}
-            </p>
-            <p v-if="row.error" class="mt-2 line-clamp-2 text-xs text-muted-foreground">
-              {{ row.error }}
-            </p>
           </div>
         </div>
         <div v-else class="monitor-paired-body px-4 pb-4">
@@ -351,14 +361,14 @@ const diagnosticGroups = computed(() => {
       title: '实时概览',
       meta: '窗口、成功率、瓶颈',
       items: [
-        { key: 'active', label: '当前并发', value: data?.active ?? 0, meta: `线程容量 ${threadTokens.value}`, valueClass: 'text-foreground' },
-        { key: 'completed', label: '完成窗口', value: data?.completed ?? 0, meta: completedWindowText.value, valueClass: 'text-foreground' },
-        { key: 'success', label: '成功率', value: `${data?.success_rate ?? 0}%`, meta: `成功 ${data?.success ?? 0}`, valueClass: 'text-[var(--bauhaus-blue)]' },
-        { key: 'failed', label: '失败数', value: data?.failed ?? 0, meta: '窗口内失败', valueClass: Number(data?.failed || 0) > 0 ? 'text-[var(--bauhaus-red)]' : 'text-foreground' },
-        { key: 'average', label: '平均耗时', value: formatMs(data?.avg_duration_ms), meta: '窗口均值', valueClass: 'text-[hsl(var(--tone-info-strong))]' },
-        { key: 'p95', label: 'P95 耗时', value: formatMs(data?.p95_duration_ms), meta: '慢请求参考', valueClass: 'text-[hsl(var(--tone-info-strong))]' },
-        { key: 'bottleneck', label: '当前瓶颈', value: data?.bottleneck?.label || '-', meta: 'P95 最大阶段', valueClass: 'text-foreground' },
-        { key: 'bottleneck_ms', label: '瓶颈耗时', value: formatMs(bottleneckValue), meta: '阶段 P95', valueClass: 'text-foreground' },
+        { key: 'active', label: '当前并发', value: data?.active ?? 0, meta: `线程容量 ${threadTokens.value}`, valueClass: 'text-[var(--bauhaus-blue)]', primary: true, tone: 'blue' },
+        { key: 'completed', label: '完成窗口', value: data?.completed ?? 0, meta: completedWindowText.value, valueClass: 'text-foreground', primary: true, tone: 'yellow' },
+        { key: 'success', label: '成功率', value: `${data?.success_rate ?? 0}%`, meta: `成功 ${data?.success ?? 0}`, valueClass: 'text-[var(--bauhaus-blue)]', primary: true, tone: 'blue' },
+        { key: 'failed', label: '失败数', value: data?.failed ?? 0, meta: '窗口内失败', valueClass: Number(data?.failed || 0) > 0 ? 'text-[var(--bauhaus-red)]' : 'text-foreground', primary: true, tone: 'red' },
+        { key: 'average', label: '平均耗时', value: formatMs(data?.avg_duration_ms), meta: '窗口均值', valueClass: 'text-foreground', tone: 'ink' },
+        { key: 'p95', label: 'P95 耗时', value: formatMs(data?.p95_duration_ms), meta: '慢请求参考', valueClass: 'text-foreground', tone: 'ink' },
+        { key: 'bottleneck', label: '当前瓶颈', value: data?.bottleneck?.label || '-', meta: 'P95 最大阶段', valueClass: 'text-foreground', tone: 'ink' },
+        { key: 'bottleneck_ms', label: '瓶颈耗时', value: formatMs(bottleneckValue), meta: '阶段 P95', valueClass: 'text-foreground', tone: 'ink' },
       ],
     },
     {
@@ -366,14 +376,14 @@ const diagnosticGroups = computed(() => {
       title: '入口、账号与出口',
       meta: '本地线程、账号池、代理出口',
       items: [
-        { key: 'handler_queue_ms', label: '入口排队', value: formatMs(p95.handler_queue_ms), meta: '等待后端线程', valueClass: 'text-[hsl(var(--tone-info-strong))]' },
-        { key: 'stream_first_queue_ms', label: '首包排队', value: formatMs(p95.stream_first_queue_ms), meta: '等待流式首包', valueClass: 'text-[hsl(var(--tone-info-strong))]' },
-        { key: 'account_wait_ms', label: '账号等待', value: formatMs(p95.account_wait_ms), meta: '账号池筛选', valueClass: 'text-[var(--bauhaus-blue)]' },
-        { key: 'egress_wait_ms', label: '出口等待', value: formatMs(p95.egress_wait_ms), meta: activeEgressMeta(), valueClass: 'text-[var(--bauhaus-blue)]' },
-        { key: 'egress_acquire_ms', label: '出口租约', value: formatMs(p95.egress_acquire_ms), meta: '代理节点并发', valueClass: 'text-[var(--bauhaus-blue)]' },
-        { key: 'entry_account_total_ms', label: '入口账号合计', value: formatMs(entryAccountTotal), meta: '入口 + 首包 + 账号 + 出口', valueClass: 'text-[hsl(var(--tone-info-strong))]' },
-        { key: 'entry_p95', label: '入口排队 P95', value: entryQueueText.value, meta: `线程容量 ${threadTokens.value} · 慢 ${data?.slow_counts?.handler_queue ?? 0}`, valueClass: 'text-[hsl(var(--tone-info-strong))]' },
-        { key: 'local_busy', label: '本地拒绝/繁忙', value: `${localBusy}`, meta: '无号 / 并发 / 策略', valueClass: 'text-foreground' },
+        { key: 'handler_queue_ms', label: '入口排队', value: formatMs(p95.handler_queue_ms), meta: '等待后端线程', valueClass: 'text-foreground', tone: 'ink' },
+        { key: 'stream_first_queue_ms', label: '首包排队', value: formatMs(p95.stream_first_queue_ms), meta: '等待流式首包', valueClass: 'text-foreground', tone: 'ink' },
+        { key: 'account_wait_ms', label: '账号等待', value: formatMs(p95.account_wait_ms), meta: '账号池筛选', valueClass: 'text-[var(--bauhaus-blue)]', primary: true, tone: 'blue' },
+        { key: 'egress_wait_ms', label: '出口等待', value: formatMs(p95.egress_wait_ms), meta: activeEgressMeta(), valueClass: 'text-[var(--bauhaus-blue)]', primary: true, tone: 'blue' },
+        { key: 'egress_acquire_ms', label: '出口租约', value: formatMs(p95.egress_acquire_ms), meta: '代理节点并发', valueClass: 'text-foreground', tone: 'cyan' },
+        { key: 'entry_account_total_ms', label: '入口账号合计', value: formatMs(entryAccountTotal), meta: '入口 + 首包 + 账号 + 出口', valueClass: 'text-foreground', tone: 'yellow' },
+        { key: 'entry_p95', label: '入口排队 P95', value: entryQueueText.value, meta: `线程容量 ${threadTokens.value} · 慢 ${data?.slow_counts?.handler_queue ?? 0}`, valueClass: 'text-foreground', tone: 'ink' },
+        { key: 'local_busy', label: '本地拒绝/繁忙', value: `${localBusy}`, meta: '无号 / 并发 / 策略', valueClass: localBusy > 0 ? 'text-[var(--bauhaus-red)]' : 'text-foreground', tone: 'red' },
       ],
     },
     {
@@ -381,14 +391,14 @@ const diagnosticGroups = computed(() => {
       title: '上游准备与 HTTP',
       meta: '上传、令牌、建连、首包',
       items: [
-        { key: 'upload_ms', label: '图片上传', value: formatMs(p95.upload_ms), meta: '参考图上传', valueClass: 'text-foreground' },
-        { key: 'bootstrap_ms', label: '上游初始化', value: formatMs(p95.bootstrap_ms), meta: 'ChatGPT 会话', valueClass: 'text-foreground' },
-        { key: 'requirements_ms', label: '令牌获取', value: formatMs(p95.requirements_ms), meta: 'requirements / token', valueClass: 'text-foreground' },
-        { key: 'prepare_conversation_ms', label: '会话准备', value: formatMs(p95.prepare_conversation_ms), meta: '准备图片会话', valueClass: 'text-foreground' },
-        { key: 'generation_start_ms', label: '启动生成', value: formatMs(p95.generation_start_ms), meta: '提交上游请求', valueClass: 'text-foreground' },
-        { key: 'http_connect_ms', label: 'HTTP 建连', value: formatMs(httpConnectTotal), meta: 'DNS + TCP + TLS', valueClass: 'text-[hsl(var(--tone-info-strong))]' },
-        { key: 'http_wait_ms', label: 'HTTP 等待', value: formatMs(p95.http_wait_ms), meta: '发出请求到首包', valueClass: 'text-[hsl(var(--tone-info-strong))]' },
-        { key: 'http_ttfb_ms', label: 'HTTP 首包', value: formatMs(p95.http_ttfb_ms), meta: '请求开始到首包', valueClass: 'text-[hsl(var(--tone-info-strong))]' },
+        { key: 'upload_ms', label: '图片上传', value: formatMs(p95.upload_ms), meta: '参考图上传', valueClass: 'text-foreground', tone: 'violet' },
+        { key: 'bootstrap_ms', label: '上游初始化', value: formatMs(p95.bootstrap_ms), meta: 'ChatGPT 会话', valueClass: 'text-foreground', tone: 'violet' },
+        { key: 'requirements_ms', label: '令牌获取', value: formatMs(p95.requirements_ms), meta: 'requirements / token', valueClass: 'text-foreground', tone: 'violet' },
+        { key: 'prepare_conversation_ms', label: '会话准备', value: formatMs(p95.prepare_conversation_ms), meta: '准备图片会话', valueClass: 'text-foreground', tone: 'violet' },
+        { key: 'generation_start_ms', label: '启动生成', value: formatMs(p95.generation_start_ms), meta: '提交上游请求', valueClass: 'text-foreground', tone: 'violet' },
+        { key: 'http_connect_ms', label: 'HTTP 建连', value: formatMs(httpConnectTotal), meta: 'DNS + TCP + TLS', valueClass: 'text-foreground', tone: 'cyan' },
+        { key: 'http_wait_ms', label: 'HTTP 等待', value: formatMs(p95.http_wait_ms), meta: '发出请求到首包', valueClass: 'text-foreground', tone: 'cyan' },
+        { key: 'http_ttfb_ms', label: 'HTTP 首包', value: formatMs(p95.http_ttfb_ms), meta: '请求开始到首包', valueClass: 'text-foreground', tone: 'cyan' },
       ],
     },
     {
@@ -396,14 +406,14 @@ const diagnosticGroups = computed(() => {
       title: '生成与结果',
       meta: '流、轮询、下载',
       items: [
-        { key: 'sse_first_event_ms', label: 'SSE 首事件', value: formatMs(p95.sse_first_event_ms), meta: '首个 data 事件', valueClass: 'text-[var(--bauhaus-ink)]' },
-        { key: 'sse_max_gap_ms', label: 'SSE 最大空窗', value: formatMs(p95.sse_max_gap_ms), meta: '两次事件最大间隔', valueClass: 'text-[var(--bauhaus-ink)]' },
-        { key: 'conversation_stream_ms', label: '上游生成', value: formatMs(p95.conversation_stream_ms), meta: '会话流响应', valueClass: 'text-[var(--bauhaus-blue)]' },
-        { key: 'stream_error_ms', label: '上游断流', value: formatMs(p95.stream_error_ms), meta: 'HTTP2 / SSE', valueClass: 'text-[var(--bauhaus-grey)]' },
-        { key: 'resolve_ms', label: '图片解析', value: formatMs(p95.resolve_ms), meta: 'conversation / file', valueClass: 'text-[var(--bauhaus-blue)]' },
-        { key: 'download_ms', label: '图片下载', value: formatMs(p95.download_ms), meta: '下载并返回', valueClass: 'text-foreground' },
-        { key: 'stream_ms', label: '单图内部', value: formatMs(p95.stream_ms), meta: '上游到结果', valueClass: 'text-foreground' },
-        { key: 'total_ms', label: '单图总耗时', value: formatMs(p95.total_ms), meta: '完整链路', valueClass: 'text-foreground' },
+        { key: 'sse_first_event_ms', label: 'SSE 首事件', value: formatMs(p95.sse_first_event_ms), meta: '首个 data 事件', valueClass: 'text-foreground', tone: 'cyan' },
+        { key: 'sse_max_gap_ms', label: 'SSE 最大空窗', value: formatMs(p95.sse_max_gap_ms), meta: '两次事件最大间隔', valueClass: 'text-foreground', tone: 'cyan' },
+        { key: 'conversation_stream_ms', label: '上游生成', value: formatMs(p95.conversation_stream_ms), meta: '会话流响应', valueClass: 'text-[var(--bauhaus-blue)]', primary: true, tone: 'blue' },
+        { key: 'stream_error_ms', label: '上游断流', value: formatMs(p95.stream_error_ms), meta: 'HTTP2 / SSE', valueClass: Number(p95.stream_error_ms || 0) > 0 ? 'text-[var(--bauhaus-red)]' : 'text-foreground', tone: 'red' },
+        { key: 'resolve_ms', label: '图片解析', value: formatMs(p95.resolve_ms), meta: 'conversation / file', valueClass: 'text-foreground', tone: 'orange' },
+        { key: 'download_ms', label: '图片下载', value: formatMs(p95.download_ms), meta: '下载并返回', valueClass: 'text-foreground', tone: 'orange' },
+        { key: 'stream_ms', label: '单图内部', value: formatMs(p95.stream_ms), meta: '上游到结果', valueClass: 'text-foreground', tone: 'orange' },
+        { key: 'total_ms', label: '单图总耗时', value: formatMs(p95.total_ms), meta: '完整链路', valueClass: 'text-foreground', primary: true, tone: 'yellow' },
       ],
     },
   ]
@@ -817,33 +827,286 @@ onBeforeUnmount(() => {
   font-size: 13px;
 }
 
-/* 表头/行 hover 走全局 style.css；本地只保留单元格间距与底边 */
+/* 表头/行 hover 走全局 style.css；本地统一紧凑 + 斑马纹 + 表头语义 */
 .monitor-table th {
-  padding: 10px 14px;
+  padding: 7px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+  white-space: nowrap;
 }
 
 .monitor-table td {
-  border-bottom: 1px solid hsl(var(--border) / 0.72);
-  padding: 12px 14px;
+  border-bottom: 1px solid hsl(var(--border) / 0.6);
+  padding: 8px 12px;
   vertical-align: middle;
   color: hsl(var(--foreground));
 }
 
-/* 边框/底/阴影由全局 surface 合同覆盖；本地只保留间距 */
-.monitor-metric-group {
-  padding: 14px;
+/* 斑马纹：隔行浅色，便于横向扫读 */
+.monitor-table tbody tr:nth-child(odd) {
+  background: color-mix(in srgb, var(--bauhaus-paper-2, #f5f0e6) 55%, transparent);
 }
 
-/* 直边 + line-soft 描边；深浅靠 --bauhaus-* 令牌 */
-.monitor-metric-cell {
+.monitor-table tbody tr:hover {
+  background: color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 7%, transparent);
+}
+
+html[data-theme='dark'] .monitor-table tbody tr:nth-child(odd) {
+  background: color-mix(in srgb, var(--bauhaus-paper-2, #222) 40%, transparent);
+}
+
+html[data-theme='dark'] .monitor-table tbody tr:hover {
+  background: color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 16%, transparent);
+}
+
+/* 配对区表格：滚动由外层面板承担，去掉内层再滚一层 */
+.monitor-paired-table {
+  --table-shell-max-height: none;
+}
+
+/* ===== 诊断区块 ===== */
+.monitor-metric-group {
+  display: flex;
   min-width: 0;
-  border-radius: var(--radius);
+  flex-direction: column;
   border: 1px solid var(--bauhaus-line-soft, #c9c2b4);
+  border-radius: var(--radius);
   background: var(--bauhaus-paper-2, #f5f0e6);
-  padding: 10px 12px;
+  box-shadow: 2px 2px 0 0 var(--bauhaus-ink, #2d2d2d);
+  overflow: hidden;
+}
+
+.monitor-metric-group__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--bauhaus-line-soft, #c9c2b4);
+  padding: 9px 12px 8px;
+}
+
+.monitor-metric-group__title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: hsl(var(--foreground));
+}
+
+.monitor-metric-group__meta {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  white-space: nowrap;
+}
+
+.monitor-metric-group__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8.75rem, 1fr));
+  gap: 6px;
+  padding: 10px 12px 12px;
+}
+
+/* ===== 诊断单元格：顶部彩色条 + 硬阴影，模仿执行控制统计卡 ===== */
+.monitor-metric-cell {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  border: 2px solid var(--bauhaus-ink, #2d2d2d);
+  border-radius: var(--radius);
+  background: hsl(var(--card));
+  box-shadow: 2px 2px 0 0 var(--bauhaus-ink, #2d2d2d);
+  overflow: hidden;
+  padding: 10px 10px 8px;
+}
+
+/* 顶部彩条：细一点，弱化色彩占比，阅读更聚焦 */
+.monitor-metric-cell::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 3px;
+  background: var(--bauhaus-ink, #2d2d2d);
+}
+
+.monitor-metric-cell--tone-blue::before {
+  background: var(--bauhaus-blue, #2d5da1);
+}
+
+.monitor-metric-cell--tone-red::before {
+  background: var(--bauhaus-red, #ff4d4d);
+}
+
+.monitor-metric-cell--tone-yellow::before {
+  background: var(--bauhaus-yellow, #fff9c4);
+}
+
+/* 子阶段色：莫兰迪灰调，建连=青、准备=紫、收尾=橙（低饱和，不抢主色） */
+.monitor-metric-cell--tone-cyan::before {
+  background: #6f9aa0;
+}
+
+.monitor-metric-cell--tone-violet::before {
+  background: #8d80a8;
+}
+
+.monitor-metric-cell--tone-orange::before {
+  background: #bd9573;
+}
+
+/* quiet 档弱化：细边、无硬阴影、浅底 */
+.monitor-metric-cell--quiet {
+  border-width: 1px;
+  border-color: var(--bauhaus-line-soft, #c9c2b4);
+  background: color-mix(in srgb, var(--bauhaus-paper, #fdfbf7) 60%, transparent);
+  box-shadow: none;
+}
+
+.monitor-metric-cell--quiet::before {
+  height: 3px;
+  opacity: 0.7;
+}
+
+.monitor-metric-cell--primary .monitor-metric-cell__value {
+  font-size: 17px;
+}
+
+.monitor-metric-cell__label {
+  overflow: hidden;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: hsl(var(--muted-foreground));
+}
+
+.monitor-metric-cell__value {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.monitor-metric-cell__value--empty {
+  color: hsl(var(--muted-foreground));
+  font-weight: 500;
+}
+
+.monitor-metric-cell__meta {
+  overflow: hidden;
+  font-size: 10.5px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: hsl(var(--muted-foreground));
+}
+
+/* 已耗时带脉冲点，提示仍在推进 */
+.monitor-running-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.monitor-running-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--bauhaus-blue, #2d5da1);
+  box-shadow: 0 0 0 0 rgba(45, 93, 161, 0.5);
+  animation: monitor-pulse 1.4s ease-out infinite;
+}
+
+@keyframes monitor-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(45, 93, 161, 0.45); }
+  70% { box-shadow: 0 0 0 6px rgba(45, 93, 161, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(45, 93, 161, 0); }
+}
+
+html[data-theme='dark'] .monitor-metric-group {
+  border-color: var(--bauhaus-line-soft, #3d3d3d);
+  background: color-mix(in srgb, var(--bauhaus-paper-2, #222) 88%, transparent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+html[data-theme='dark'] .monitor-metric-group__head {
+  border-bottom-color: var(--bauhaus-line-soft, #3d3d3d);
 }
 
 html[data-theme='dark'] .monitor-metric-cell {
+  border-color: var(--bauhaus-line-soft, #3d3d3d);
+}
+
+/* ===== 慢请求卡片：包豪斯锐边 + 顶部耗时状态条 ===== */
+.monitor-slow-card {
+  position: relative;
+  border: 1px solid var(--bauhaus-line-soft, #c9c2b4);
+  border-radius: var(--radius);
+  background: hsl(var(--card));
+  box-shadow: 2px 2px 0 0 var(--bauhaus-ink, #2d2d2d);
+  overflow: hidden;
+}
+
+.monitor-slow-card__stripe {
+  display: block;
+  height: 4px;
+}
+
+.monitor-slow-card__stripe--success {
+  background: var(--bauhaus-blue, #2d5da1);
+}
+
+.monitor-slow-card__stripe--danger {
+  background: var(--bauhaus-red, #c0392b);
+}
+
+.monitor-slow-card__stripe--info {
+  background: var(--bauhaus-yellow, #d9a512);
+}
+
+.monitor-slow-card__stripe--muted {
+  background: var(--bauhaus-line-soft, #c9c2b4);
+}
+
+.monitor-slow-card__body {
+  padding: 10px 12px;
+}
+
+.monitor-slow-card__chip {
+  border-radius: var(--radius);
+  padding: 4px 7px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.monitor-slow-card__chip--hot {
+  border: 1px solid color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 35%, transparent);
+  background: color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 12%, transparent);
+  color: var(--bauhaus-blue, #2d5da1);
+  font-weight: 700;
+}
+
+.monitor-slow-card__chip--normal {
+  border: 1px solid var(--bauhaus-line-soft, #c9c2b4);
+  background: var(--bauhaus-paper-2, #f5f0e6);
+  color: hsl(var(--muted-foreground));
+}
+
+html[data-theme='dark'] .monitor-slow-card {
+  border-color: var(--bauhaus-line-soft, #3d3d3d);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+html[data-theme='dark'] .monitor-slow-card__chip--normal {
   border-color: var(--bauhaus-line-soft, #3d3d3d);
   background: color-mix(in srgb, var(--bauhaus-paper-2, #222) 88%, transparent);
 }

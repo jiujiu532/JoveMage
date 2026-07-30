@@ -837,18 +837,18 @@
               </Button>
             </div>
 
-            <SurfaceBox v-if="scheduleNextWindowHint" tone="muted" density="compact">
+            <SurfaceBox v-if="scheduleNextWindowHint" tone="card" density="compact">
               {{ scheduleNextWindowHint }}
             </SurfaceBox>
 
-            <SurfaceBox tone="muted" density="compact">
+            <SurfaceBox :tone="runtimeBlocking ? 'danger' : 'muted'" density="compact">
               {{ registerRuntimeHint }}
             </SurfaceBox>
 
-            <SurfaceBox tone="muted" density="compact" class="register-runtime-tips">
+            <div class="register-runtime-tips">
               <p>Cloudflare 拦截：可在系统设置启用 FlareSolverr 清障，并确认相关容器已启动。</p>
               <p>HTTP 400 等注册错误通常与邮箱域名风控有关，建议更换新的域名邮箱后重试。</p>
-            </SurfaceBox>
+            </div>
           </FormSection>
 
           <RuntimeLogPanel
@@ -1146,13 +1146,20 @@ const registerRuntimeHint = computed(() => {
   return '启动前会自动保存当前配置。'
 })
 
+const runtimeBlocking = computed(() => {
+  if (registerConfig.value?.enabled) return false
+  return enabledProviderCount.value === 0 || enabledProviderIssueCount.value > 0
+})
+
 const registerMetricItems = computed(() => {
   const stats = legacyStats.value
+  const failed = Number(stats.fail || 0)
+  const running = Number(stats.running || 0)
   return [
-    { key: 'success', label: '成功', value: stats.success || 0, meta: `成功率 ${stats.success_rate || 0}%` },
-    { key: 'fail', label: '失败', value: stats.fail || 0 },
+    { key: 'success', label: '成功', value: stats.success || 0, meta: `成功率 ${stats.success_rate || 0}%`, valueClass: 'register-metric-value--success' },
+    { key: 'fail', label: '失败', value: failed, valueClass: failed > 0 ? 'register-metric-value--danger' : '' },
     { key: 'done', label: '完成', value: stats.done || 0 },
-    { key: 'running', label: '运行 / 线程', value: `${stats.running || 0} / ${stats.threads || registerConfig.value?.threads || 0}` },
+    { key: 'running', label: '运行 / 线程', value: `${running} / ${stats.threads || registerConfig.value?.threads || 0}`, valueClass: running > 0 ? 'register-metric-value--info' : '' },
     { key: 'elapsed', label: '运行时间', value: `${stats.elapsed_seconds || 0}s` },
     { key: 'avg', label: '平均耗时', value: `${stats.avg_seconds || 0}s` },
     { key: 'quota', label: '当前额度', value: stats.current_quota || 0 },
@@ -2437,9 +2444,13 @@ onBeforeUnmount(() => {
 
 .register-runtime-tips {
   display: grid;
-  gap: 4px;
+  gap: 3px;
+  margin: 0;
+  border-top: 1px solid hsl(var(--border) / 0.6);
+  padding-top: 10px;
   color: hsl(var(--muted-foreground));
-  line-height: 1.6;
+  font-size: 11.5px;
+  line-height: 1.55;
 }
 
 .register-runtime-tips p {
@@ -2486,16 +2497,39 @@ onBeforeUnmount(() => {
 .register-field {
   display: grid;
   min-width: 0;
-  gap: 7px;
+  align-content: start;
+  gap: 6px;
 }
 
 .register-label {
   font-size: 12px;
-  color: hsl(var(--muted-foreground));
+  font-weight: 600;
+  color: hsl(var(--foreground) / 0.8);
+}
+
+/* 执行控制统计数值：语义色 */
+.register-metric-value--success {
+  color: hsl(var(--tone-success-strong)) !important;
+}
+
+.register-metric-value--danger {
+  color: var(--bauhaus-red) !important;
+}
+
+.register-metric-value--info {
+  color: var(--bauhaus-blue) !important;
+}
+
+/* 数字 / 文本输入统一高度，去掉原生默认感的参差 */
+.register-field :deep(input[type='number']),
+.register-field :deep(input[type='text']) {
+  min-height: 2.375rem;
 }
 
 .register-proxy-hint {
   margin: 0;
+  border-left: 3px solid var(--bauhaus-blue, #2d5da1);
+  padding-left: 10px;
   font-size: 12px;
   line-height: 1.6;
   color: hsl(var(--muted-foreground));
@@ -2608,6 +2642,7 @@ onBeforeUnmount(() => {
   gap: 8px;
   color: hsl(var(--muted-foreground));
   font-size: 11px;
+  font-weight: 600;
   line-height: 1.25;
 }
 

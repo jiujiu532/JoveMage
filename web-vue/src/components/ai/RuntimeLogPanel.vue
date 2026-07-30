@@ -20,7 +20,7 @@
             size="xs"
             variant="outline"
             :disabled="isEmpty"
-            title="滚动到最新日志"
+            title="滚动到最新日志并保持跟随"
             @click="scrollToBottom(true)"
           >
             滚动
@@ -28,7 +28,7 @@
           <Button
             size="xs"
             :variant="locked ? 'primary' : 'outline'"
-            :title="locked ? '解锁并跟随最新日志' : '锁定当前视图，停止自动滚动'"
+            :title="locked ? '解锁：恢复自动跟随最新日志' : '锁定：日志照常更新，但停止自动滚动，可自行滑动查看历史'"
             @click="toggleLock"
           >
             {{ locked ? '解锁' : '锁定' }}
@@ -161,6 +161,7 @@ function scrollToBottom(force = false) {
   window.setTimeout(() => {
     ignoreScrollEvent.value = false
   }, 80)
+  // 仅用户主动点「滚动」时才解除锁定并恢复跟随；自动更新不擅自解锁
   if (force && locked.value) {
     locked.value = false
   }
@@ -169,6 +170,7 @@ function scrollToBottom(force = false) {
 function toggleLock() {
   locked.value = !locked.value
   if (!locked.value) {
+    // 手动解锁 → 回到最新并恢复自动跟随
     void nextTick(() => scrollToBottom(true))
   }
 }
@@ -177,14 +179,10 @@ function onBodyScroll() {
   if (ignoreScrollEvent.value) return
   const el = bodyEl.value
   if (!el) return
-  // 手动上滑离开底部 → 自动锁定，避免新日志把阅读位置拽走
-  if (!isNearBottom(el)) {
+  // 只在「当前处于自动跟随（未锁定）」时，用户上滑离开底部才转为锁定；
+  // 已锁定状态下用户自由滑动查看历史，不再被这个监听改来改去
+  if (!locked.value && !isNearBottom(el)) {
     locked.value = true
-    return
-  }
-  // 滚回底部 → 自动解锁并继续跟随
-  if (locked.value) {
-    locked.value = false
   }
 }
 

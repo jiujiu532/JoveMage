@@ -17,9 +17,9 @@
         </template>
       </PanelHeader>
 
-      <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <FormSection density="roomy">
-          <div class="grid grid-cols-1 gap-3 md:grid-cols-[12rem_minmax(0,1fr)]">
+      <div class="proxy-egress">
+        <FormSection density="roomy" class="proxy-egress__form">
+          <div class="proxy-egress__row">
             <label class="block text-xs">
               <span class="ui-field-label">默认出口模式</span>
               <GroupedSelectMenu
@@ -56,9 +56,7 @@
               />
             </label>
 
-            <div v-else class="flex min-h-[2.5rem] items-center rounded-lg border border-dashed border-border bg-muted/20 px-3 text-xs text-muted-foreground">
-              未指定账号或账号组代理时直连。
-            </div>
+            <div v-else class="proxy-egress__hint">未指定账号或账号组代理时直连。</div>
           </div>
           <ActionRow class="mt-3" gap="tight">
             <Button size="xs" variant="outline" :disabled="testingKey === DEFAULT_TEST_KEY || !canTestDefaultProxy" @click="testDefaultProxy">
@@ -68,70 +66,84 @@
               设为直连
             </Button>
           </ActionRow>
-          <p class="mt-3 truncate text-xs text-muted-foreground" :title="defaultProxyPreview">
-            当前默认出口：<span class="text-foreground">{{ defaultProxyPreview }}</span>
+          <p class="proxy-egress__current" :title="defaultProxyPreview">
+            <span class="proxy-egress__current-label">当前默认出口</span>
+            <span class="proxy-egress__current-value">{{ defaultProxyPreview }}</span>
           </p>
-          <div class="mt-4 border-t border-border pt-4">
-            <div class="grid grid-cols-1 gap-3 md:grid-cols-[12rem_minmax(0,1fr)]">
-              <label class="block text-xs">
-                <span class="ui-field-label">备用出口模式</span>
-                <GroupedSelectMenu
-                  :model-value="fallbackProxyMode"
-                  :options="fallbackProxyModeOptions"
-                  aria-label="备用出口模式"
-                  selected-indicator="none"
-                  block
-                  @update:model-value="setFallbackProxyMode"
-                />
-              </label>
 
-              <label v-if="fallbackProxyMode === 'group'" class="block text-xs">
-                <span class="ui-field-label">备用出口代理组</span>
-                <GroupedSelectMenu
-                  :model-value="selectedFallbackProxyGroupId"
-                  :options="defaultProxyGroupOptions"
-                  :disabled="loading"
-                  aria-label="备用出口代理组"
-                  selected-indicator="none"
-                  block
-                  @update:model-value="selectFallbackProxyGroup"
-                />
-              </label>
+          <div class="proxy-egress__divider"></div>
 
-              <label v-else-if="fallbackProxyMode === 'custom'" class="block text-xs">
-                <span class="ui-field-label">备用代理 URL</span>
-                <Input
-                  :model-value="fallbackCustomProxyInput"
-                  block
-                  root-class="font-mono"
-                  placeholder="http://127.0.0.1:7890 或 socks5://127.0.0.1:7890"
-                  @update:model-value="setFallbackCustomProxyInput"
-                />
-              </label>
+          <div class="proxy-egress__row">
+            <label class="block text-xs">
+              <span class="ui-field-label">备用出口模式</span>
+              <GroupedSelectMenu
+                :model-value="fallbackProxyMode"
+                :options="fallbackProxyModeOptions"
+                aria-label="备用出口模式"
+                selected-indicator="none"
+                block
+                @update:model-value="setFallbackProxyMode"
+              />
+            </label>
 
-              <div v-else class="flex min-h-[2.5rem] items-center rounded-lg border border-dashed border-border bg-muted/20 px-3 text-xs text-muted-foreground">
-                {{ fallbackProxyMode === 'direct' ? '早期连接失败时重试直连一次。' : '未启用备用出口。' }}
-              </div>
+            <label v-if="fallbackProxyMode === 'group'" class="block text-xs">
+              <span class="ui-field-label">备用出口代理组</span>
+              <GroupedSelectMenu
+                :model-value="selectedFallbackProxyGroupId"
+                :options="defaultProxyGroupOptions"
+                :disabled="loading"
+                aria-label="备用出口代理组"
+                selected-indicator="none"
+                block
+                @update:model-value="selectFallbackProxyGroup"
+              />
+            </label>
+
+            <label v-else-if="fallbackProxyMode === 'custom'" class="block text-xs">
+              <span class="ui-field-label">备用代理 URL</span>
+              <Input
+                :model-value="fallbackCustomProxyInput"
+                block
+                root-class="font-mono"
+                placeholder="http://127.0.0.1:7890 或 socks5://127.0.0.1:7890"
+                @update:model-value="setFallbackCustomProxyInput"
+              />
+            </label>
+
+            <div v-else class="proxy-egress__hint">
+              {{ fallbackProxyMode === 'direct' ? '早期连接失败时重试直连一次。' : '未启用备用出口。' }}
             </div>
-            <p class="mt-2 text-xs text-muted-foreground">
-              仅图片请求在早期 TLS / 连接超时且尚未收到上游事件时重试一次；生成中断和轮询超时不会切换。
-            </p>
-            <p class="mt-2 truncate text-xs text-muted-foreground" :title="fallbackProxyPreview">
-              当前备用出口：<span class="text-foreground">{{ fallbackProxyPreview }}</span>
-            </p>
           </div>
+          <p class="proxy-egress__note">仅图片请求在早期 TLS / 连接超时且尚未收到上游事件时重试一次；生成中断和轮询超时不会切换。</p>
+          <p class="proxy-egress__current" :title="fallbackProxyPreview">
+            <span class="proxy-egress__current-label">当前备用出口</span>
+            <span class="proxy-egress__current-value">{{ fallbackProxyPreview }}</span>
+          </p>
         </FormSection>
 
-        <FormSection density="roomy" surface="background">
-          <p class="text-xs text-muted-foreground">默认出口测试结果</p>
-          <div v-if="defaultTestResult" class="mt-3 space-y-1 text-xs">
-            <p :class="defaultTestResult.ok ? 'text-emerald-600' : 'text-rose-600'">
-              {{ defaultTestResult.ok ? '可用' : '不可用' }}
-            </p>
-            <p class="text-muted-foreground">HTTP {{ defaultTestResult.status || '-' }} · {{ defaultTestResult.latency_ms || 0 }}ms</p>
-            <p v-if="defaultTestResult.error" class="break-all text-rose-600">{{ defaultTestResult.error }}</p>
+        <FormSection density="roomy" surface="background" class="proxy-egress__test">
+          <p class="proxy-egress__test-title">默认出口测试结果</p>
+          <div v-if="defaultTestResult" class="proxy-egress__test-body">
+            <div class="proxy-egress__test-status" :class="defaultTestResult.ok ? 'is-ok' : 'is-fail'">
+              <span class="proxy-egress__test-dot" aria-hidden="true"></span>
+              <span class="proxy-egress__test-word">{{ defaultTestResult.ok ? '可用' : '不可用' }}</span>
+            </div>
+            <dl class="proxy-egress__test-meta">
+              <div class="proxy-egress__test-kv">
+                <dt>HTTP</dt>
+                <dd>{{ defaultTestResult.status || '-' }}</dd>
+              </div>
+              <div class="proxy-egress__test-kv">
+                <dt>延迟</dt>
+                <dd>{{ defaultTestResult.latency_ms || 0 }}ms</dd>
+              </div>
+            </dl>
+            <p v-if="defaultTestResult.error" class="proxy-egress__test-error">{{ defaultTestResult.error }}</p>
           </div>
-          <p v-else class="mt-3 text-xs text-muted-foreground">尚未测试</p>
+          <div v-else class="proxy-egress__test-empty">
+            <span class="proxy-egress__test-empty-bar" aria-hidden="true"></span>
+            <span>尚未测试</span>
+          </div>
         </FormSection>
       </div>
     </PagePanel>
@@ -162,96 +174,115 @@
       <StateBlock v-else-if="filteredGroups.length === 0">
         <EmptyState plain title="暂无代理组" description="新建代理组后，可绑定账号组、账号或默认出口使用。" />
       </StateBlock>
-      <TableShell v-else>
-        <table class="min-w-[1080px] w-full table-fixed text-left text-sm">
-          <colgroup>
-            <col class="w-[20%]" />
-            <col class="w-[7rem]" />
-            <col class="w-[30%]" />
-            <col class="w-[15%]" />
-            <col class="w-[16%]" />
-            <col class="w-[16rem]" />
-          </colgroup>
-          <thead>
-            <tr>
-              <th class="py-3 pr-4">代理组</th>
-              <th class="py-3 pr-4">状态</th>
-              <th class="py-3 pr-4">节点</th>
-              <th class="py-3 pr-4">引用</th>
-              <th class="py-3 pr-4">健康</th>
-              <th class="py-3 text-right">操作</th>
-            </tr>
-          </thead>
-          <tbody class="text-sm text-foreground">
-            <tr
-              v-for="group in filteredGroups"
-              :key="group.id"
-              class="border-t border-border"
-              :class="group.enabled ? '' : 'bg-muted/30'"
-            >
-              <td class="py-3 pr-4 align-top">
-                <p class="truncate font-medium">{{ group.name || group.id }}</p>
-                <p class="mt-1 text-xs text-muted-foreground">多出口 · {{ group.nodes.length }} 个节点</p>
-                <p class="mt-1 truncate font-mono text-[11px] text-muted-foreground" :title="group.id">ID：{{ group.id }}</p>
-                <p v-if="group.notes" class="mt-1 truncate text-xs text-muted-foreground" :title="group.notes">{{ group.notes }}</p>
-              </td>
-              <td class="py-3 pr-4 align-top">
+      <ul v-else class="proxy-groups">
+        <li
+          v-for="group in filteredGroups"
+          :key="group.id"
+          class="proxy-group"
+          :class="[
+            isGroupExpanded(group.id) ? 'proxy-group--open' : '',
+            group.enabled ? '' : 'proxy-group--disabled',
+          ]"
+        >
+          <button
+            type="button"
+            class="proxy-group__summary"
+            :aria-expanded="isGroupExpanded(group.id)"
+            @click="toggleGroupExpanded(group.id)"
+          >
+            <span class="proxy-group__caret" aria-hidden="true">
+              <svg viewBox="0 0 12 12" width="12" height="12" fill="none">
+                <path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" />
+              </svg>
+            </span>
+
+            <span class="proxy-group__main">
+              <span class="proxy-group__name-row">
+                <span class="proxy-group__name" :title="group.name || group.id">{{ group.name || group.id }}</span>
                 <StateBadge :tone="group.enabled ? 'success' : 'muted'" size="sm">
                   {{ group.enabled ? '启用' : '停用' }}
                 </StateBadge>
-              </td>
-              <td class="py-3 pr-4 align-top">
-                <div class="space-y-2">
-                  <ProxyNodeSummaryCard
-                    v-for="node in group.nodes"
-                    :key="node.id"
-                    :node="node"
-                  />
-                </div>
-              </td>
-              <td class="py-3 pr-4 align-top">
-                <button
-                  type="button"
-                  class="max-w-full truncate rounded-md border border-border bg-muted/20 px-2 py-1 text-left font-mono text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-foreground"
-                  :title="`点击复制 ${proxyGroupReference(group)}`"
-                  @click="copyProxyGroupReference(group)"
+              </span>
+              <span class="proxy-group__facts">
+                <span class="proxy-group__fact">{{ group.nodes.length }} 节点</span>
+                <span class="proxy-group__fact proxy-group__fact--strategy">{{ groupStrategyLabel(group.strategy) }}</span>
+                <span class="proxy-group__id" :title="group.id">ID:{{ group.id }}</span>
+              </span>
+              <span v-if="group.notes" class="proxy-group__notes" :title="group.notes">{{ group.notes }}</span>
+            </span>
+
+            <span class="proxy-group__health" v-if="group.nodes.length">
+              <template v-for="tone in (['ok', 'fail', 'idle'] as const)" :key="tone">
+                <span
+                  v-if="groupHealthSummary(group)[tone]"
+                  class="proxy-group__health-pill"
+                  :class="`proxy-group__health-pill--${tone}`"
+                  :title="tone === 'ok' ? '可用' : tone === 'fail' ? '失败' : '未测'"
                 >
-                  {{ proxyGroupReference(group) }}
-                </button>
-              </td>
-              <td class="py-3 pr-4 align-top">
-                <div class="space-y-1.5">
-                  <p
-                    v-for="node in group.nodes"
-                    :key="`${group.id}-${node.id}-health`"
-                    class="truncate text-xs"
-                    :class="nodeTestClass(group, node)"
-                    :title="node.last_error || node.last_checked_at || ''"
-                  >
-                    {{ node.name || node.id }} · {{ nodeTestSummary(group, node) }}
-                  </p>
-                </div>
-              </td>
-              <td class="py-3 text-right align-top">
-                <div class="flex items-center justify-end gap-2">
-                  <Button size="xs" variant="outline" root-class="w-14 justify-center" @click="openEditGroupModal(group)">
-                    编辑
-                  </Button>
-                  <FloatingActionMenu
-                    label="更多"
-                    :items="proxyGroupActionItems(group)"
-                    align="right"
-                    size="sm"
-                    trigger-class="h-7 justify-center px-2 text-[11px]"
-                    :trigger-width="64"
-                    @select="handleProxyGroupAction(group, $event)"
-                  />
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </TableShell>
+                  <span class="proxy-group__health-dot" aria-hidden="true"></span>{{ groupHealthSummary(group)[tone] }}
+                </span>
+              </template>
+            </span>
+
+            <span class="proxy-group__actions" @click.stop>
+              <Button size="xs" variant="outline" root-class="w-14 justify-center" @click="openEditGroupModal(group)">
+                编辑
+              </Button>
+              <FloatingActionMenu
+                label="更多"
+                :items="proxyGroupActionItems(group)"
+                align="right"
+                size="sm"
+                trigger-class="h-7 justify-center px-2 text-[11px]"
+                :trigger-width="64"
+                @select="handleProxyGroupAction(group, $event)"
+              />
+            </span>
+          </button>
+
+          <div v-show="isGroupExpanded(group.id)" class="proxy-group__detail">
+            <div class="proxy-group__detail-col proxy-group__detail-col--nodes">
+              <p class="proxy-group__detail-label">节点</p>
+              <div class="proxy-group__nodes">
+                <ProxyNodeSummaryCard
+                  v-for="node in group.nodes"
+                  :key="node.id"
+                  :node="node"
+                />
+              </div>
+            </div>
+
+            <div class="proxy-group__detail-col">
+              <p class="proxy-group__detail-label">引用</p>
+              <button
+                type="button"
+                class="proxy-group-ref"
+                :title="`点击复制 ${proxyGroupReference(group)}`"
+                @click="copyProxyGroupReference(group)"
+              >
+                <span class="proxy-group-ref__text">{{ proxyGroupReference(group) }}</span>
+                <span class="proxy-group-ref__hint">复制</span>
+              </button>
+            </div>
+
+            <div class="proxy-group__detail-col">
+              <p class="proxy-group__detail-label">健康</p>
+              <ul class="proxy-group-health">
+                <li
+                  v-for="node in group.nodes"
+                  :key="`${group.id}-${node.id}-health`"
+                  class="proxy-group-health__item"
+                  :class="nodeHealthTone(group, node)"
+                  :title="node.last_error || node.last_checked_at || '尚未测试'"
+                >
+                  <span class="proxy-group-health__name">{{ node.name || node.id }}</span>
+                  <span class="proxy-group-health__value">{{ nodeHealthValue(group, node) }}</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </li>
+      </ul>
     </PagePanel>
 
     <ModalShell :open="showGroupModal" max-width="56rem" :z-index="120">
@@ -410,7 +441,6 @@ import PanelHeader from '@/components/ai/PanelHeader.vue'
 import ProxyNodeSummaryCard from '@/components/ai/ProxyNodeSummaryCard.vue'
 import StateBadge from '@/components/ai/StateBadge.vue'
 import StateBlock from '@/components/ai/StateBlock.vue'
-import TableShell from '@/components/ai/TableShell.vue'
 import { actionMenuGroups } from '@/components/ai/menuItems'
 import GroupedSelectMenu from '@/components/ui/GroupedSelectMenu.vue'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
@@ -445,6 +475,7 @@ const testingKey = ref('')
 const groupKeyword = ref('')
 const showGroupModal = ref(false)
 const editingGroupId = ref('')
+const expandedGroupIds = ref<Set<string>>(new Set())
 const defaultProxyMode = ref<DefaultProxyMode>('direct')
 const selectedDefaultProxyGroupId = ref('')
 const defaultCustomProxyInput = ref('')
@@ -1119,23 +1150,54 @@ async function testProxyGroupAll(group: ProxyGroup) {
   }
 }
 
-function nodeTestSummary(group: ProxyGroup, node: ProxyNode) {
+function groupStrategyLabel(strategy: ProxyGroup['strategy']) {
+  if (strategy === 'round_robin') return '轮询'
+  if (strategy === 'time_window') return '时间窗'
+  return '随机'
+}
+
+function isGroupExpanded(id: string) {
+  return expandedGroupIds.value.has(id)
+}
+
+function toggleGroupExpanded(id: string) {
+  const next = new Set(expandedGroupIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  expandedGroupIds.value = next
+}
+
+/** 概要行用的健康统计：可用 / 失败 / 未测 */
+function groupHealthSummary(group: ProxyGroup) {
+  let ok = 0
+  let fail = 0
+  let idle = 0
+  for (const node of group.nodes) {
+    const tone = nodeHealthTone(group, node)
+    if (tone === 'is-ok') ok += 1
+    else if (tone === 'is-fail') fail += 1
+    else idle += 1
+  }
+  return { ok, fail, idle }
+}
+
+function nodeHealthValue(group: ProxyGroup, node: ProxyNode) {
   if (testingKey.value === `group:${group.id}:all` || testingKey.value === `group:${group.id}:${node.id}`) return '检测中...'
   const result = testResults[`group:${group.id}:${node.id}`]
-  if (result?.ok) return `HTTP ${result.status || '-'} · ${result.latency_ms || 0}ms`
+  if (result?.ok) return `HTTP ${result.status || '-'} ${result.latency_ms || 0}ms`
   if (result && !result.ok) return result.error || '检测失败'
   if (node.last_error) return node.last_error
   if (node.last_checked_at) return `${node.last_latency_ms || 0}ms`
   return '尚未测试'
 }
 
-function nodeTestClass(group: ProxyGroup, node: ProxyNode) {
-  if (testingKey.value === `group:${group.id}:all` || testingKey.value === `group:${group.id}:${node.id}`) return 'text-sky-600'
+function nodeHealthTone(group: ProxyGroup, node: ProxyNode) {
+  if (testingKey.value === `group:${group.id}:all` || testingKey.value === `group:${group.id}:${node.id}`) return 'is-testing'
   const result = testResults[`group:${group.id}:${node.id}`]
-  if (result) return result.ok ? 'text-emerald-600' : 'text-rose-600'
-  if (node.last_error) return 'text-rose-600'
-  if (node.last_checked_at) return 'text-emerald-600'
-  return 'text-muted-foreground'
+  if (result) return result.ok ? 'is-ok' : 'is-fail'
+  if (node.last_error) return 'is-fail'
+  if (node.last_checked_at) return 'is-ok'
+  return 'is-idle'
 }
 
 onMounted(() => {
@@ -1151,3 +1213,467 @@ onActivated(() => {
   void loadData()
 })
 </script>
+
+<style scoped>
+/* ============ 出口配置区（上） ============ */
+.proxy-egress {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) 300px;
+}
+@media (max-width: 960px) {
+  .proxy-egress {
+    grid-template-columns: 1fr;
+  }
+}
+
+.proxy-egress__row {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
+  align-items: end;
+}
+@media (max-width: 720px) {
+  .proxy-egress__row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+}
+
+.proxy-egress__hint {
+  display: flex;
+  min-height: 2.5rem;
+  align-items: center;
+  border: 1.5px dashed color-mix(in srgb, var(--bauhaus-ink, #2d2d2d) 30%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bauhaus-card, #fff) 55%, transparent);
+  padding: 0 12px;
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+}
+
+.proxy-egress__current {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 12px;
+  font-size: 12px;
+  min-width: 0;
+}
+.proxy-egress__current-label {
+  flex: 0 0 auto;
+  color: hsl(var(--muted-foreground));
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.proxy-egress__current-value {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--bauhaus-blue, #2d5da1);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proxy-egress__divider {
+  margin: 16px 0;
+  border-top: 2px solid color-mix(in srgb, var(--bauhaus-ink, #2d2d2d) 14%, transparent);
+}
+
+.proxy-egress__note {
+  margin-top: 8px;
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* 测试结果卡 */
+.proxy-egress__test-title {
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.proxy-egress__test-body {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.proxy-egress__test-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1.5px solid var(--bauhaus-ink, #2d2d2d);
+  border-radius: var(--radius);
+  padding: 6px 12px;
+  box-shadow: var(--shadow-hard-sm, 2px 2px 0 0 var(--bauhaus-ink, #2d2d2d));
+  align-self: flex-start;
+}
+.proxy-egress__test-status.is-ok {
+  background: color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 10%, var(--bauhaus-card, #fff));
+}
+.proxy-egress__test-status.is-fail {
+  background: color-mix(in srgb, var(--bauhaus-red, #ff4d4d) 10%, var(--bauhaus-card, #fff));
+}
+.proxy-egress__test-dot {
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid var(--bauhaus-ink, #2d2d2d);
+  border-radius: 50%;
+  background: var(--bauhaus-blue, #2d5da1);
+}
+.proxy-egress__test-status.is-fail .proxy-egress__test-dot {
+  background: var(--bauhaus-red, #ff4d4d);
+}
+.proxy-egress__test-word {
+  font-size: 13px;
+  font-weight: 700;
+}
+.proxy-egress__test-status.is-ok .proxy-egress__test-word {
+  color: var(--bauhaus-blue, #2d5da1);
+}
+.proxy-egress__test-status.is-fail .proxy-egress__test-word {
+  color: var(--bauhaus-red, #ff4d4d);
+}
+.proxy-egress__test-meta {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+.proxy-egress__test-kv {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid color-mix(in srgb, var(--bauhaus-ink, #2d2d2d) 18%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bauhaus-card, #fff) 70%, transparent);
+  padding: 8px 10px;
+}
+.proxy-egress__test-kv dt {
+  color: hsl(var(--muted-foreground));
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.proxy-egress__test-kv dd {
+  margin: 0;
+  color: var(--bauhaus-ink, #2d2d2d);
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.proxy-egress__test-error {
+  overflow-wrap: anywhere;
+  border-left: 3px solid var(--bauhaus-red, #ff4d4d);
+  padding-left: 8px;
+  color: var(--bauhaus-red, #ff4d4d);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.proxy-egress__test-empty {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+}
+.proxy-egress__test-empty-bar {
+  width: 14px;
+  height: 3px;
+  background: color-mix(in srgb, var(--bauhaus-ink, #2d2d2d) 30%, transparent);
+}
+
+/* ============ 代理组折叠列表（下） ============ */
+.proxy-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.proxy-group {
+  overflow: hidden;
+  border: 1.5px solid var(--bauhaus-ink, #2d2d2d);
+  border-radius: var(--radius);
+  background: hsl(var(--card));
+  box-shadow: var(--shadow-hard-sm, 2px 2px 0 0 var(--bauhaus-ink, #2d2d2d));
+}
+.proxy-group--disabled {
+  background: color-mix(in srgb, var(--bauhaus-ink, #2d2d2d) 4%, hsl(var(--card)));
+}
+
+/* 概要行（整行可点） */
+.proxy-group__summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 12px 14px;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.proxy-group__summary:hover {
+  background: color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 4%, transparent);
+}
+.proxy-group__summary:focus-visible {
+  outline: 2px solid var(--bauhaus-blue, #2d5da1);
+  outline-offset: -2px;
+}
+
+.proxy-group__caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border: 1.5px solid var(--bauhaus-ink, #2d2d2d);
+  border-radius: var(--radius);
+  color: var(--bauhaus-ink, #2d2d2d);
+  transition: transform 0.18s ease, background 0.15s ease;
+}
+.proxy-group--open .proxy-group__caret {
+  transform: rotate(180deg);
+  background: var(--bauhaus-blue, #2d5da1);
+  color: var(--bauhaus-card, #fff);
+}
+
+.proxy-group__main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+}
+.proxy-group__name-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.proxy-group__name {
+  overflow: hidden;
+  color: var(--bauhaus-ink, #2d2d2d);
+  font-size: 14px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.proxy-group--disabled .proxy-group__name {
+  color: hsl(var(--muted-foreground));
+}
+.proxy-group__facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.proxy-group__fact {
+  border: 1px solid color-mix(in srgb, var(--bauhaus-ink, #2d2d2d) 30%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 7%, transparent);
+  padding: 1px 7px;
+  color: var(--bauhaus-blue, #2d5da1);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.proxy-group__fact--strategy {
+  background: color-mix(in srgb, var(--bauhaus-ink, #2d2d2d) 6%, transparent);
+  color: hsl(var(--muted-foreground));
+}
+.proxy-group__id {
+  overflow: hidden;
+  color: hsl(var(--muted-foreground));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.proxy-group__notes {
+  overflow: hidden;
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 概要行右侧健康胶囊 */
+.proxy-group__health {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+.proxy-group__health-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1.5px solid var(--bauhaus-ink, #2d2d2d);
+  border-radius: var(--radius);
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.proxy-group__health-dot {
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid var(--bauhaus-ink, #2d2d2d);
+  border-radius: 50%;
+}
+.proxy-group__health-pill--ok { color: var(--bauhaus-blue, #2d5da1); }
+.proxy-group__health-pill--ok .proxy-group__health-dot { background: var(--bauhaus-blue, #2d5da1); }
+.proxy-group__health-pill--fail { color: var(--bauhaus-red, #ff4d4d); }
+.proxy-group__health-pill--fail .proxy-group__health-dot { background: var(--bauhaus-red, #ff4d4d); }
+.proxy-group__health-pill--idle { color: hsl(var(--muted-foreground)); }
+.proxy-group__health-pill--idle .proxy-group__health-dot {
+  background: color-mix(in srgb, var(--bauhaus-ink, #2d2d2d) 30%, transparent);
+}
+
+.proxy-group__actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 展开详情 */
+.proxy-group__detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+  border-top: 1.5px solid color-mix(in srgb, var(--bauhaus-ink, #2d2d2d) 16%, transparent);
+  background: color-mix(in srgb, var(--bauhaus-paper-2, #f5f0e6) 55%, transparent);
+  padding: 14px 16px 16px;
+}
+@media (max-width: 900px) {
+  .proxy-group__detail {
+    grid-template-columns: 1fr;
+  }
+}
+.proxy-group__detail-label {
+  margin: 0 0 8px;
+  color: hsl(var(--muted-foreground));
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.proxy-group__nodes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+@media (max-width: 720px) {
+  .proxy-group__summary {
+    grid-template-columns: auto minmax(0, 1fr);
+    row-gap: 8px;
+  }
+  .proxy-group__health,
+  .proxy-group__actions {
+    grid-column: 2;
+  }
+}
+
+/* 引用按钮 */
+.proxy-group-ref {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  border: 1.5px solid color-mix(in srgb, var(--bauhaus-ink, #2d2d2d) 28%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bauhaus-card, #fff) 70%, transparent);
+  padding: 4px 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.proxy-group-ref:hover {
+  border-color: var(--bauhaus-blue, #2d5da1);
+  background: color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 7%, transparent);
+  color: var(--bauhaus-blue, #2d5da1);
+}
+.proxy-group-ref__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.proxy-group-ref__hint {
+  flex: 0 0 auto;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.proxy-group-ref:hover .proxy-group-ref__hint {
+  opacity: 1;
+}
+
+/* 健康列 */
+.proxy-group-health {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.proxy-group-health__item {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.proxy-group-health__item::before {
+  content: '';
+  flex: 0 0 auto;
+  align-self: center;
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid var(--bauhaus-ink, #2d2d2d);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--bauhaus-ink, #2d2d2d) 25%, transparent);
+}
+.proxy-group-health__item.is-ok::before { background: var(--bauhaus-blue, #2d5da1); }
+.proxy-group-health__item.is-fail::before { background: var(--bauhaus-red, #ff4d4d); }
+.proxy-group-health__item.is-testing::before { background: var(--bauhaus-postit, #f4e7c4); }
+.proxy-group-health__name {
+  flex: 0 0 auto;
+  color: var(--bauhaus-ink, #2d2d2d);
+  font-weight: 600;
+}
+.proxy-group-health__value {
+  min-width: 0;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.proxy-group-health__item.is-ok .proxy-group-health__value { color: var(--bauhaus-blue, #2d5da1); }
+.proxy-group-health__item.is-fail .proxy-group-health__value { color: var(--bauhaus-red, #ff4d4d); }
+.proxy-group-health__item.is-testing .proxy-group-health__value { color: hsl(var(--muted-foreground)); }
+.proxy-group-health__item.is-idle .proxy-group-health__value { color: hsl(var(--muted-foreground)); }
+</style>
+

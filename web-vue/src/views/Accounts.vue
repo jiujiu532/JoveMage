@@ -93,29 +93,30 @@
 
       <!-- 紧凑：表格式 -->
       <TableShell v-else-if="viewMode === 'compact'">
-        <table class="min-w-[980px] w-full text-left text-sm">
+        <table class="account-compact-table min-w-[1080px] w-full text-left text-sm">
           <thead>
             <tr>
-              <th class="w-12 py-3 pr-4">
+              <th class="w-11">
                 <Checkbox
                   :model-value="allVisibleSelected"
                   @update:model-value="toggleSelectAllVisible"
                 />
               </th>
-              <th class="py-3 pr-5">TOKEN</th>
-              <th class="py-3 pr-5">类型 / 来源</th>
-              <th class="py-3 pr-5">状态</th>
-              <th class="py-3 pr-5">账户信息</th>
-              <th class="py-3 pr-5 table-num">创建时间</th>
-              <th class="py-3 pr-5 table-num">图片额度</th>
-              <th class="py-3 pr-5 table-num">恢复时间</th>
-              <th class="py-3 pr-5 table-num">成功 / 失败</th>
-              <th class="py-3 text-right">操作</th>
+              <th>TOKEN</th>
+              <th>类型</th>
+              <th>来源</th>
+              <th>状态</th>
+              <th>账户信息</th>
+              <th class="table-num">创建时间</th>
+              <th class="table-num">图片额度</th>
+              <th class="table-num">恢复时间</th>
+              <th class="table-num">成功 / 失败</th>
+              <th class="text-right">操作</th>
             </tr>
           </thead>
           <tbody class="text-sm text-foreground">
             <tr v-if="!loading && filteredAccounts.length === 0">
-              <td colspan="10" class="py-6">
+              <td colspan="11" class="py-6">
                 <EmptyState
                   plain
                   title="暂无账号数据"
@@ -129,14 +130,14 @@
               class="border-t border-border"
               :class="[rowClass(item), isSelected(item.id) ? 'is-selected' : '']"
             >
-              <td class="py-4 pr-4 align-middle">
+              <td class="align-middle">
                 <Checkbox
                   :model-value="isSelected(item.id)"
                   :disabled="item.is_demo"
                   @update:model-value="(checked) => toggleSelect(item.id, checked)"
                 />
               </td>
-              <td class="py-4 pr-5 align-middle">
+              <td class="align-middle">
                 <button
                   type="button"
                   class="text-left"
@@ -152,12 +153,15 @@
                   />
                 </button>
               </td>
-              <td class="py-4 pr-5 align-middle">
-                <div class="space-y-1 text-xs">
-                  <p class="font-medium text-foreground">{{ accountSourceText(item) }}</p>
-                </div>
+              <td class="align-middle">
+                <span class="account-compact-table__tag" :class="`account-compact-table__tag--${accountTypeTone(item)}`">
+                  {{ accountTypeLabel(item) }}
+                </span>
               </td>
-              <td class="py-4 pr-5 align-middle">
+              <td class="align-middle text-xs text-muted-foreground">
+                {{ accountSourceLabel(item) }}
+              </td>
+              <td class="align-middle">
                 <StatusDetailPill
                   :label="statusText(item)"
                   :tone-class="`${statusClass(item)} border-border`"
@@ -169,27 +173,27 @@
                   :raw-error="statusRawError(item)"
                 />
               </td>
-              <td class="py-4 pr-5 align-middle">
-                <p class="max-w-[16rem] truncate text-sm font-medium text-foreground">{{ accountPrimaryText(item) }}</p>
-                <p class="mt-1 max-w-[16rem] truncate font-mono text-xs text-muted-foreground">{{ accountSecondaryText(item) }}</p>
+              <td class="align-middle">
+                <p class="max-w-[16rem] truncate text-sm font-medium leading-tight text-foreground">{{ accountPrimaryText(item) }}</p>
+                <p class="mt-0.5 max-w-[16rem] truncate font-mono text-xs leading-tight text-muted-foreground">{{ accountSecondaryText(item) }}</p>
               </td>
-              <td class="py-4 pr-5 align-middle text-xs text-muted-foreground table-num">
+              <td class="align-middle text-xs text-muted-foreground table-num">
                 {{ accountCreatedText(item) }}
               </td>
-              <td class="py-4 pr-5 align-middle table-num">
+              <td class="align-middle table-num">
                 <QuotaBadge :account="item" />
               </td>
-              <td class="py-4 pr-5 align-middle text-xs text-muted-foreground table-num">
+              <td class="align-middle text-xs text-muted-foreground table-num">
                 {{ accountRestoreText(item) }}
               </td>
-              <td class="py-4 pr-5 align-middle table-num">
+              <td class="align-middle table-num">
                 <div class="font-mono text-sm tabular-nums">
                   <span class="text-emerald-600">{{ item.success_count || 0 }}</span>
                   <span class="mx-1 text-muted-foreground/60">/</span>
                   <span class="text-rose-600">{{ item.failure_count || 0 }}</span>
                 </div>
               </td>
-              <td class="py-4 text-right align-middle">
+              <td class="text-right align-middle">
                 <AccountActionButtons
                   :item="item"
                   :refreshing="refreshingAccountId === item.id"
@@ -222,19 +226,20 @@
         <article
           v-for="item in pagedAccounts"
           :key="`${item.id}-card`"
-          class="account-card-tile ui-card flex h-full flex-col gap-4 transition-all"
+          class="account-card-tile ui-card flex h-full flex-col transition-all"
           :class="[rowClass(item), isSelected(item.id) ? 'is-selected-anchor ring-2 ring-primary/30' : '']"
         >
           <div class="flex items-start justify-between gap-3">
-            <div class="flex min-w-0 items-start gap-3">
+            <div class="flex min-w-0 items-start gap-2.5">
               <Checkbox
+                class="mt-0.5"
                 :model-value="isSelected(item.id)"
                 :disabled="item.is_demo"
                 @update:model-value="(checked) => toggleSelect(item.id, checked)"
               />
               <div class="min-w-0">
-                <h3 class="truncate text-sm font-medium text-foreground">{{ accountPrimaryText(item) }}</h3>
-                <p class="mt-1 truncate font-mono text-xs text-muted-foreground">{{ accountSecondaryText(item) }}</p>
+                <h3 class="truncate text-sm font-semibold leading-tight text-foreground">{{ accountPrimaryText(item) }}</h3>
+                <p class="mt-0.5 truncate font-mono text-xs leading-tight text-muted-foreground">{{ accountSecondaryText(item) }}</p>
               </div>
             </div>
             <StatusDetailPill
@@ -249,7 +254,7 @@
             />
           </div>
 
-          <div class="flex flex-wrap items-center gap-2">
+          <div class="mt-2.5 flex flex-wrap items-center gap-1.5">
             <StatusPill
               :label="accountSourceText(item)"
               tone-class="border-cyan-500/40 bg-cyan-500/10 text-cyan-600"
@@ -270,24 +275,44 @@
             </button>
           </div>
 
-          <KeyValueList
-            :items="accountDetailItems(item)"
-            :columns="2"
-          />
+          <div class="account-card-tile__metrics mt-3">
+            <div class="account-card-tile__metric">
+              <span class="account-card-tile__metric-label">图片额度</span>
+              <span class="account-card-tile__metric-value account-card-tile__metric-value--quota table-num">{{ accountQuotaText(item) }}</span>
+            </div>
+            <div class="account-card-tile__metric">
+              <span class="account-card-tile__metric-label">成功 / 失败</span>
+              <span class="account-card-tile__metric-value font-mono tabular-nums">
+                <span class="text-emerald-600">{{ item.success_count || 0 }}</span>
+                <span class="mx-0.5 text-muted-foreground/60">/</span>
+                <span class="text-rose-600">{{ item.failure_count || 0 }}</span>
+              </span>
+            </div>
+            <div class="account-card-tile__metric">
+              <span class="account-card-tile__metric-label">创建时间</span>
+              <span class="account-card-tile__metric-value table-num">{{ accountCreatedText(item) }}</span>
+            </div>
+            <div class="account-card-tile__metric">
+              <span class="account-card-tile__metric-label">恢复时间</span>
+              <span class="account-card-tile__metric-value table-num">{{ accountRestoreText(item) }}</span>
+            </div>
+          </div>
 
-          <AccountActionButtons
-            class="mt-auto"
-            :item="item"
-            :refreshing="refreshingAccountId === item.id"
-            :resetting="resettingAccountId === item.id"
-            :relogin-busy="reloginAccountId === item.id"
-            @edit="openEditModal(item)"
-            @toggle-enabled="toggleEnabled(item)"
-            @refresh-token="refreshToken(item.id)"
-            @relogin="reloginAccount(item.id)"
-            @reset-state="resetAccountState(item.id)"
-            @remove="removeAccount(item.id)"
-          />
+          <div class="mt-3 flex justify-end border-t border-border/60 pt-2.5">
+            <AccountActionButtons
+              :item="item"
+              :refreshing="refreshingAccountId === item.id"
+              :resetting="resettingAccountId === item.id"
+              :relogin-busy="reloginAccountId === item.id"
+              align="end"
+              @edit="openEditModal(item)"
+              @toggle-enabled="toggleEnabled(item)"
+              @refresh-token="refreshToken(item.id)"
+              @relogin="reloginAccount(item.id)"
+              @reset-state="resetAccountState(item.id)"
+              @remove="removeAccount(item.id)"
+            />
+          </div>
         </article>
       </div>
 
@@ -772,7 +797,7 @@
 
 <script setup lang="ts">
 import { computed, defineAsyncComponent, ref } from 'vue'
-import { Button, Checkbox, EmptyState, Input, KeyValueList, StatusDetailPill, StatusPill } from 'nanocat-ui'
+import { Button, Checkbox, EmptyState, Input, StatusDetailPill, StatusPill } from 'nanocat-ui'
 import type { ActionMenuItem } from 'nanocat-ui'
 import AccountActionButtons from '@/components/ai/AccountActionButtons.vue'
 import AccountBulkBar from '@/components/ai/AccountBulkBar.vue'
@@ -984,13 +1009,21 @@ function accountStatusDetailText(item: Account) {
   ].filter(Boolean).join('\n')
 }
 
-function accountDetailItems(item: Account) {
-  return [
-    { label: '创建时间', value: accountCreatedText(item) },
-    { label: '恢复时间', value: accountRestoreText(item) },
-    { label: '图片额度', value: accountQuotaText(item) },
-    { label: '成功 / 失败', value: `${item.success_count || 0} / ${item.failure_count || 0}` },
-  ]
+function accountTypeLabel(item: Account) {
+  return String(item.type || '').trim() || 'free'
+}
+
+type AccountTypeTone = 'plus' | 'team' | 'free'
+
+function accountTypeTone(item: Account): AccountTypeTone {
+  const value = String(item.type || '').trim().toLowerCase()
+  if (value === 'plus' || value === 'pro' || value === 'premium') return 'plus'
+  if (value === 'team' || value === 'enterprise' || value === 'business') return 'team'
+  return 'free'
+}
+
+function accountSourceLabel(item: Account) {
+  return String(item.source_type || '').trim() || 'web'
 }
 
 const refreshProgressItems = computed(() => [
@@ -1155,6 +1188,10 @@ function handleRemoteImportDone() {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  /* 与下方账号列表拉开距离 */
+  margin-bottom: 6px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid hsl(var(--border) / 0.5);
 }
 
 .accounts-toolbar-row {
@@ -1208,6 +1245,81 @@ function handleRemoteImportDone() {
   justify-content: flex-end;
 }
 
+.account-compact-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.account-compact-table th {
+  padding: 0.55rem 0.9rem 0.55rem 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+  border-bottom: 2px solid var(--bauhaus-ink, #2d2d2d);
+  white-space: nowrap;
+}
+
+.account-compact-table th:first-child,
+.account-compact-table td:first-child {
+  padding-left: 0.2rem;
+}
+
+.account-compact-table td {
+  padding: 0.6rem 0.9rem 0.6rem 0;
+  vertical-align: middle;
+}
+
+.account-compact-table tbody tr {
+  transition: background-color 0.12s ease;
+}
+
+.account-compact-table tbody tr:hover {
+  background: color-mix(in srgb, var(--bauhaus-postit, #f4e7c4) 22%, transparent);
+}
+
+.account-compact-table tbody tr.is-selected {
+  background: color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 8%, transparent);
+}
+
+.account-compact-table__tag {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border: 1.5px solid color-mix(in srgb, var(--bauhaus-ink, #2d2d2d) 40%, transparent);
+  border-radius: var(--radius, 0.125rem);
+  background: color-mix(in srgb, var(--bauhaus-card, #fff) 60%, transparent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1.2;
+  color: hsl(var(--foreground));
+  white-space: nowrap;
+}
+
+/* 类型徽章：付费=蓝、团队=紫、免费=墨 */
+.account-compact-table__tag--plus {
+  border-color: color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 45%, transparent);
+  background: color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 13%, transparent);
+  color: var(--bauhaus-blue, #2d5da1);
+}
+
+.account-compact-table__tag--team {
+  border-color: color-mix(in srgb, #6a4c93 42%, transparent);
+  background: color-mix(in srgb, #6a4c93 12%, transparent);
+  color: #5d4184;
+}
+
+.account-compact-table__tag--free {
+  border-color: color-mix(in srgb, var(--bauhaus-ink, #2d2d2d) 32%, transparent);
+  background: color-mix(in srgb, var(--bauhaus-ink, #2d2d2d) 6%, transparent);
+  color: hsl(var(--muted-foreground));
+}
+
+html[data-theme='dark'] .account-compact-table__tag--team {
+  color: #b7a8d6;
+}
+
 .account-stream-grid {
   display: grid;
   gap: 0.75rem;
@@ -1233,8 +1345,53 @@ function handleRemoteImportDone() {
   box-shadow: var(--shadow-hard, 3px 3px 0 0 var(--bauhaus-ink, #2d2d2d));
 }
 
+.account-card-tile__metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 0.75rem;
+  border: 1.5px solid color-mix(in srgb, var(--bauhaus-ink, #2d2d2d) 35%, transparent);
+  border-radius: var(--radius, 0.125rem);
+  background: color-mix(in srgb, var(--bauhaus-postit, #f4e7c4) 18%, transparent);
+  padding: 0.55rem 0.65rem;
+}
+
+.account-card-tile__metric {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.account-card-tile__metric-label {
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: hsl(var(--muted-foreground));
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.account-card-tile__metric-value {
+  font-size: 0.82rem;
+  line-height: 1.1;
+  color: hsl(var(--foreground));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-card-tile__metric-value--quota {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 700;
+  color: var(--bauhaus-blue, #2d5da1);
+}
+
 html[data-theme='dark'] .account-card-tile {
   box-shadow: var(--shadow-hard-sm, 0 2px 8px rgba(0, 0, 0, 0.45));
+}
+
+html[data-theme='dark'] .account-card-tile__metrics {
+  background: color-mix(in srgb, var(--bauhaus-card, #fff) 4%, transparent);
 }
 
 @media (max-width: 1100px) {

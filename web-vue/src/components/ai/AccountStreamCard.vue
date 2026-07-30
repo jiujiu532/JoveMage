@@ -15,7 +15,7 @@
       />
     </div>
 
-    <div class="account-stream-card__quota" title="图片额度">
+    <div class="account-stream-card__quota" :title="`图片额度：${accountQuotaText(item)}`">
       <span class="account-stream-card__quota-label">额度</span>
       <span class="account-stream-card__quota-value">{{ accountQuotaText(item) }}</span>
     </div>
@@ -47,7 +47,7 @@
         />
         <button
           type="button"
-          class="text-left"
+          class="account-stream-card__token-btn text-left"
           title="点击复制完整 Token"
           @click="emit('copy-token')"
         >
@@ -65,7 +65,7 @@
     <div class="account-stream-card__meta">
       <div class="account-stream-card__metric">
         <span class="account-stream-card__metric-label">成功 / 失败</span>
-        <div class="font-mono text-sm tabular-nums">
+        <div class="account-stream-card__metric-nums font-mono tabular-nums">
           <span class="text-emerald-600">{{ item.success_count || 0 }}</span>
           <span class="mx-1 text-muted-foreground/60">/</span>
           <span class="text-rose-600">{{ item.failure_count || 0 }}</span>
@@ -150,7 +150,7 @@ const densityClass = computed(() =>
   display: grid;
   grid-template-columns: auto auto minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 0.75rem 0.85rem;
+  gap: 0.75rem 1rem;
   border: 2px solid var(--bauhaus-ink, #2d2d2d);
   border-radius: var(--radius, 0.125rem);
   background: var(--bauhaus-card, #fff);
@@ -159,12 +159,49 @@ const densityClass = computed(() =>
 }
 
 .account-stream-card--comfortable {
-  padding: 0.85rem 0.95rem;
+  padding: 0.8rem 0.95rem;
 }
 
 .account-stream-card--dense {
-  padding: 0.65rem 0.75rem;
-  gap: 0.55rem 0.65rem;
+  padding: 0.5rem 0.7rem;
+  gap: 0.5rem 0.75rem;
+}
+
+.account-stream-card--dense .account-stream-card__title {
+  font-size: 0.85rem;
+}
+
+.account-stream-card--dense .account-stream-card__sub {
+  margin-top: 0.12rem;
+  font-size: 0.68rem;
+}
+
+.account-stream-card--dense .account-stream-card__quota {
+  min-width: 3.4rem;
+  padding: 0.3rem 0.4rem;
+}
+
+.account-stream-card--dense .account-stream-card__quota-value {
+  font-size: 0.92rem;
+}
+
+.account-stream-card--dense .account-stream-card__tags {
+  margin-top: 0.3rem;
+  gap: 0.3rem;
+}
+
+.account-stream-card--dense .account-stream-card__meta {
+  min-width: 7rem;
+  gap: 0.2rem;
+}
+
+.account-stream-card--dense .account-stream-card__metric-label,
+.account-stream-card--dense .account-stream-card__metric-value {
+  font-size: 0.68rem;
+}
+
+.account-stream-card--dense .account-stream-card__metric-nums {
+  font-size: 0.78rem;
 }
 
 .account-stream-card:hover {
@@ -173,7 +210,7 @@ const densityClass = computed(() =>
 }
 
 .account-stream-card.is-selected {
-  background: color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 6%, var(--bauhaus-card, #fff));
+  background: color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 7%, var(--bauhaus-card, #fff));
   box-shadow: 3px 3px 0 0 var(--bauhaus-blue, #2d5da1);
 }
 
@@ -184,29 +221,29 @@ const densityClass = computed(() =>
 
 .account-stream-card__quota {
   display: flex;
-  min-width: 4.25rem;
+  min-width: 4.2rem;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.15rem;
-  padding: 0.45rem 0.55rem;
-  border: 2px solid color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 45%, transparent);
+  gap: 0.1rem;
+  padding: 0.5rem 0.6rem;
+  border: 2px solid color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 55%, transparent);
   border-radius: var(--radius, 0.125rem);
-  background: color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 12%, transparent);
+  background: color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 14%, transparent);
   color: var(--bauhaus-blue, #2d5da1);
 }
 
 .account-stream-card__quota-label {
-  font-size: 0.65rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  opacity: 0.8;
+  opacity: 0.75;
 }
 
 .account-stream-card__quota-value {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 1rem;
+  font-size: 1.05rem;
   font-weight: 700;
   line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -214,54 +251,81 @@ const densityClass = computed(() =>
 
 .account-stream-card__title-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
 }
 
 .account-stream-card__title {
   margin: 0;
-  font-size: 0.9rem;
+  font-size: 0.92rem;
   font-weight: 650;
+  line-height: 1.2;
   color: hsl(var(--foreground));
 }
 
+.account-stream-card__status {
+  flex-shrink: 0;
+}
+
 .account-stream-card__sub {
-  margin: 0.2rem 0 0;
+  margin: 0.18rem 0 0;
   font-size: 0.72rem;
+  line-height: 1.2;
   color: hsl(var(--muted-foreground));
 }
 
 .account-stream-card__tags {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.35rem;
-  margin-top: 0.45rem;
+  margin-top: 0.4rem;
+}
+
+.account-stream-card__token-btn {
+  display: inline-flex;
 }
 
 .account-stream-card__meta {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  min-width: 6.5rem;
-  text-align: right;
+  align-items: flex-end;
+  gap: 0.3rem;
+  min-width: 7.5rem;
+}
+
+.account-stream-card__metric {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  width: 100%;
+  gap: 0.5rem;
 }
 
 .account-stream-card__metric-label {
-  display: block;
   font-size: 0.65rem;
   color: hsl(var(--muted-foreground));
   letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 .account-stream-card__metric-value {
   font-size: 0.72rem;
   color: hsl(var(--muted-foreground));
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.account-stream-card__metric-nums {
+  font-size: 0.82rem;
+  line-height: 1;
 }
 
 .account-stream-card__actions {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
 }
 
 html[data-theme='dark'] .account-stream-card {
@@ -271,6 +335,12 @@ html[data-theme='dark'] .account-stream-card {
 html[data-theme='dark'] .account-stream-card:hover,
 html[data-theme='dark'] .account-stream-card.is-selected {
   box-shadow: var(--shadow-hard, 0 4px 12px rgba(0, 0, 0, 0.55));
+}
+
+/* 双列：整体更扁、更紧凑 */
+.account-stream-card--dense .account-stream-card__meta {
+  min-width: 7rem;
+  gap: 0.2rem;
 }
 
 @media (max-width: 900px) {
@@ -289,9 +359,15 @@ html[data-theme='dark'] .account-stream-card.is-selected {
     grid-area: meta;
     flex-direction: row;
     flex-wrap: wrap;
-    justify-content: space-between;
-    text-align: left;
+    justify-content: flex-start;
+    align-items: center;
     min-width: 0;
+    gap: 0.5rem 1.25rem;
+  }
+  .account-stream-card__metric {
+    width: auto;
+    justify-content: flex-start;
+    gap: 0.4rem;
   }
   .account-stream-card__actions {
     grid-area: actions;
