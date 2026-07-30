@@ -1343,3 +1343,25 @@ html[data-theme="dark"] .studio-history-edit input:focus {
 .debug-chat-box {
   border-radius: var(--radius) !important;
 }
+
+/* ========== Dashboard StatCard 图标块：直边 + ink 描边 + 硬阴影 ========== */
+.dashboard-stat-icon {
+  display: inline-flex !important;
+  width: 2.5rem !important;
+  height: 2.5rem !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 2px solid var(--bauhaus-ink) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: 2px 2px 0 0 var(--bauhaus-ink) !important;
+  transition: transform 0.08s ease, box-shadow 0.08s ease !important;
+}
+
+.dashboard-stat-icon svg {
+  width: 1.15rem !important;
+  height: 1.15rem !important;
+}
+
+html[data-theme="dark"] .dashboard-stat-icon {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5) !important;
+}

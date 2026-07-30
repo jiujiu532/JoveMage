@@ -64,10 +64,8 @@ export function useDashboardPage() {
   watch(timeRangeResponseTime, createChartWatcher('responseTime', updateResponseTimeChart))
 
   function createDefaultStats() {
-    // StatCard(nanocat) 图标容器默认 rounded-full；用 !rounded + 2px ink 描边覆盖成 Bauhaus 直边小方块
-    // 底色/字色走 --bauhaus-* / --tone-* 令牌，深浅模式自动对照
-    const iconBox =
-      '!rounded-[var(--radius)] border-2 border-[var(--bauhaus-ink)] shadow-none'
+    // StatCard 图标块：直边 + 2px ink 描边 + 硬阴影，底色/字色走 --bauhaus-* / --tone-* 令牌
+    const iconBox = 'dashboard-stat-icon'
     return [
       {
         label: '账号总数',
@@ -75,15 +73,15 @@ export function useDashboardPage() {
         meta: '',
         icon: 'lucide:users',
         iconBg: `${iconBox} bg-[hsl(var(--tone-info-bg))]`,
-        iconColor: 'text-[var(--bauhaus-ink)]',
+        iconColor: 'text-[var(--bauhaus-blue)]',
       },
       {
         label: '正常账号',
         value: '0',
         meta: '',
         icon: 'lucide:check-circle',
-        iconBg: `${iconBox} bg-[color-mix(in_srgb,var(--bauhaus-blue)_18%,transparent)]`,
-        iconColor: 'text-[var(--bauhaus-blue)]',
+        iconBg: `${iconBox} bg-[hsl(var(--tone-success-bg))]`,
+        iconColor: 'text-[hsl(var(--tone-success-strong))]',
       },
       {
         label: '限流账号',
@@ -107,7 +105,7 @@ export function useDashboardPage() {
         meta: '',
         icon: 'lucide:ban',
         iconBg: `${iconBox} bg-[var(--bauhaus-paper-2)]`,
-        iconColor: 'text-[var(--bauhaus-ink)]',
+        iconColor: 'text-[var(--bauhaus-grey)]',
       },
       {
         label: '剩余额度',

@@ -403,15 +403,27 @@ export function createLineSeries(
     data,
     smooth,
     showSymbol,
+    symbolSize: 6,
     lineStyle: {
       width: lineStyle?.width ?? lineWidth,
       ...(lineStyle?.type && { type: lineStyle.type }),
     },
     areaStyle: {
       opacity: areaOpacity,
+      // 顶部实色到底部透明的纵向渐变，比平铺透明度更通透
+      color: {
+        type: 'linear',
+        x: 0, y: 0, x2: 0, y2: 1,
+        colorStops: [
+          { offset: 0, color },
+          { offset: 1, color: 'rgba(0,0,0,0)' },
+        ],
+      },
     },
     itemStyle: {
       color,
+      borderColor: '#fff',
+      borderWidth: 1.5,
     },
     emphasis: {
       disabled: true,
