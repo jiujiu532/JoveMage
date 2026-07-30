@@ -40,15 +40,14 @@ export const quotaOrder: QuotaKey[] = ['fast', 'thinking', 'pro', 'image', 'musi
 
 const laneOrder: AccountLane[] = ['fast', 'thinking', 'pro']
 
-/* 状态徽标走 Bauhaus「实色块」语言（对齐 StateBadge）：正常=蓝实底白字、
- * 异常=红实底白字、受限=黄实底墨字、禁用=灰实底，深浅两色都一眼可辨。
- * 不再用 12% 淡底 + 彩字（深色糊、浅色弱）。 */
+/* 状态徽标：浅色=饱和实色块；深色降明度压饱和（暗底淡字），不荧光刺眼。
+ * 整行另由 rowClass 加状态色 tint，双层可辨。 */
 const PILL_TONE_CLASS = {
-  success: 'border-transparent bg-[var(--bauhaus-blue)] text-white font-bold',
-  warning: 'border-transparent bg-[var(--bauhaus-yellow)] text-[#221c12] font-bold',
-  danger: 'border-transparent bg-[var(--bauhaus-red)] text-white font-bold',
-  info: 'border-transparent bg-[var(--bauhaus-blue)] text-white font-bold',
-  neutral: 'border-transparent bg-[hsl(var(--muted-foreground)/0.35)] text-[hsl(var(--foreground))] font-bold',
+  success: 'border-transparent font-bold bg-[var(--bauhaus-blue)] text-white dark:bg-[hsl(var(--tone-info-bg))] dark:text-[hsl(var(--tone-info-foreground))] dark:border-[hsl(var(--tone-info-border)/0.5)]',
+  warning: 'border-transparent font-bold bg-[var(--bauhaus-yellow)] text-[#221c12] dark:bg-[hsl(var(--tone-warning-bg))] dark:text-[hsl(var(--tone-warning-foreground))] dark:border-[hsl(var(--tone-warning-border)/0.5)]',
+  danger: 'border-transparent font-bold bg-[var(--bauhaus-red)] text-white dark:bg-[hsl(var(--tone-error-bg))] dark:text-[hsl(var(--tone-error-foreground))] dark:border-[hsl(var(--tone-error-border)/0.5)]',
+  info: 'border-transparent font-bold bg-[var(--bauhaus-blue)] text-white dark:bg-[hsl(var(--tone-info-bg))] dark:text-[hsl(var(--tone-info-foreground))] dark:border-[hsl(var(--tone-info-border)/0.5)]',
+  neutral: 'border-transparent font-bold bg-[hsl(var(--muted-foreground)/0.35)] text-[hsl(var(--foreground))] dark:bg-[hsl(var(--muted))] dark:text-[hsl(var(--muted-foreground))]',
 } as const
 
 const IMAGE_UNAVAILABLE_HINTS = [
@@ -406,12 +405,14 @@ export function statusRawError(item: Account): string {
   return raw === human ? '' : raw
 }
 
+/* 整行状态染色：异常泛淡红、受限泛淡黄、禁用泛灰，深浅色下都能一眼扫出状态。
+ * 用 tone-* 令牌（深色自动适配暗底），左侧另配状态色条（见账号表 CSS）。 */
 export function rowClass(item: Account): string {
   const category = statusCategory(item)
-  if (category === 'disabled') return 'bg-muted/50'
-  if (category === 'abnormal') return 'bg-rose-500/5'
-  if (category === 'limited') return 'bg-amber-500/5'
-  if (!item.access_token && !item.cookie) return 'bg-muted/30'
+  if (category === 'disabled') return 'bg-[hsl(var(--muted-foreground)/0.10)]'
+  if (category === 'abnormal') return 'bg-[hsl(var(--tone-error-bg)/0.55)]'
+  if (category === 'limited') return 'bg-[hsl(var(--tone-warning-bg)/0.6)]'
+  if (!item.access_token && !item.cookie) return 'bg-[hsl(var(--muted-foreground)/0.08)]'
   return ''
 }
 
