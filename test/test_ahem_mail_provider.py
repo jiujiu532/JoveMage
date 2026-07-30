@@ -131,6 +131,36 @@ class AhemMailProviderTests(unittest.TestCase):
         self.assertEqual(first_call.args[1], "https://mail.example/api/mailbox/alice/email")
         self.assertEqual(second_call.args[1], "https://mail.example/api/mailbox/alice/email/msg-1")
 
+    def test_fetch_latest_message_treats_empty_mailbox_404_as_no_mail(self):
+        """部分 AHEM 部署空邮箱返回 404 + MAILBOX IS EMPTY，应继续轮询而非失败。"""
+        self.session.request.return_value = _FakeResponse(
+            status_code=404,
+            payload={"error": "MAILBOX IS EMPTY!"},
+            text='{"error":"MAILBOX IS EMPTY!"}',
+        )
+        provider = mail_provider.AhemMailProvider(
+            {"api_base": "https://mail.example/api", "domain": ["example.test"]},
+            self.conf,
+        )
+        message = provider.fetch_latest_message(
+            {"address": "alice@example.test", "mailbox_name": "alice"}
+        )
+        self.assertIsNone(message)
+        self.session.request.assert_called_once()
+        args, _ = self.session.request.call_args
+        self.assertEqual(args[1], "https://mail.example/api/mailbox/alice/email")
+
+    def test_fetch_latest_message_empty_list_is_no_mail(self):
+        self.session.request.return_value = _FakeResponse(payload=[])
+        provider = mail_provider.AhemMailProvider(
+            {"api_base": "https://mail.example/api", "domain": ["example.test"]},
+            self.conf,
+        )
+        message = provider.fetch_latest_message(
+            {"address": "alice@example.test", "mailbox_name": "alice"}
+        )
+        self.assertIsNone(message)
+
     def test_factory_creates_ahem_provider(self):
         provider = mail_provider._create_provider(
             {

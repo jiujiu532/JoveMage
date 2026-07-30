@@ -1674,7 +1674,16 @@ class AhemMailProvider(BaseMailProvider):
         prefix = str(mailbox.get("mailbox_name") or self._mailbox_prefix(str(mailbox.get("address") or ""))).strip()
         if not prefix:
             raise RuntimeError("AHEM 缺少 mailbox 前缀")
-        data = self._request("GET", f"/mailbox/{prefix}/email")
+        # 官方文档空邮箱应返回 []；部分部署（含 mail.jiuuij.de5.net）改成
+        # HTTP 404 + {"error":"MAILBOX IS EMPTY!"}，不能当致命错误，否则首轮轮询就整批失败。
+        data = self._request("GET", f"/mailbox/{prefix}/email", expected=(200, 404))
+        if isinstance(data, dict):
+            error_text = str(data.get("error") or data.get("message") or "").strip().upper()
+            if not error_text or "EMPTY" in error_text or "NOT FOUND" in error_text:
+                return None
+            raise RuntimeError(
+                f"AHEM 列表邮箱失败: /mailbox/{prefix}/email, error={data.get('error') or data}"
+            )
         items = [item for item in data if isinstance(item, dict)] if isinstance(data, list) else []
         if not items:
             return None
