@@ -19,6 +19,7 @@
       <ConsoleSegmentedTabs
         :model-value="activeSettingsTab"
         :options="settingsTabs"
+        fit="content"
         aria-label="设置分组"
         @update:model-value="handleSettingsTabChange"
       />

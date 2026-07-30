@@ -52,6 +52,7 @@ html[data-theme='dark'] .page-panel {
 }
 
 .page-panel__body {
+  min-width: 0;
   padding: 1.25rem;
 }
 

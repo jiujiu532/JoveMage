@@ -29,17 +29,20 @@ const emit = defineEmits<{
 
 <style scoped>
 .console-segmented-tabs {
-  display: flex;
+  display: block;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .console-segmented-tabs--content {
-  width: max-content;
+  width: 100%;
   max-width: 100%;
 }
 
 /* 包豪斯 Tab：分段色块墙，激活 = 纯蓝块 + 白字 */
 .console-segmented-tabs :deep(.ui-segmented) {
+  display: flex;
   width: 100%;
   flex-wrap: wrap;
   gap: 0;
@@ -107,22 +110,25 @@ html[data-theme='dark'] .console-segmented-tabs :deep(.ui-segmented) {
   color: #ffffff;
 }
 
-/* 多 Tab（设置页等）窄屏横滑，避免 wrap 占半屏 */
-@media (max-width: 768px) {
+/* 窄屏/多 Tab：横向滑动，避免被 PagePanel overflow 裁切 */
+@media (max-width: 1023px) {
   .console-segmented-tabs {
-    max-width: 100%;
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-x: contain;
     scrollbar-width: thin;
+    padding-bottom: 2px;
   }
 
   .console-segmented-tabs :deep(.ui-segmented) {
+    display: inline-flex;
     flex-wrap: nowrap;
     width: max-content;
     min-width: 100%;
+    max-width: none;
     border-width: 1.5px;
+    overflow: visible;
   }
 
   .console-segmented-tabs :deep(.ui-segmented-btn) {
@@ -130,16 +136,11 @@ html[data-theme='dark'] .console-segmented-tabs :deep(.ui-segmented) {
     flex: 0 0 auto;
     padding: 0 12px;
     font-size: 10px;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.06em;
   }
 
   .console-segmented-tabs--stretch :deep(.ui-segmented-btn) {
     flex: 0 0 auto;
-  }
-
-  .console-segmented-tabs--content {
-    width: 100%;
-    max-width: 100%;
   }
 
   .console-segmented-tabs--content :deep(.ui-segmented) {
