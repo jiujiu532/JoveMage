@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="web-vue/public/logo.svg?v=0.4.1" width="96" alt="JoveMage logo">
+  <img src="web-vue/public/logo.svg?v=0.5.0" width="96" alt="JoveMage logo">
 </p>
 
 <h1 align="center">JoveMage</h1>
@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/jiujiu532/JoveMage/stargazers"><img src="https://img.shields.io/github/stars/jiujiu532/JoveMage?style=flat-square&logo=github" alt="GitHub stars"></a>
-  <a href="VERSION"><img src="https://img.shields.io/badge/version-v0.4.1-2563eb?style=flat-square" alt="Version"></a>
+  <a href="VERSION"><img src="https://img.shields.io/badge/version-v0.5.0-2563eb?style=flat-square" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-f97316?style=flat-square" alt="License"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-≥3.13-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python"></a>
   <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/FastAPI-0.136-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI"></a>
@@ -30,7 +30,7 @@
 JoveMage is a **self-hosted** service that reverse-engineers ChatGPT web (chatgpt.com) into **OpenAI / Anthropic compatible APIs**, with a Vue admin console for multi-account pools, auto registration, proxy anti-ban, image pipelines, and ops dashboards. One FastAPI process serves both API and console.
 
 > **Image**: `ghcr.io/jiujiu532/jovemage`  
-> **Version**: `v0.4.1`  
+> **Version**: `v0.5.0`  
 > **Env compatibility**: `CHATGPT2API_*` variables still work
 
 ## Features
@@ -157,7 +157,7 @@ cd /opt/jovemage && docker compose pull && docker compose up -d
 
 - On push to `main` or tags `v*`, GitHub Actions builds multi-arch images to GHCR
 - Image: `ghcr.io/jiujiu532/jovemage` (`linux/amd64` + `linux/arm64`)
-- Tags: `latest` (main), `v0.4.1`, `0.4`, `sha-...`
+- Tags: `latest` (main), `v0.5.0`, `0.5`, `sha-...`
 - Workflow: `.github/workflows/docker-publish.yml`
 
 ## Disclaimer
