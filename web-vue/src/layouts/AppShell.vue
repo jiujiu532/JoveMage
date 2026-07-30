@@ -272,22 +272,52 @@
             <Button
               size="sm"
               variant="outline"
+              icon-only
               v-if="authStore.isAdmin"
-              root-class="hidden sm:inline-flex"
+              root-class="shell-header-icon-btn hidden sm:inline-flex"
               @click="openUpdateDialog"
-              title="查看版本更新"
+              :title="`版本 ${versionButtonText}，查看更新`"
+              :aria-label="`版本 ${versionButtonText}，查看更新`"
             >
-              {{ versionButtonText }}
+              <!-- 标签：版本 / 更新 -->
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                class="h-[18px] w-[18px]"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M20.6 13.4 12 22l-8.6-8.6a2 2 0 0 1 0-2.8L11.2 3a2 2 0 0 1 1.4-.6H20a1 1 0 0 1 1 1v7.4a2 2 0 0 1-.4 1.2z" />
+                <circle cx="16.5" cy="7.5" r="1.2" fill="currentColor" stroke="none" />
+              </svg>
             </Button>
             <Button
               size="sm"
               variant="outline"
+              icon-only
               v-if="authStore.isAdmin"
-              root-class="hidden md:inline-flex"
+              root-class="shell-header-icon-btn hidden md:inline-flex"
               @click="openApiInfo"
+              title="接口信息"
+              aria-label="接口信息"
             >
-              <span class="lg:hidden">接口</span>
-              <span class="hidden lg:inline">接口信息</span>
+              <!-- 代码括号：接口 -->
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                class="h-[18px] w-[18px]"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M8 6 3 12l5 6" />
+                <path d="m16 6 5 6-5 6" />
+              </svg>
             </Button>
           </div>
         </header>
