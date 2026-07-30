@@ -23,8 +23,17 @@ import {
 } from '@/lib/preferences'
 import { statusCategory, type AccountStatusFilter } from './viewUtils'
 
-type AccountsViewMode = 'list' | 'cards'
+export type AccountsViewMode = 'cards' | 'compact' | 'single' | 'double'
 type BulkAction = 'refresh' | 'relogin' | 'reset' | 'enable' | 'disable' | 'delete'
+
+/** 兼容旧偏好 list→compact；非法值回落到紧凑表 */
+export function normalizeAccountsViewMode(value: string | null | undefined): AccountsViewMode {
+  const raw = String(value || '').trim().toLowerCase()
+  if (raw === 'list') return 'compact'
+  if (raw === 'cards' || raw === 'compact' || raw === 'single' || raw === 'double') return raw
+  return 'compact'
+}
+
 type BulkProgressKind = 'refresh' | 'mutation'
 type AccountProxyMode = 'global' | 'direct' | 'group' | 'custom'
 export type AccountImportMode = 'access_token' | 'session_json' | 'cpa_json' | 'remote_cpa' | 'sub2api'
@@ -208,7 +217,7 @@ export function useAccountsPage() {
   const selectedIds = ref<string[]>([])
   const batchBusy = ref(false)
   const batchActionLabel = ref('')
-  const viewMode = ref<AccountsViewMode>('list')
+  const viewMode = ref<AccountsViewMode>('compact')
   const refreshingAccountId = ref('')
   const resettingAccountId = ref('')
   const reloginAccountId = ref('')
@@ -788,9 +797,10 @@ export function useAccountsPage() {
     }
   }
 
-  function setViewMode(mode: AccountsViewMode) {
-    viewMode.value = mode
-    setStringPreference(preferenceKeys.accountsViewMode, mode)
+  function setViewMode(mode: AccountsViewMode | string) {
+    const next = normalizeAccountsViewMode(mode)
+    viewMode.value = next
+    setStringPreference(preferenceKeys.accountsViewMode, next)
   }
 
   function isSelected(accountId: string) {
@@ -1634,10 +1644,7 @@ export function useAccountsPage() {
   })
 
   onMounted(async () => {
-    const storedViewMode = getStringPreference(preferenceKeys.accountsViewMode)
-    if (storedViewMode === 'list' || storedViewMode === 'cards') {
-      viewMode.value = storedViewMode
-    }
+    viewMode.value = normalizeAccountsViewMode(getStringPreference(preferenceKeys.accountsViewMode))
     pageSize.value = getNumberPreference(preferenceKeys.accountsPageSize, DEFAULT_PAGE_SIZE, {
       allowed: ACCOUNT_PAGE_SIZE_OPTIONS,
     })

@@ -91,7 +91,8 @@
         description="读取账号列表、分组和分页状态。"
       />
 
-      <TableShell v-else-if="viewMode === 'list'">
+      <!-- 紧凑：表格式 -->
+      <TableShell v-else-if="viewMode === 'compact'">
         <table class="min-w-[980px] w-full text-left text-sm">
           <thead>
             <tr>
@@ -208,7 +209,8 @@
         </table>
       </TableShell>
 
-      <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <!-- 卡片：多列网格 -->
+      <div v-else-if="viewMode === 'cards'" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         <div v-if="!loading && filteredAccounts.length === 0" class="col-span-full">
           <EmptyState
             plain
@@ -220,8 +222,8 @@
         <article
           v-for="item in pagedAccounts"
           :key="`${item.id}-card`"
-          class="ui-card flex h-full flex-col gap-4 transition-all"
-          :class="[rowClass(item), isSelected(item.id) ? 'is-selected-anchor ring-2 ring-primary/30' : 'hover:border-primary/30']"
+          class="account-card-tile ui-card flex h-full flex-col gap-4 transition-all"
+          :class="[rowClass(item), isSelected(item.id) ? 'is-selected-anchor ring-2 ring-primary/30' : '']"
         >
           <div class="flex items-start justify-between gap-3">
             <div class="flex min-w-0 items-start gap-3">
@@ -287,6 +289,42 @@
             @remove="removeAccount(item.id)"
           />
         </article>
+      </div>
+
+      <!-- 单列 / 双列：流式条带 -->
+      <div
+        v-else
+        class="account-stream-grid"
+        :class="viewMode === 'double' ? 'account-stream-grid--double' : 'account-stream-grid--single'"
+      >
+        <div v-if="!loading && filteredAccounts.length === 0" class="col-span-full">
+          <EmptyState
+            plain
+            title="暂无账号数据"
+            description="可以先导入 Access Token、Session JSON 或 CPA JSON 文件。"
+          />
+        </div>
+
+        <AccountStreamCard
+          v-for="item in pagedAccounts"
+          :key="`${item.id}-${viewMode}`"
+          :item="item"
+          :selected="isSelected(item.id)"
+          :status-detail="accountStatusDetailText(item)"
+          :status-card-class="accountStatusDetailCardClass"
+          :refreshing="refreshingAccountId === item.id"
+          :resetting="resettingAccountId === item.id"
+          :relogin-busy="reloginAccountId === item.id"
+          :density="viewMode === 'double' ? 'dense' : 'comfortable'"
+          @toggle-select="(checked) => toggleSelect(item.id, checked)"
+          @copy-token="copyAccountToken(item)"
+          @edit="openEditModal(item)"
+          @toggle-enabled="toggleEnabled(item)"
+          @refresh-token="refreshToken(item.id)"
+          @relogin="reloginAccount(item.id)"
+          @reset-state="resetAccountState(item.id)"
+          @remove="removeAccount(item.id)"
+        />
       </div>
 
       <ListPagination
@@ -739,6 +777,7 @@ import type { ActionMenuItem } from 'nanocat-ui'
 import AccountActionButtons from '@/components/ai/AccountActionButtons.vue'
 import AccountBulkBar from '@/components/ai/AccountBulkBar.vue'
 import AccountSelectionSummary from '@/components/ai/AccountSelectionSummary.vue'
+import AccountStreamCard from '@/components/ai/AccountStreamCard.vue'
 import FilterToolbar from '@/components/ai/FilterToolbar.vue'
 import FloatingActionMenu from '@/components/ai/FloatingActionMenu.vue'
 import FormSection from '@/components/ai/FormSection.vue'
@@ -1167,6 +1206,41 @@ function handleRemoteImportDone() {
 .accounts-toolbar-group-refresh {
   margin-left: auto;
   justify-content: flex-end;
+}
+
+.account-stream-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.account-stream-grid--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.account-stream-grid--double {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.account-card-tile {
+  border-width: 2px;
+  border-color: var(--bauhaus-ink, #2d2d2d);
+  border-radius: var(--radius, 0.125rem);
+  box-shadow: var(--shadow-hard-sm, 2px 2px 0 0 var(--bauhaus-ink, #2d2d2d));
+}
+
+.account-card-tile:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: var(--shadow-hard, 3px 3px 0 0 var(--bauhaus-ink, #2d2d2d));
+}
+
+html[data-theme='dark'] .account-card-tile {
+  box-shadow: var(--shadow-hard-sm, 0 2px 8px rgba(0, 0, 0, 0.45));
+}
+
+@media (max-width: 1100px) {
+  .account-stream-grid--double {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 @media (max-width: 900px) {
