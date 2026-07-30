@@ -1049,28 +1049,35 @@ html[data-theme='dark'] .studio-size-popover {
   }
 
   .chat-input-actions {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 0.45rem;
+    align-items: center;
+    flex-direction: row;
+    gap: 0.5rem;
     padding-top: 0.45rem;
   }
 
   .chat-input-action-row {
-    width: 100%;
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
     flex-wrap: nowrap;
     overflow-x: auto;
     padding-bottom: 0.125rem;
     -webkit-overflow-scrolling: touch;
   }
 
+  /* 附件状态已在上方预览区可见，窄屏不占提交行宽度 */
   .chat-input-status {
-    width: 100%;
-    justify-content: space-between;
+    display: none;
   }
 
   .chat-input-submit-row {
-    width: 100%;
-    justify-content: space-between;
+    flex: 0 0 auto;
+    width: auto;
+    justify-content: flex-end;
+  }
+
+  .chat-input-send-label {
+    display: none;
   }
 
   .chat-select-wrap {
