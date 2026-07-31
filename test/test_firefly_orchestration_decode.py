@@ -8,14 +8,15 @@ from types import SimpleNamespace
 os.environ.setdefault("CHATGPT2API_AUTH_KEY", "test-auth")
 
 from services.protocol import conversation as conv  # noqa: E402
+from test._firefly_helpers import first_callable as _helpers_first_callable  # noqa: E402
 
 
 def _first_callable(mod, *names):
-    for name in names:
-        fn = getattr(mod, name, None)
-        if callable(fn):
-            return name, fn
-    return None, None
+    """返回 (name, fn)；都找不到 → (None, None)。"""
+    fn = _helpers_first_callable(mod, *names, required=False)
+    if fn is None:
+        return None, None
+    return getattr(fn, "__name__", names[0] if names else None), fn
 
 
 def _decode_fn():

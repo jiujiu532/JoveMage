@@ -10,53 +10,7 @@ from services.backends.firefly_catalog import (  # noqa: E402
     ratio_from_size,
     resolve_firefly_image_model,
 )
-
-
-def _as_mapping(conf: object) -> dict:
-    """把 dict / dataclass / SimpleNamespace 统一成可下标访问的 mapping。"""
-    if conf is None:
-        raise AssertionError("expected model conf, got None")
-    if isinstance(conf, dict):
-        return conf
-    if hasattr(conf, "__dict__"):
-        return dict(vars(conf))
-    data: dict = {}
-    for key in (
-        "upstream_model",
-        "upstreamModel",
-        "upstream_model_id",
-        "upstreamModelId",
-        "upstream_model_version",
-        "upstreamModelVersion",
-        "output_resolution",
-        "outputResolution",
-        "aspect_ratio",
-        "aspectRatio",
-        "width",
-        "height",
-        "size",
-        "description",
-        "model_id",
-        "modelId",
-    ):
-        if hasattr(conf, key):
-            data[key] = getattr(conf, key)
-    if not data:
-        raise AssertionError(f"unsupported conf type: {type(conf)!r}")
-    return data
-
-
-def _get(conf: object, *keys: str, default: object = None) -> object:
-    data = _as_mapping(conf)
-    for key in keys:
-        if key in data and data[key] is not None:
-            return data[key]
-    size = data.get("size")
-    if isinstance(size, dict):
-        for key in keys:
-            if key in size and size[key] is not None:
-                return size[key]
-    return default
+from test._firefly_helpers import get_field as _get  # noqa: E402
 
 
 class ResolveFireflyImageModelTests(unittest.TestCase):

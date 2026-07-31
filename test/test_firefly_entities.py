@@ -9,14 +9,11 @@ from unittest import mock
 os.environ.setdefault("CHATGPT2API_AUTH_KEY", "test-auth")
 
 from services.backends import firefly_entities as entities  # noqa: E402
+from test._firefly_helpers import first_callable  # noqa: E402
 
 
 def _first_callable(*names):
-    for name in names:
-        fn = getattr(entities, name, None)
-        if callable(fn):
-            return fn
-    return None
+    return first_callable(entities, *names, required=False)
 
 
 def _parse_entity_mentions(prompt: str):

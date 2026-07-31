@@ -6,14 +6,11 @@ import unittest
 os.environ.setdefault("CHATGPT2API_AUTH_KEY", "test-auth")
 
 from utils import helper  # noqa: E402
+from test._firefly_helpers import first_callable  # noqa: E402
 
 
 def _fn(*names):
-    for name in names:
-        fn = getattr(helper, name, None)
-        if callable(fn):
-            return fn
-    raise AssertionError(f"missing helper function among {names}")
+    return first_callable(helper, *names)
 
 
 def _is_supported_image_model(model: object) -> bool:
@@ -47,10 +44,7 @@ def _is_firefly_video_model(model: object) -> bool:
 
 
 def _is_firefly_model(model: object) -> bool:
-    fn = getattr(helper, "is_firefly_model", None)
-    if not callable(fn):
-        raise AssertionError("missing is_firefly_model")
-    return bool(fn(model))
+    return bool(first_callable(helper, "is_firefly_model")(model))
 
 
 class HelperVideoRouteTests(unittest.TestCase):

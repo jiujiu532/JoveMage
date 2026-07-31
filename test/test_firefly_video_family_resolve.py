@@ -6,6 +6,10 @@ import unittest
 os.environ.setdefault("CHATGPT2API_AUTH_KEY", "test-auth")
 
 from services.backends import firefly_video_catalog as catalog  # noqa: E402
+from test._firefly_helpers import (  # noqa: E402
+    first_callable,
+    get_field as _get,
+)
 
 
 # /v1/models 放出的 7 个族级 id（firefly- 前缀）
@@ -32,75 +36,30 @@ _FAMILY_DEFAULT_FULL = {
 
 
 def _resolve_fn():
-    for name in (
+    return first_callable(
+        catalog,
         "resolve_firefly_video_model",
         "resolve_video_model",
         "resolveFireflyVideoModel",
-    ):
-        fn = getattr(catalog, name, None)
-        if callable(fn):
-            return fn
-    raise AssertionError(
-        "missing resolve_firefly_video_model "
-        "(expected resolve_firefly_video_model / resolve_video_model)"
     )
 
 
 def _list_families_fn():
-    for name in (
+    fn = first_callable(
+        catalog,
         "list_firefly_video_families",
         "list_video_families",
         "firefly_video_families",
-    ):
-        fn = getattr(catalog, name, None)
-        if callable(fn):
-            return fn
+        required=False,
+    )
+    if fn is not None:
+        return fn
     families = getattr(catalog, "FIREFLY_VIDEO_FAMILIES", None)
     if isinstance(families, dict):
         return lambda: list(families.keys())
     if isinstance(families, (list, tuple)):
         return lambda: list(families)
     raise AssertionError("missing list_firefly_video_families")
-
-
-def _as_mapping(conf: object) -> dict:
-    if conf is None:
-        raise AssertionError("expected model conf, got None")
-    if isinstance(conf, dict):
-        return conf
-    if hasattr(conf, "__dict__"):
-        return dict(vars(conf))
-    data: dict = {}
-    for key in (
-        "family",
-        "engine",
-        "duration",
-        "ratio",
-        "aspect_ratio",
-        "aspectRatio",
-        "resolution",
-        "output_resolution",
-        "outputResolution",
-        "width",
-        "height",
-        "full_id",
-        "fullId",
-        "model_id",
-        "modelId",
-    ):
-        if hasattr(conf, key):
-            data[key] = getattr(conf, key)
-    if not data:
-        raise AssertionError(f"unsupported conf type: {type(conf)!r}")
-    return data
-
-
-def _get(conf: object, *keys: str, default: object = None) -> object:
-    data = _as_mapping(conf)
-    for key in keys:
-        if key in data and data[key] is not None:
-            return data[key]
-    return default
 
 
 def _family_ids(raw) -> set[str]:

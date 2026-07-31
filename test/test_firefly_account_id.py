@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import base64
-import json
 import os
 import unittest
 from unittest import mock
@@ -9,33 +7,21 @@ from unittest import mock
 os.environ.setdefault("CHATGPT2API_AUTH_KEY", "test-auth")
 
 from services.backends import firefly_auth as auth  # noqa: E402
-
-
-def _b64url(data: bytes) -> str:
-    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
-
-
-def _make_jwt(claims: dict) -> str:
-    """构造无签名校验的 mock JWT（header.payload.sig）。"""
-    header = _b64url(json.dumps({"alg": "none", "typ": "JWT"}).encode("utf-8"))
-    payload = _b64url(json.dumps(claims, separators=(",", ":")).encode("utf-8"))
-    return f"{header}.{payload}.sig"
+from test._firefly_helpers import (  # noqa: E402
+    first_callable,
+    make_jwt as _make_jwt,
+)
 
 
 def _decode_account_id(token: str) -> str:
-    for name in (
+    fn = first_callable(
+        auth,
         "decode_jwt_account_id",
         "account_id_from_token",
         "decode_account_id",
         "jwt_account_id",
-    ):
-        fn = getattr(auth, name, None)
-        if callable(fn):
-            return str(fn(token) or "")
-    raise AssertionError(
-        "missing decode_jwt_account_id "
-        "(expected decode_jwt_account_id / account_id_from_token)"
     )
+    return str(fn(token) or "")
 
 
 def _normalize_create_payload():
@@ -45,19 +31,22 @@ def _normalize_create_payload():
     except Exception as exc:  # pragma: no cover
         raise unittest.SkipTest(f"cannot import api.accounts: {exc}") from exc
 
-    for name in (
+    fn = first_callable(
+        accounts_mod,
         "_normalize_create_account_payload",
         "normalize_create_account_payload",
         "_normalize_account_payload",
         "normalize_account_payload",
         "_prepare_firefly_account_payload",
-    ):
-        fn = getattr(accounts_mod, name, None)
-        if callable(fn):
-            return accounts_mod, name, fn
-    raise unittest.SkipTest(
-        "missing _normalize_create_account_payload on api.accounts"
+        required=False,
     )
+    if fn is None:
+        raise unittest.SkipTest(
+            "missing _normalize_create_account_payload on api.accounts"
+        )
+    # 保持原返回形状 (mod, name, fn)
+    name = getattr(fn, "__name__", "normalize")
+    return accounts_mod, name, fn
 
 
 class DecodeJwtAccountIdTests(unittest.TestCase):

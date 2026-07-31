@@ -6,49 +6,29 @@ import unittest
 os.environ.setdefault("CHATGPT2API_AUTH_KEY", "test-auth")
 
 from services.backends import firefly_payloads as payloads  # noqa: E402
-
-
-def _first_candidate(result: object) -> dict:
-    """兼容返回 list[dict] 或单 dict。"""
-    if isinstance(result, list):
-        if not result:
-            raise AssertionError("expected at least one payload candidate")
-        first = result[0]
-    else:
-        first = result
-    if not isinstance(first, dict):
-        raise AssertionError(f"payload candidate must be dict, got {type(first)!r}")
-    return first
+from test._firefly_helpers import (  # noqa: E402
+    first_callable,
+    first_payload_candidate as _first_candidate,
+)
 
 
 def _detail_level_fn():
-    for name in (
+    return first_callable(
+        payloads,
         "gpt_image_detail_level_from_quality",
         "detail_level_from_quality",
         "gpt_image_detail_level",
-    ):
-        fn = getattr(payloads, name, None)
-        if callable(fn):
-            return fn
-    raise AssertionError(
-        "missing quality→detailLevel mapper "
-        "(expected gpt_image_detail_level_from_quality)"
     )
 
 
 def _build_candidates(**kwargs):
-    for name in (
+    fn = first_callable(
+        payloads,
         "build_firefly_image_payload_candidates",
         "build_image_payload_candidates",
         "build_firefly_image_payload",
-    ):
-        fn = getattr(payloads, name, None)
-        if callable(fn):
-            return fn(**kwargs)
-    raise AssertionError(
-        "missing payload builder "
-        "(expected build_firefly_image_payload_candidates)"
     )
+    return fn(**kwargs)
 
 
 class GptImagePayloadTests(unittest.TestCase):

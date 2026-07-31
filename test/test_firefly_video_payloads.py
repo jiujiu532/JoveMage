@@ -7,6 +7,7 @@ import unittest
 os.environ.setdefault("CHATGPT2API_AUTH_KEY", "test-auth")
 
 from services.backends import firefly_video_payloads as payloads  # noqa: E402
+from test._firefly_helpers import first_callable  # noqa: E402
 
 try:
     from services.backends import firefly_video_catalog as catalog  # noqa: E402
@@ -15,32 +16,27 @@ except Exception:  # pragma: no cover
 
 
 def _build_fn():
-    for name in (
+    return first_callable(
+        payloads,
         "build_firefly_video_payload",
         "build_video_payload",
         "buildFireflyVideoPayload",
-    ):
-        fn = getattr(payloads, name, None)
-        if callable(fn):
-            return fn
-    raise AssertionError(
-        "missing build_firefly_video_payload "
-        "(expected build_firefly_video_payload / build_video_payload)"
     )
 
 
 def _resolve_model(model_id: str) -> dict:
     """优先用 catalog 解析；不可用时构造最小 model_info。"""
     if catalog is not None:
-        for name in (
+        fn = first_callable(
+            catalog,
             "resolve_firefly_video_model",
             "resolve_video_model",
-        ):
-            fn = getattr(catalog, name, None)
-            if callable(fn):
-                conf = fn(model_id)
-                if conf is not None:
-                    return dict(conf) if not isinstance(conf, dict) else conf
+            required=False,
+        )
+        if fn is not None:
+            conf = fn(model_id)
+            if conf is not None:
+                return dict(conf) if not isinstance(conf, dict) else conf
 
     # 最小回落表（仅保测试在 catalog 缺失时仍可表达意图）
     fallback = {

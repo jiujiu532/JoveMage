@@ -6,19 +6,10 @@ import unittest
 os.environ.setdefault("CHATGPT2API_AUTH_KEY", "test-auth")
 
 from services.backends import firefly_payloads as payloads  # noqa: E402
-
-
-def _first_candidate(result: object) -> dict:
-    """兼容返回 list[dict] 或单 dict。"""
-    if isinstance(result, list):
-        if not result:
-            raise AssertionError("expected at least one payload candidate")
-        first = result[0]
-    else:
-        first = result
-    if not isinstance(first, dict):
-        raise AssertionError(f"payload candidate must be dict, got {type(first)!r}")
-    return first
+from test._firefly_helpers import (  # noqa: E402
+    first_callable,
+    first_payload_candidate as _first_candidate,
+)
 
 
 def _build_image2image(**kwargs):
@@ -46,8 +37,8 @@ def _build_image2image(**kwargs):
         "build_firefly_image2image_payload_candidates",
         "build_image2image_payload_candidates",
     ):
-        fn = getattr(payloads, name, None)
-        if not callable(fn):
+        fn = first_callable(payloads, name, required=False)
+        if fn is None:
             continue
         for id_key in ("reference_image_ids", "source_image_ids", "image_ids"):
             try:
@@ -66,10 +57,12 @@ def _build_image2image(**kwargs):
                 continue
 
     # 2) 直接 build_image2image_payload(model_info, prompt, reference_image_ids, ...)
-    build = getattr(payloads, "build_image2image_payload", None)
-    if callable(build):
-        model_info_fn = getattr(payloads, "_model_info_from_loose_params", None)
-        if callable(model_info_fn):
+    build = first_callable(payloads, "build_image2image_payload", required=False)
+    if build is not None:
+        model_info_fn = first_callable(
+            payloads, "_model_info_from_loose_params", required=False
+        )
+        if model_info_fn is not None:
             model_info = model_info_fn(
                 aspect_ratio=aspect_ratio,
                 output_resolution=output_resolution,
@@ -112,8 +105,8 @@ def _build_image2image(**kwargs):
         "build_firefly_image_payload_candidates",
         "build_image_payload_candidates",
     ):
-        fn = getattr(payloads, name, None)
-        if not callable(fn):
+        fn = first_callable(payloads, name, required=False)
+        if fn is None:
             continue
         for id_key in ("source_image_ids", "reference_image_ids", "image_ids"):
             try:

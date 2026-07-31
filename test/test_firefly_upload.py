@@ -12,18 +12,22 @@ from services.backends import firefly_client as client  # noqa: E402
 from services.backends.firefly_errors import (  # noqa: E402
     FireflyRequestError,
 )
+from test._firefly_helpers import (  # noqa: E402
+    first_callable,
+    patch_firefly_http,
+    stop_patches,
+)
 
 
 def _upload_image(*args, **kwargs):
     """兼容 upload_image 若干命名。"""
-    for name in ("upload_image", "upload_firefly_image", "upload_storage_image"):
-        fn = getattr(client, name, None)
-        if callable(fn):
-            return fn(*args, **kwargs)
-    raise AssertionError(
-        "missing upload_image "
-        "(expected upload_image / upload_firefly_image)"
+    fn = first_callable(
+        client,
+        "upload_image",
+        "upload_firefly_image",
+        "upload_storage_image",
     )
+    return fn(*args, **kwargs)
 
 
 def _max_image_bytes() -> int | None:
@@ -71,12 +75,6 @@ def _capture_upload_post(image_bytes: bytes, mime_type: str, token: str = "tok-a
         post_calls.append({"args": args, "kwargs": kwargs})
         return fake_response
 
-    patch_targets = [
-        "services.backends.firefly_client.curl_requests.post",
-        "services.backends.firefly_client.requests.post",
-        "curl_cffi.requests.post",
-    ]
-
     session_post = mock.Mock(side_effect=_capture_post)
     fake_session = mock.Mock()
     fake_session.post = session_post
@@ -84,31 +82,19 @@ def _capture_upload_post(image_bytes: bytes, mime_type: str, token: str = "tok-a
     fake_session.__enter__ = mock.Mock(return_value=fake_session)
     fake_session.__exit__ = mock.Mock(return_value=False)
 
-    session_patches = [
-        mock.patch(
+    active_patches = patch_firefly_http(
+        "services.backends.firefly_client.curl_requests.post",
+        "services.backends.firefly_client.requests.post",
+        "curl_cffi.requests.post",
+        side_effect=_capture_post,
+    )
+    active_patches.extend(
+        patch_firefly_http(
             "services.backends.firefly_client.curl_requests.Session",
-            return_value=fake_session,
-        ),
-        mock.patch(
             "services.backends.firefly_client.requests.Session",
             return_value=fake_session,
-        ),
-    ]
-
-    active_patches = []
-    for target in patch_targets:
-        try:
-            p = mock.patch(target, side_effect=_capture_post)
-            p.start()
-            active_patches.append(p)
-        except (AttributeError, ModuleNotFoundError, ImportError):
-            continue
-    for p in session_patches:
-        try:
-            p.start()
-            active_patches.append(p)
-        except (AttributeError, ModuleNotFoundError, ImportError):
-            continue
+        )
+    )
 
     try:
         # 兼容 mime / mime_type 参数名
@@ -119,8 +105,7 @@ def _capture_upload_post(image_bytes: bytes, mime_type: str, token: str = "tok-a
                 token, image_bytes, mime=mime_type
             )
     finally:
-        for p in active_patches:
-            p.stop()
+        stop_patches(active_patches)
 
     all_calls = list(post_calls)
     if session_post.called:
@@ -195,8 +180,8 @@ class UploadImageTests(unittest.TestCase):
         default_limit = 10 * 1024 * 1024
         oversized = b"x" * ((limit or default_limit) + 1)
 
-        fn = getattr(client, "upload_image", None) or getattr(
-            client, "upload_firefly_image", None
+        fn = first_callable(
+            client, "upload_image", "upload_firefly_image", required=False
         )
         if not callable(fn):
             self.skipTest("upload_image not available")
@@ -263,8 +248,8 @@ class UploadImageTests(unittest.TestCase):
         invalid = "application/pdf"
         self.assertNotIn(invalid, {m.lower() for m in allowed})
 
-        fn = getattr(client, "upload_image", None) or getattr(
-            client, "upload_firefly_image", None
+        fn = first_callable(
+            client, "upload_image", "upload_firefly_image", required=False
         )
         if not callable(fn):
             self.skipTest("upload_image not available")

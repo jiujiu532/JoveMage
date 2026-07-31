@@ -6,32 +6,31 @@ import unittest
 os.environ.setdefault("CHATGPT2API_AUTH_KEY", "test-auth")
 
 from services.backends import firefly_video_catalog as catalog  # noqa: E402
+from test._firefly_helpers import (  # noqa: E402
+    first_callable,
+    get_field as _get,
+)
 
 
 def _resolve_fn():
-    for name in (
+    return first_callable(
+        catalog,
         "resolve_firefly_video_model",
         "resolve_video_model",
         "resolveFireflyVideoModel",
-    ):
-        fn = getattr(catalog, name, None)
-        if callable(fn):
-            return fn
-    raise AssertionError(
-        "missing resolve_firefly_video_model "
-        "(expected resolve_firefly_video_model / resolve_video_model)"
     )
 
 
 def _list_families_fn():
-    for name in (
+    fn = first_callable(
+        catalog,
         "list_firefly_video_families",
         "list_video_families",
         "firefly_video_families",
-    ):
-        fn = getattr(catalog, name, None)
-        if callable(fn):
-            return fn
+        required=False,
+    )
+    if fn is not None:
+        return fn
     # 回退常量
     families = getattr(catalog, "FIREFLY_VIDEO_FAMILIES", None)
     if isinstance(families, dict):
@@ -42,86 +41,23 @@ def _list_families_fn():
 
 
 def _max_input_images_fn():
-    for name in (
+    return first_callable(
+        catalog,
         "max_input_images",
         "firefly_video_max_input_images",
         "video_max_input_images",
-    ):
-        fn = getattr(catalog, name, None)
-        if callable(fn):
-            return fn
-    return None
+        required=False,
+    )
 
 
 def _video_size_fn():
-    for name in (
+    return first_callable(
+        catalog,
         "video_size",
         "firefly_video_size",
         "video_pixels",
-    ):
-        fn = getattr(catalog, name, None)
-        if callable(fn):
-            return fn
-    return None
-
-
-def _as_mapping(conf: object) -> dict:
-    """把 dict / dataclass / SimpleNamespace 统一成 mapping。"""
-    if conf is None:
-        raise AssertionError("expected model conf, got None")
-    if isinstance(conf, dict):
-        return conf
-    if hasattr(conf, "__dict__"):
-        return dict(vars(conf))
-    data: dict = {}
-    for key in (
-        "family",
-        "engine",
-        "duration",
-        "ratio",
-        "aspect_ratio",
-        "aspectRatio",
-        "resolution",
-        "output_resolution",
-        "outputResolution",
-        "width",
-        "height",
-        "size",
-        "max_input_images",
-        "maxInputImages",
-        "reference_mode",
-        "referenceMode",
-        "generate_audio",
-        "generateAudio",
-        "modelId",
-        "modelVersion",
-        "upstreamModel",
-        "upstream_model_id",
-        "upstreamModelId",
-    ):
-        if hasattr(conf, key):
-            data[key] = getattr(conf, key)
-    if not data:
-        raise AssertionError(f"unsupported conf type: {type(conf)!r}")
-    return data
-
-
-def _get(conf: object, *keys: str, default: object = None) -> object:
-    data = _as_mapping(conf)
-    for key in keys:
-        if key in data and data[key] is not None:
-            return data[key]
-    size = data.get("size")
-    if isinstance(size, dict):
-        for key in keys:
-            if key in size and size[key] is not None:
-                return size[key]
-    if isinstance(size, (list, tuple)) and len(size) >= 2:
-        if "width" in keys:
-            return size[0]
-        if "height" in keys:
-            return size[1]
-    return default
+        required=False,
+    )
 
 
 def _family_ids(raw) -> set[str]:

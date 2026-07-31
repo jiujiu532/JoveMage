@@ -7,31 +7,34 @@ from urllib.parse import parse_qs, urlparse
 os.environ.setdefault("CHATGPT2API_AUTH_KEY", "test-auth")
 
 from services.backends import firefly_client as client  # noqa: E402
+from test._firefly_helpers import first_callable  # noqa: E402
 
 
 def _normalize_fn():
-    for name in (
+    fn = first_callable(
+        client,
         "normalize_video_poll_url",
         "normalizeVideoPollUrl",
         "normalize_poll_url",
         "_normalize_video_poll_url",
-    ):
-        fn = getattr(client, name, None)
-        if callable(fn):
-            return fn
+        required=False,
+    )
+    if fn is not None:
+        return fn
     # 类方法回退
     cls = getattr(client, "AdobeFireflyClient", None) or getattr(
         client, "FireflyClient", None
     )
     if cls is not None:
-        for name in (
+        fn = first_callable(
+            cls,
             "normalize_video_poll_url",
             "_normalize_video_poll_url",
             "normalizeVideoPollUrl",
-        ):
-            fn = getattr(cls, name, None)
-            if callable(fn):
-                return fn
+            required=False,
+        )
+        if fn is not None:
+            return fn
     raise AssertionError(
         "missing normalize_video_poll_url "
         "(expected normalize_video_poll_url on firefly_client)"

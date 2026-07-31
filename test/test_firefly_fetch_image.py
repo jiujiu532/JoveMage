@@ -26,17 +26,19 @@ def _modules():
 
 
 def _resolve_fetch_fn():
+    from test._firefly_helpers import first_callable
+
+    names = (
+        "fetch_image_bytes",
+        "load_image_bytes",
+        "download_or_decode_image",
+        "resolve_image_bytes",
+        "get_image_bytes",
+    )
     for mod in _modules():
-        for name in (
-            "fetch_image_bytes",
-            "load_image_bytes",
-            "download_or_decode_image",
-            "resolve_image_bytes",
-            "get_image_bytes",
-        ):
-            fn = getattr(mod, name, None)
-            if callable(fn):
-                return name, fn, mod
+        fn = first_callable(mod, *names, required=False)
+        if fn is not None:
+            return getattr(fn, "__name__", names[0]), fn, mod
     return None, None, None
 
 
@@ -103,7 +105,8 @@ def _max_size_default() -> int:
 
 def _patch_http_get(fake_response):
     """patch 可能的 HTTP GET 入口，返回 active patches 列表。"""
-    active = []
+    from test._firefly_helpers import patch_firefly_http
+
     targets = [
         "services.backends.firefly_image_utils.curl_requests.get",
         "services.backends.firefly_client.curl_requests.get",
@@ -120,14 +123,7 @@ def _patch_http_get(fake_response):
         if getattr(mod, "std_requests", None) is not None:
             targets.append(f"{mod_name}.std_requests.get")
 
-    for target in targets:
-        try:
-            p = mock.patch(target, return_value=fake_response)
-            p.start()
-            active.append(p)
-        except (AttributeError, ModuleNotFoundError, ImportError):
-            continue
-    return active
+    return patch_firefly_http(*targets, return_value=fake_response)
 
 
 class FetchImageBytesTests(unittest.TestCase):

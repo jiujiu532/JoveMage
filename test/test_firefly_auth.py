@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import json
 import os
 import time
@@ -11,61 +10,46 @@ from urllib.parse import parse_qs
 os.environ.setdefault("CHATGPT2API_AUTH_KEY", "test-auth")
 
 from services.backends import firefly_auth as auth  # noqa: E402
-
-
-def _b64url(data: bytes) -> str:
-    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
-
-
-def _make_jwt(claims: dict) -> str:
-    """构造无签名校验的 mock JWT（header.payload.sig）。"""
-    header = _b64url(json.dumps({"alg": "none", "typ": "JWT"}).encode("utf-8"))
-    payload = _b64url(json.dumps(claims, separators=(",", ":")).encode("utf-8"))
-    return f"{header}.{payload}.sig"
+from test._firefly_helpers import (  # noqa: E402
+    first_callable,
+    make_jwt as _make_jwt,
+    patch_firefly_http,
+    stop_patches,
+)
 
 
 def _normalize_cookie(value):
-    for name in ("normalize_cookie", "normalize_cookie_string", "cookie_string_from_input"):
-        fn = getattr(auth, name, None)
-        if callable(fn):
-            return fn(value)
-    raise AssertionError(
-        "missing normalize_cookie "
-        "(expected normalize_cookie / normalize_cookie_string)"
+    fn = first_callable(
+        auth,
+        "normalize_cookie",
+        "normalize_cookie_string",
+        "cookie_string_from_input",
     )
+    return fn(value)
 
 
 def _decode_account_id(token: str) -> str:
-    for name in (
+    fn = first_callable(
+        auth,
         "decode_jwt_account_id",
         "account_id_from_token",
         "decode_account_id",
-    ):
-        fn = getattr(auth, name, None)
-        if callable(fn):
-            return str(fn(token) or "")
-    raise AssertionError("missing decode_jwt_account_id")
+    )
+    return str(fn(token) or "")
 
 
 def _is_token_expired(token: str, *args, **kwargs) -> bool:
-    fn = getattr(auth, "is_token_expired", None)
-    if not callable(fn):
-        raise AssertionError("missing is_token_expired")
+    fn = first_callable(auth, "is_token_expired")
     return bool(fn(token, *args, **kwargs))
 
 
 def _refresh_access_token(cookie, **kwargs):
-    for name in (
+    fn = first_callable(
+        auth,
         "refresh_access_token",
         "refresh_access_token_from_cookie",
-    ):
-        fn = getattr(auth, name, None)
-        if callable(fn):
-            return fn(cookie, **kwargs)
-    raise AssertionError(
-        "missing refresh_access_token "
-        "(expected refresh_access_token / refresh_access_token_from_cookie)"
     )
+    return fn(cookie, **kwargs)
 
 
 class NormalizeCookieTests(unittest.TestCase):
@@ -198,12 +182,6 @@ class RefreshAccessTokenTests(unittest.TestCase):
             return fake_response
 
         # 兼容 curl_cffi.requests.post / Session.post / 模块内 requests 封装
-        patch_targets = [
-            "services.backends.firefly_auth.requests.post",
-            "services.backends.firefly_auth.curl_cffi.requests.post",
-            "curl_cffi.requests.post",
-        ]
-
         session_post = mock.Mock(side_effect=_capture_post)
         fake_session = mock.Mock()
         fake_session.post = session_post
@@ -211,29 +189,20 @@ class RefreshAccessTokenTests(unittest.TestCase):
         fake_session.__enter__ = mock.Mock(return_value=fake_session)
         fake_session.__exit__ = mock.Mock(return_value=False)
 
-        session_patches = [
-            mock.patch("services.backends.firefly_auth.requests.Session", return_value=fake_session),
-            mock.patch(
+        # 同时 patch 模块级 post 与 Session，哪个被调用就捕获哪个
+        active_patches = patch_firefly_http(
+            "services.backends.firefly_auth.requests.post",
+            "services.backends.firefly_auth.curl_cffi.requests.post",
+            "curl_cffi.requests.post",
+            side_effect=_capture_post,
+        )
+        active_patches.extend(
+            patch_firefly_http(
+                "services.backends.firefly_auth.requests.Session",
                 "services.backends.firefly_auth.curl_cffi.requests.Session",
                 return_value=fake_session,
-            ),
-        ]
-
-        # 同时 patch 模块级 post 与 Session，哪个被调用就捕获哪个
-        active_patches = []
-        for target in patch_targets:
-            try:
-                p = mock.patch(target, side_effect=_capture_post)
-                p.start()
-                active_patches.append(p)
-            except (AttributeError, ModuleNotFoundError, ImportError):
-                continue
-        for p in session_patches:
-            try:
-                p.start()
-                active_patches.append(p)
-            except (AttributeError, ModuleNotFoundError, ImportError):
-                continue
+            )
+        )
 
         try:
             result = _refresh_access_token(
@@ -241,8 +210,7 @@ class RefreshAccessTokenTests(unittest.TestCase):
                 fetch_account=False,
             )
         finally:
-            for p in active_patches:
-                p.stop()
+            stop_patches(active_patches)
 
         # 结果应含 access_token
         if isinstance(result, dict):
