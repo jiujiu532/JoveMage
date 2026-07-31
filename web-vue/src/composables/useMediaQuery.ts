@@ -2,19 +2,22 @@ import { onMounted, onUnmounted, ref, type Ref } from 'vue'
 
 /**
  * 监听 CSS media query，返回响应式 matches。
- * 在 onMounted 绑定、onUnmounted 解绑，SSR 安全（初始 false）。
+ * setup 阶段即同步一次当前匹配（避免首帧 false 闪动），onUnmounted 解绑；SSR 守卫初始 false。
  */
 export function useMediaQuery(query: string): Ref<boolean> {
-  const matches = ref(false)
-  let mql: MediaQueryList | null = null
+  const supported = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+  const initial = supported ? window.matchMedia(query) : null
+  const matches = ref(initial ? initial.matches : false)
+  let mql: MediaQueryList | null = initial
 
   const sync = (list: MediaQueryList | MediaQueryListEvent) => {
     matches.value = list.matches
   }
 
   onMounted(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
-    mql = window.matchMedia(query)
+    if (!supported) return
+    if (!mql) mql = window.matchMedia(query)
+    // 双保险：若挂载时与 setup 之间发生过变化，再同步一次
     matches.value = mql.matches
     if (typeof mql.addEventListener === 'function') {
       mql.addEventListener('change', sync)

@@ -757,38 +757,22 @@
             </div>
     </ModalShell>
 
-    <ModalShell :open="showRefreshProgress" max-width="34rem" :z-index="140">
-          <ModalHeader
-            :title="refreshProgressTitle || '刷新账号信息和额度'"
-            :close-disabled="batchBusy && !refreshProgress?.done"
-            compact
-            @close="closeRefreshProgress"
-          >
-            <template #actions>
-              <Button
-                v-if="canStopRefreshProgress"
-                size="xs"
-                variant="outline"
-                root-class="min-w-14 justify-center text-amber-600"
-                :disabled="bulkStopRequested"
-                @click="requestStopRefreshProgress"
-              >
-                {{ bulkStopRequested ? '停止中...' : '停止' }}
-              </Button>
-            </template>
-          </ModalHeader>
-          <div class="space-y-4 px-5 py-4">
-            <div class="flex items-center justify-between text-xs text-muted-foreground">
-              <span>{{ refreshProgress?.processed || 0 }} / {{ refreshProgress?.total || 0 }}</span>
-              <span>{{ refreshProgressPercent }}%</span>
-            </div>
-            <ProgressBar :value="refreshProgressPercent" aria-label="账号刷新进度" />
-            <MetricStrip :items="refreshProgressItems" columns-class="grid-cols-2" density="compact" />
-            <SurfaceBox v-if="refreshProgress?.error" tag="p" tone="danger" density="compact">
-              {{ refreshProgress.error }}
-            </SurfaceBox>
-          </div>
-    </ModalShell>
+    <OperationProgressModal
+      :open="showRefreshProgress"
+      :title="refreshProgressTitle || '刷新账号信息和额度'"
+      :total="refreshProgress?.total || 0"
+      :current="refreshProgress?.processed || 0"
+      :error="refreshProgress?.error || ''"
+      :busy="batchBusy && !refreshProgress?.done"
+      :can-cancel="canStopRefreshProgress && !bulkStopRequested"
+      :z-index="140"
+      @close="closeRefreshProgress"
+      @cancel="requestStopRefreshProgress"
+    >
+      <template #metrics>
+        <MetricStrip :items="refreshProgressItems" columns-class="grid-cols-2" density="compact" />
+      </template>
+    </OperationProgressModal>
 
     <input ref="manualTokenFileInputRef" type="file" accept=".txt,text/plain" class="hidden" @change="handleManualTokenFileChange" />
     <input ref="cpaFileInputRef" type="file" accept=".json,application/json" multiple class="hidden" @change="handleCPAFileChange" />
@@ -816,7 +800,6 @@ import ModalHeader from '@/components/ai/ModalHeader.vue'
 import ModalShell from '@/components/ai/ModalShell.vue'
 import PageLoadingState from '@/components/ai/PageLoadingState.vue'
 import PagePanel from '@/components/ai/PagePanel.vue'
-import ProgressBar from '@/components/ai/ProgressBar.vue'
 import QuotaBadge from '@/components/ai/QuotaBadge.vue'
 import StateBadge from '@/components/ai/StateBadge.vue'
 import StateBlock from '@/components/ai/StateBlock.vue'
@@ -844,6 +827,7 @@ import {
 } from './accounts/viewUtils'
 
 const RemoteAccountImportPanel = defineAsyncComponent(() => import('@/components/ai/RemoteAccountImportPanel.vue'))
+const OperationProgressModal = defineAsyncComponent(() => import('@/components/ai/OperationProgressModal.vue'))
 
 const {
   loading,
@@ -902,7 +886,6 @@ const {
   showRefreshProgress,
   refreshProgressTitle,
   refreshProgress,
-  refreshProgressPercent,
   refreshProgressMetricLabel,
   refreshProgressMetricValue,
   refreshProgressStatusText,

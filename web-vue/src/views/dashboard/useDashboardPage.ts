@@ -11,6 +11,7 @@ import {
   getChartSurfaceTokens,
 } from '@/lib/chartTheme'
 import { DEFAULT_DASHBOARD_TIME_RANGE, type DashboardTimeRange } from '@/lib/timeRanges'
+import { BP } from '@/lib/breakpoints'
 
 
 export function useDashboardPage() {
@@ -445,7 +446,7 @@ export function useDashboardPage() {
   function updateModelChart(mode: RenderMode = 'refresh') {
     if (!charts.model) return
 
-    const isMobile = window.innerWidth < 768
+    const isMobile = window.innerWidth < BP.md
     modelLayoutIsMobile.value = isMobile
     const theme = getPieChartTheme(isMobile)
     const modelData = getModelTotals().map(item => item.data)
@@ -477,7 +478,7 @@ export function useDashboardPage() {
     Object.entries(charts).forEach(([key, chart]) => {
       if (chart) {
         if (key === 'model') {
-          const nowMobile = window.innerWidth < 768
+          const nowMobile = window.innerWidth < BP.md
           if (modelLayoutIsMobile.value !== nowMobile) {
             updateModelChart()
           } else {

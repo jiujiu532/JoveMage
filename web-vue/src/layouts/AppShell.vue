@@ -662,6 +662,7 @@ import ModalShell from '@/components/ai/ModalShell.vue'
 import PageLoadingState from '@/components/ai/PageLoadingState.vue'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useMediaQuery } from '@/composables/useMediaQuery'
+import { MQ } from '@/lib/breakpoints'
 import { useToast } from '@/composables/useToast'
 import { getBooleanPreference, preferenceKeys, setBooleanPreference } from '@/lib/preferences'
 import { applyThemeMode, getStoredThemeMode, setStoredThemeMode, type ThemeMode } from '@/lib/theme'
@@ -810,7 +811,7 @@ function titleForRoute(name: unknown, path: string) {
 }
 
 /** Studio 等沉浸路由：仅 <lg 隐藏壳顶栏；PC 保留完整侧栏+顶栏 */
-const isNarrowShell = useMediaQuery('(max-width: 1023px)')
+const isNarrowShell = useMediaQuery(MQ.notDesktop)
 const isStudioLayoutPage = computed(() => Boolean(route.meta.immersive))
 const isImmersivePage = computed(() => isStudioLayoutPage.value && isNarrowShell.value)
 const isSidebarRail = computed(() => isSidebarCollapsed.value)

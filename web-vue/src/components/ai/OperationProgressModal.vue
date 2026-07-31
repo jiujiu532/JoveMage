@@ -23,6 +23,10 @@
 
       <ProgressBar :value="progressValue" :aria-label="title" />
 
+      <div v-if="$slots.metrics">
+        <slot name="metrics" />
+      </div>
+
       <p v-if="message" class="text-sm text-muted-foreground">{{ message }}</p>
       <p v-if="error" class="operation-progress-error">
         {{ error }}

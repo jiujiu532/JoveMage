@@ -170,6 +170,7 @@ import { useSettingsStore } from '@/stores/settings'
 import { useToast } from '@/composables/useToast'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useMediaQuery } from '@/composables/useMediaQuery'
+import { MQ } from '@/lib/breakpoints'
 import {
   getBooleanPreference,
   getJsonPreference,
@@ -222,7 +223,7 @@ const editingMessageId = ref('')
 const isSending = ref(false)
 const isStreaming = ref(false)
 /** PC 不自动全屏；仅窄屏恢复上次全屏偏好。手动点全屏仍会写入偏好。 */
-const isNarrowStudio = useMediaQuery('(max-width: 1023px)')
+const isNarrowStudio = useMediaQuery(MQ.notDesktop)
 const isFullscreen = ref(false)
 const isMobileHistoryOpen = ref(false)
 const isFetchingTasks = ref(false)

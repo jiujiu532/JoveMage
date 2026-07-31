@@ -139,6 +139,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Button } from 'nanocat-ui'
 import type { ActionMenuItem, UiSize } from 'nanocat-ui'
 import type { CSSProperties } from 'vue'
+import { MQ } from '@/lib/breakpoints'
 
 type FloatingActionMenuItem = ActionMenuItem & {
   children?: FloatingActionMenuItem[]
@@ -433,7 +434,7 @@ function handleViewportChange() {
 
 onMounted(() => {
   if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
-    narrowMql = window.matchMedia('(max-width: 640px)')
+    narrowMql = window.matchMedia(MQ.phone)
     syncNarrow(narrowMql)
     if (typeof narrowMql.addEventListener === 'function') {
       narrowMql.addEventListener('change', syncNarrow)
