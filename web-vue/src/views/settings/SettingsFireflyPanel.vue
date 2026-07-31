@@ -5,30 +5,37 @@
       title="Adobe Firefly"
       subtitle="独立于 ChatGPT 的代理 / Cloudflare 配置，仅影响 firefly-* 生图 / 视频渠道。"
     >
-      <div class="settings-block-stack">
-        <section class="settings-block">
-          <header class="settings-block__header">
-            <p class="settings-block__title">开关</p>
-            <p class="settings-block__desc">关闭后不会调度 Firefly 账号，也不会对外放出 firefly 模型（以后端为准）。</p>
-          </header>
-          <div class="settings-check-grid settings-check-grid--single">
-            <div class="settings-check-item">
-              <div class="settings-check-control">
-                <Checkbox
-                  :model-value="Boolean(settings.firefly_enabled)"
-                  @update:model-value="settings.firefly_enabled = Boolean($event)"
-                >
-                  启用 Adobe Firefly 渠道
-                </Checkbox>
-              </div>
-            </div>
+      <div class="ff-stack">
+        <!-- 渠道总开关：醒目大卡 -->
+        <div class="ff-hero" :class="{ 'ff-hero--on': settings.firefly_enabled }">
+          <div class="ff-hero__icon" aria-hidden="true">
+            <Icon icon="mdi:fire" class="h-5 w-5" />
           </div>
-        </section>
+          <div class="ff-hero__text">
+            <p class="ff-hero__title">Firefly 渠道</p>
+            <p class="ff-hero__desc">
+              {{ settings.firefly_enabled ? '已启用：调度 Firefly 账号并对外放出 firefly 模型。' : '已停用：不调度 Firefly 账号，也不对外放出 firefly 模型。' }}
+            </p>
+          </div>
+          <div class="ff-hero__control">
+            <Checkbox
+              :model-value="Boolean(settings.firefly_enabled)"
+              @update:model-value="settings.firefly_enabled = Boolean($event)"
+            >
+              {{ settings.firefly_enabled ? '已启用' : '启用' }}
+            </Checkbox>
+          </div>
+        </div>
 
-        <section class="settings-block">
-          <header class="settings-block__header">
-            <p class="settings-block__title">生成超时与轮询</p>
-            <p class="settings-block__desc">控制 Firefly generate-async 提交后的等待节奏。</p>
+        <!-- 图像生成 -->
+        <section class="ff-card">
+          <header class="ff-card__header">
+            <span class="ff-card__icon" aria-hidden="true"><Icon icon="mdi:image-outline" class="h-4 w-4" /></span>
+            <div class="ff-card__headtext">
+              <p class="ff-card__title">图像生成</p>
+              <p class="ff-card__desc">文生图 / 图生图（nano-banana / gpt-image）的等待节奏与默认模型。</p>
+            </div>
+            <span class="ff-card__tag">text2image · image2image</span>
           </header>
           <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
             <FormField label="生成超时">
@@ -87,7 +94,7 @@
               />
             </FormField>
 
-            <FormField label="默认模型">
+            <FormField label="默认模型" class="md:col-span-2">
               <template #label-extra>
                 <HelpTip text="Firefly 渠道默认模型 id，例如 firefly-nano-banana-pro。" />
               </template>
@@ -105,22 +112,23 @@
           </div>
         </section>
 
-        <section class="settings-block">
-          <header class="settings-block__header">
-            <p class="settings-block__title">视频</p>
-            <p class="settings-block__desc">控制 Firefly 视频生成（sora2 / veo31 / kling）开关与等待节奏。</p>
-          </header>
-          <div class="settings-check-grid settings-check-grid--single mb-3">
-            <div class="settings-check-item">
-              <div class="settings-check-control">
-                <Checkbox
-                  :model-value="Boolean(settings.firefly_video_enabled)"
-                  @update:model-value="settings.firefly_video_enabled = Boolean($event)"
-                >
-                  启用 Firefly 视频生成
-                </Checkbox>
-              </div>
+        <!-- 视频生成 -->
+        <section class="ff-card">
+          <header class="ff-card__header">
+            <span class="ff-card__icon" aria-hidden="true"><Icon icon="mdi:video-outline" class="h-4 w-4" /></span>
+            <div class="ff-card__headtext">
+              <p class="ff-card__title">视频生成</p>
+              <p class="ff-card__desc">sora2 / veo31 / kling 的开关与等待节奏。</p>
             </div>
+            <span class="ff-card__tag ff-card__tag--video">video</span>
+          </header>
+          <div class="ff-video-toggle" :class="{ 'ff-video-toggle--on': settings.firefly_video_enabled }">
+            <Checkbox
+              :model-value="Boolean(settings.firefly_video_enabled)"
+              @update:model-value="settings.firefly_video_enabled = Boolean($event)"
+            >
+              启用 Firefly 视频生成
+            </Checkbox>
           </div>
           <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
             <FormField label="视频超时">
@@ -151,7 +159,7 @@
               />
             </FormField>
 
-            <FormField label="默认视频模型">
+            <FormField label="默认视频模型" class="md:col-span-2">
               <template #label-extra>
                 <HelpTip text="Firefly 视频默认模型 id，例如 firefly-sora2-4s-16x9。" />
               </template>
@@ -179,6 +187,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { Icon } from '@iconify/vue'
 import { Checkbox, FormField, HelpTip, Input } from 'nanocat-ui'
 import FormSection from '@/components/ai/FormSection.vue'
 import SurfaceBox from '@/components/ai/SurfaceBox.vue'
@@ -311,3 +320,144 @@ const videoDefaultModelProxy = computed({
   },
 })
 </script>
+
+<style scoped>
+.ff-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* 渠道总开关：醒目大卡 */
+.ff-hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 2px solid var(--bauhaus-line-soft);
+  border-radius: var(--radius);
+  background: hsl(var(--card));
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+.ff-hero--on {
+  border-color: var(--bauhaus-ink);
+  box-shadow: var(--shadow-hard-sm);
+}
+.ff-hero__icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border: 2px solid var(--bauhaus-ink);
+  border-radius: var(--radius);
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.ff-hero--on .ff-hero__icon {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+.ff-hero__text {
+  min-width: 0;
+  flex: 1;
+}
+.ff-hero__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: hsl(var(--foreground));
+}
+.ff-hero__desc {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: hsl(var(--muted-foreground));
+}
+.ff-hero__control {
+  flex-shrink: 0;
+}
+
+/* 分区卡片 */
+.ff-card {
+  padding: 14px 16px;
+  border: 2px solid var(--bauhaus-ink);
+  border-radius: var(--radius);
+  background: hsl(var(--card));
+  box-shadow: var(--shadow-hard-sm);
+}
+.ff-card__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--bauhaus-line-soft);
+}
+.ff-card__icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border: 2px solid var(--bauhaus-ink);
+  border-radius: var(--radius);
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+.ff-card__headtext {
+  min-width: 0;
+  flex: 1;
+}
+.ff-card__title {
+  font-size: 13px;
+  font-weight: 700;
+  color: hsl(var(--foreground));
+}
+.ff-card__desc {
+  margin-top: 1px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: hsl(var(--muted-foreground));
+}
+.ff-card__tag {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--bauhaus-line-soft);
+  border-radius: 999px;
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  font-family: var(--font-mono, monospace);
+}
+.ff-card__tag--video {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+  border-color: var(--bauhaus-ink);
+}
+
+/* 视频开关行 */
+.ff-video-toggle {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--bauhaus-line-soft);
+  border-radius: var(--radius);
+  background: hsl(var(--muted) / 0.4);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.ff-video-toggle--on {
+  border-color: var(--bauhaus-ink);
+  background: hsl(var(--accent) / 0.4);
+}
+
+html[data-theme='dark'] .ff-card,
+html[data-theme='dark'] .ff-hero {
+  background: var(--bauhaus-card);
+}
+html[data-theme='dark'] .ff-hero--on,
+html[data-theme='dark'] .ff-card {
+  box-shadow: var(--shadow-hard-soft);
+}
+</style>
