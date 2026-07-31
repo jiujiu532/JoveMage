@@ -1,0 +1,192 @@
+.chat-markdown {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.chat-markdown :deep(> :first-child) {
+  margin-top: 0;
+}
+
+.chat-markdown :deep(> :last-child) {
+  margin-bottom: 0;
+}
+
+.chat-markdown :deep(p) {
+  margin: 0.35rem 0;
+}
+
+.chat-markdown :deep(ul),
+.chat-markdown :deep(ol) {
+  margin: 0.55rem 0;
+  padding-left: 1.25rem;
+}
+
+.chat-markdown :deep(ul) {
+  list-style: disc;
+}
+
+.chat-markdown :deep(ol) {
+  list-style: decimal;
+}
+
+.chat-markdown :deep(li) {
+  margin: 0.25rem 0;
+}
+
+.chat-markdown :deep(blockquote) {
+  margin: 0.75rem 0;
+  border-left: 3px solid rgb(113 113 122 / 0.32);
+  padding-left: 0.75rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.chat-markdown :deep(pre) {
+  overflow-x: auto;
+  overflow-wrap: normal;
+  word-break: normal;
+  border: 2px solid var(--bauhaus-line-soft, hsl(var(--border)));
+  border-radius: var(--radius);
+  background: hsl(var(--muted) / 0.45);
+  padding: 0.75rem;
+  font-size: 0.8125rem;
+}
+
+.chat-markdown :deep(code) {
+  border-radius: var(--radius);
+  background: hsl(var(--muted) / 0.55);
+  padding: 0.1rem 0.25rem;
+  font-size: 0.84em;
+}
+
+.chat-markdown :deep(pre code) {
+  background: transparent;
+  padding: 0;
+}
+
+.chat-markdown :deep(.studio-code-block) {
+  margin: 0.75rem 0;
+  overflow: hidden;
+  border: 2px solid var(--bauhaus-ink, hsl(var(--border)));
+  border-radius: var(--radius);
+  background: hsl(var(--muted) / 0.36);
+}
+
+.chat-markdown :deep(.studio-code-header) {
+  display: flex;
+  min-height: 2.25rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-bottom: 2px solid var(--bauhaus-line-soft, hsl(var(--border)));
+  background: hsl(var(--background) / 0.72);
+  padding: 0.35rem 0.5rem 0.35rem 0.75rem;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.chat-markdown :deep(.studio-code-copy) {
+  display: inline-flex;
+  height: 1.55rem;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid transparent;
+  border-radius: var(--radius);
+  padding: 0 0.625rem;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.chat-markdown :deep(.studio-code-copy:hover),
+.chat-markdown :deep(.studio-code-copy:focus-visible) {
+  border-color: var(--bauhaus-ink, hsl(var(--foreground) / 0.14));
+  background: hsl(var(--secondary));
+  color: hsl(var(--foreground));
+}
+
+.chat-markdown :deep(.studio-code-pre) {
+  margin: 0;
+  overflow-x: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0.75rem 0.875rem;
+  color: hsl(var(--foreground));
+  font-size: 0.78rem;
+  line-height: 1.65;
+}
+
+.chat-markdown :deep(.studio-code-pre code) {
+  display: block;
+  min-width: max-content;
+  background: transparent;
+  padding: 0;
+  font-family: var(--font-ui-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
+}
+
+.chat-markdown :deep(.hljs-comment),
+.chat-markdown :deep(.hljs-quote) {
+  color: #6b7280;
+}
+
+.chat-markdown :deep(.hljs-keyword),
+.chat-markdown :deep(.hljs-selector-tag),
+.chat-markdown :deep(.hljs-subst) {
+  color: #7c3aed;
+}
+
+.chat-markdown :deep(.hljs-string),
+.chat-markdown :deep(.hljs-doctag) {
+  color: #047857;
+}
+
+.chat-markdown :deep(.hljs-number),
+.chat-markdown :deep(.hljs-literal),
+.chat-markdown :deep(.hljs-variable),
+.chat-markdown :deep(.hljs-template-variable),
+.chat-markdown :deep(.hljs-tag .hljs-attr) {
+  color: #b45309;
+}
+
+.chat-markdown :deep(.hljs-title),
+.chat-markdown :deep(.hljs-section),
+.chat-markdown :deep(.hljs-selector-id) {
+  color: #2563eb;
+}
+
+.chat-markdown :deep(.hljs-type),
+.chat-markdown :deep(.hljs-class .hljs-title) {
+  color: #0f766e;
+}
+
+.chat-markdown :deep(.hljs-tag),
+.chat-markdown :deep(.hljs-name),
+.chat-markdown :deep(.hljs-attribute) {
+  color: #be123c;
+}
+
+.studio-error-text {
+  margin-top: 0.45rem;
+  color: rgb(190 18 60);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+.studio-cursor {
+  display: inline-block;
+  width: 0.45rem;
+  height: 1rem;
+  border-radius: var(--radius);
+  background: var(--bauhaus-blue, hsl(var(--primary)));
+  animation: studio-cursor 1s ease-in-out infinite;
+}
+
+@keyframes studio-cursor {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 1; }
+}

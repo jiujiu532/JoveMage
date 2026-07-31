@@ -1,0 +1,85 @@
+.studio-chat-panel {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  --studio-image-slot-size: clamp(15rem, 34vw, 26rem);
+  --studio-image-aspect-ratio: 1 / 1;
+  --studio-image-grid-columns: 1;
+}
+
+.studio-chat-scroll {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 1rem clamp(0.85rem, 1.6vw, 1.35rem) calc(var(--studio-composer-height, 10rem) + 1rem);
+}
+
+.studio-chat-empty {
+  display: flex;
+  min-height: calc(100% - 1rem);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(2rem, 7vh, 5rem) 1rem 1rem;
+  text-align: center;
+}
+
+.studio-chat-panel.is-fullscreen .studio-chat-empty {
+  padding-top: clamp(3rem, 10vh, 7rem);
+}
+
+.studio-chat-empty h1 {
+  color: hsl(var(--foreground));
+  font-size: clamp(1.8rem, 5vw, 3.2rem);
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.studio-chat-empty p {
+  margin-top: 0.875rem;
+  max-width: 34rem;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.875rem;
+  line-height: 1.8;
+}
+
+.studio-turns {
+  margin: 0 auto;
+  display: flex;
+  width: 100%;
+  max-width: var(--studio-content-width, min(100%, 88rem));
+  flex-direction: column;
+  gap: 1.55rem;
+  padding-bottom: 0.5rem;
+}
+
+.studio-load-earlier-row {
+  display: flex;
+  justify-content: center;
+}
+
+.studio-load-earlier-button {
+  display: inline-flex;
+  min-height: 2rem;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--bauhaus-line-soft, var(--ui-control-border, hsl(var(--border))));
+  border-radius: var(--radius);
+  background: var(--ui-control-bg, hsl(var(--background)));
+  color: var(--ui-fg-muted, hsl(var(--muted-foreground)));
+  padding: 0.35rem 0.875rem;
+  font-size: 0.75rem;
+  font-weight: 650;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.studio-load-earlier-button:hover,
+.studio-load-earlier-button:focus-visible {
+  border-color: var(--bauhaus-ink, var(--ui-control-hover-border, hsl(var(--foreground) / 0.18)));
+  background: var(--ui-control-hover-bg, hsl(var(--secondary)));
+  color: var(--ui-fg-strong, hsl(var(--foreground)));
+}
+

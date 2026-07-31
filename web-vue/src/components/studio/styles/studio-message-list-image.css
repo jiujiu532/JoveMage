@@ -1,0 +1,221 @@
+.studio-image-status {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  min-height: 3.25rem;
+  align-items: center;
+  gap: 0.5rem;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+.studio-image-status.is-error {
+  align-items: flex-start;
+  color: rgb(185 28 28);
+}
+
+.studio-result-block {
+  display: inline-block;
+  max-width: 100%;
+}
+
+.studio-result-grid {
+  display: grid;
+  width: fit-content;
+  max-width: 100%;
+  grid-template-columns: repeat(var(--studio-image-grid-columns), minmax(0, var(--studio-image-slot-size)));
+  gap: 0.625rem;
+}
+
+.studio-result-grid.is-single {
+  grid-template-columns: minmax(0, var(--studio-image-slot-size));
+}
+
+.studio-result-item {
+  width: var(--studio-image-slot-size);
+  min-width: 0;
+}
+
+.studio-result-grid.is-single .studio-result-item {
+  width: var(--studio-image-slot-size);
+}
+
+.studio-result-media {
+  display: flex;
+  width: 100%;
+  aspect-ratio: var(--studio-image-aspect-ratio);
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 2px solid var(--bauhaus-ink, #2d2d2d);
+  border-radius: var(--radius);
+  background: hsl(var(--secondary) / 0.28);
+  box-shadow: 3px 3px 0 0 var(--bauhaus-ink, #2d2d2d);
+  color: inherit;
+  cursor: zoom-in;
+}
+
+.studio-result-media.has-image {
+  background: hsl(var(--card));
+  padding: 0;
+}
+
+.studio-result-media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  border-radius: 0;
+  object-fit: cover;
+}
+
+html[data-theme='dark'] .studio-result-media {
+  box-shadow: 3px 3px 0 0 color-mix(in srgb, var(--bauhaus-ink, #e8e4dc) 45%, transparent);
+}
+
+.studio-result-media span {
+  color: hsl(var(--muted-foreground));
+  font-size: 0.8125rem;
+}
+
+.studio-result-placeholder {
+  cursor: default;
+  flex-direction: column;
+  gap: 0.625rem;
+  text-align: center;
+}
+
+.studio-result-placeholder svg {
+  color: hsl(var(--muted-foreground));
+}
+
+.studio-result-placeholder span,
+.studio-result-placeholder small {
+  display: block;
+  max-width: calc(100% - 1rem);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.studio-result-placeholder small {
+  color: hsl(var(--muted-foreground) / 0.78);
+  font-size: 0.75rem;
+}
+
+.studio-result-caption {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.125rem 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.75rem;
+}
+
+.studio-result-compare {
+  height: 1.375rem;
+  min-height: 1.375rem;
+  padding: 0.15rem 0.5rem;
+}
+
+.studio-scroll-latest {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--studio-composer-height, 10rem) + 0.75rem);
+  z-index: 30;
+  display: inline-flex;
+  width: 2.75rem;
+  height: 2.75rem;
+  transform: translateX(-50%);
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--bauhaus-ink, hsl(var(--border)));
+  border-radius: var(--radius);
+  background: hsl(var(--card) / 0.95);
+  color: hsl(var(--foreground));
+  box-shadow: var(--shadow-hard-sm);
+  backdrop-filter: none;
+}
+
+html[data-theme='dark'] .studio-scroll-latest {
+  box-shadow: var(--shadow-hard-soft);
+}
+
+/* 平板及以下：图槽收窄 + 强制单列（桌面 clamp 双列不动） */
+@media (max-width: 1023px) {
+  .studio-chat-panel {
+    --studio-image-slot-size: min(14rem, calc(100vw - 5rem));
+  }
+
+  .studio-result-grid,
+  .studio-result-grid.is-single {
+    grid-template-columns: minmax(0, var(--studio-image-slot-size));
+  }
+
+  .studio-result-item,
+  .studio-result-grid.is-single .studio-result-item {
+    width: min(100%, var(--studio-image-slot-size));
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 720px) {
+  .studio-chat-scroll {
+    padding: 0.65rem 0.65rem calc(var(--studio-composer-height, 9rem) + 0.65rem);
+  }
+
+  .studio-scroll-latest {
+    bottom: calc(var(--studio-composer-height, 9rem) + 0.5rem);
+  }
+
+  .studio-turns {
+    gap: 1rem;
+  }
+
+  .chat-message-container {
+    max-width: 100%;
+    gap: 0.45rem;
+  }
+
+  /* PC 仍为 min(100%, 40rem)；窄屏更贴边、为头像留白 */
+  .chat-message-container.is-user {
+    max-width: min(100%, calc(100vw - 4.25rem));
+  }
+
+  .chat-message-avatar {
+    width: 1.65rem;
+    height: 1.65rem;
+    flex: 0 0 1.65rem;
+    margin-top: 0.1rem;
+  }
+
+  .chat-message-avatar-mark {
+    width: 12px;
+    height: 12px;
+  }
+
+  .chat-message-bubble-user {
+    padding: 0.55rem 0.75rem;
+  }
+
+  .chat-message-container.is-pending-image-message {
+    width: fit-content;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .studio-chat-panel {
+    --studio-image-slot-size: min(14rem, calc(100vw - 5rem));
+  }
+
+  .chat-message-actions {
+    max-width: calc(100vw - 5.5rem);
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 1px;
+  }
+}
