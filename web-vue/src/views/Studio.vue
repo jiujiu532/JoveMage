@@ -351,9 +351,8 @@ watch(conversationNotices, schedulePersistConversationNotices)
 watch(activeConversationId, schedulePersistActiveConversationId)
 watch(requestedImageTaskIds, () => scheduleImageTaskRefresh())
 watch(pendingImageTaskIds, scheduleImagePoll)
-watch(isFullscreen, (value) => setBooleanPreference(preferenceKeys.studioFullscreen, value))
 watch(isNarrowStudio, (narrow) => {
-  // 回到桌面宽度时强制退出全屏，避免壳层被 fixed 盖住
+  // 回到桌面宽度时强制退出全屏，避免壳层被 fixed 盖住（不写偏好，以免覆盖手机端全屏选择）
   if (!narrow && isFullscreen.value) {
     isFullscreen.value = false
   }
@@ -734,11 +733,17 @@ async function clearCurrentConversation() {
   })
   if (!ok) return
   cancelMessageEdit()
+  const taskIds = new Set(
+    conversation.messages.map((message) => message.taskId).filter((id): id is string => Boolean(id)),
+  )
   conversation.messages = []
   conversation.title = '新对话'
   clearConversationNotice(conversation.id)
   touchConversation(conversation)
-  imageTasks.value = []
+  // 只清当前会话关联任务，保留其它会话的图任务缓存
+  if (taskIds.size) {
+    imageTasks.value = imageTasks.value.filter((task) => !taskIds.has(task.id))
+  }
   composerError.value = ''
   scheduleScrollToBottom()
 }
@@ -1197,6 +1202,8 @@ function stopStreaming() {
 
 function toggleFullscreen() {
   isFullscreen.value = !isFullscreen.value
+  // 仅用户手动切换时持久化，布局强制退出不写偏好
+  setBooleanPreference(preferenceKeys.studioFullscreen, isFullscreen.value)
   void nextTick(scrollToBottom)
 }
 
@@ -1614,7 +1621,10 @@ onBeforeUnmount(() => {
   height: 100dvh;
   min-height: 0;
   background: hsl(var(--background));
-  padding: 1rem 1.25rem 1.25rem;
+  padding-top: max(1rem, env(safe-area-inset-top, 0px));
+  padding-right: max(1.25rem, env(safe-area-inset-right, 0px));
+  padding-bottom: max(1.25rem, env(safe-area-inset-bottom, 0px));
+  padding-left: max(1.25rem, env(safe-area-inset-left, 0px));
 }
 
 .studio-sidebar-wrap {

@@ -33,7 +33,7 @@
               :all-selected="allVisibleSelected"
               :total-count="accountListTotal"
               :selected-count="selectedCount"
-              :view-mode="effectiveViewMode"
+              :view-mode="viewMode"
               @toggle-all="toggleSelectAllVisible"
               @update:view-mode="setViewMode"
             />
