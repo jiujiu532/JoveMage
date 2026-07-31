@@ -174,6 +174,9 @@ def split_image_model(model: object) -> tuple[str | None, str | None]:
 
 
 def is_supported_image_model(model: object) -> bool:
+    # 视频族不进 /v1/images/* 与 chat 生图链路
+    if is_firefly_video_model(model):
+        return False
     _, base_model = split_image_model(model)
     return base_model is not None
 
@@ -187,8 +190,11 @@ def is_codex_image_model(model: object) -> bool:
 
 def is_image_chat_request(body: dict[str, object]) -> bool:
     model = str(body.get("model") or "").strip()
+    # 视频模型明确不走聊天生图
+    if is_firefly_video_model(model):
+        return False
     modalities = body.get("modalities")
-    # firefly-* 也算图片请求（经 is_supported_image_model 放行）
+    # firefly 图像族也算图片请求（经 is_supported_image_model 放行）
     if is_supported_image_model(model):
         return True
     return isinstance(modalities, list) and "image" in {str(item or "").strip().lower() for item in modalities}

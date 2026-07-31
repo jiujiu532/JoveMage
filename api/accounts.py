@@ -195,29 +195,30 @@ def _normalize_create_account_payload(item: dict[str, Any]) -> dict[str, Any]:
     if cookie:
         payload["cookie"] = cookie
 
-    if access_token:
-        payload["access_token"] = access_token
-        return payload
-
-    if not cookie:
-        raise ValueError("Firefly 账号需要 cookie 或 access_token")
-
-    try:
-        refreshed = refresh_access_token(
-            cookie,
-            proxy=_clean_text(payload.get("proxy")) or None,
-        )
-    except Exception as exc:
-        raise RuntimeError(f"Firefly cookie 换取 access_token 失败: {exc}") from exc
-
-    access_token = _clean_text(refreshed.get("access_token") if isinstance(refreshed, dict) else "")
     if not access_token:
-        raise RuntimeError("Firefly cookie 换取 access_token 失败: 响应缺少 access_token")
+        if not cookie:
+            raise ValueError("Firefly 账号需要 cookie 或 access_token")
 
+        try:
+            refreshed = refresh_access_token(
+                cookie,
+                proxy=_clean_text(payload.get("proxy")) or None,
+            )
+        except Exception as exc:
+            raise RuntimeError(f"Firefly cookie 换取 access_token 失败: {exc}") from exc
+
+        access_token = _clean_text(refreshed.get("access_token") if isinstance(refreshed, dict) else "")
+        if not access_token:
+            raise RuntimeError("Firefly cookie 换取 access_token 失败: 响应缺少 access_token")
+
+    # cookie 换 token 与 token-only 都 decode Adobe id；实体钉选只比 account_id
     payload["access_token"] = access_token
     account_id = decode_jwt_account_id(access_token)
-    if account_id and not _clean_text(payload.get("user_id")):
-        payload["user_id"] = account_id
+    if account_id:
+        if not _clean_text(payload.get("user_id")):
+            payload["user_id"] = account_id
+        if not _clean_text(payload.get("account_id")):
+            payload["account_id"] = account_id
     return payload
 
 
