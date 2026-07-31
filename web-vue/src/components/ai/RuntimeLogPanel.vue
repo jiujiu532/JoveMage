@@ -78,6 +78,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { Button, EmptyState } from 'nanocat-ui'
+import { useClipboard } from '@/composables/useClipboard'
 import { useToast } from '@/composables/useToast'
 
 export type RuntimeLogPanelLine = {
@@ -114,6 +115,7 @@ const props = withDefaults(defineProps<{
 })
 
 const toast = useToast()
+const { copy } = useClipboard()
 const bodyEl = ref<HTMLElement | null>(null)
 const locked = ref(Boolean(props.defaultLocked))
 /** 程序滚动时忽略 scroll 事件，避免误触锁定 */
@@ -192,24 +194,7 @@ async function copyLogs() {
     toast.error('暂无日志可复制')
     return
   }
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text)
-    } else {
-      const area = document.createElement('textarea')
-      area.value = text
-      area.setAttribute('readonly', 'true')
-      area.style.position = 'fixed'
-      area.style.left = '-9999px'
-      document.body.appendChild(area)
-      area.select()
-      document.execCommand('copy')
-      document.body.removeChild(area)
-    }
-    toast.success('日志已复制')
-  } catch {
-    toast.error('复制失败')
-  }
+  await copy(text, { success: '日志已复制' })
 }
 
 watch(

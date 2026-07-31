@@ -616,8 +616,11 @@ import {
   isSystemLogSuccess as isSuccess,
   normalizeSystemLogRow,
 } from '@/api/logs'
+import { useClipboard } from '@/composables/useClipboard'
+import { useSelectionSet } from '@/composables/useSelectionSet'
 import { useToast } from '@/composables/useToast'
 import { downloadUrlAsFile, saveBlob } from '@/lib/downloads'
+import { maskApiKey } from '@/lib/mask'
 import { getNumberPreference, preferenceKeys, setNumberPreference } from '@/lib/preferences'
 
 const GalleryLightbox = defineAsyncComponent(() => import('@/components/ai/GalleryLightbox.vue'))
@@ -780,6 +783,7 @@ const detailTimelineCategoryLabels: Record<DetailTimelineCategory, string> = {
 const detailTimelineCategoryOrder: DetailTimelineCategory[] = ['entry', 'prepare', 'network', 'upstream', 'resolve', 'download', 'retry', 'response']
 
 const toast = useToast()
+const { copy } = useClipboard()
 const route = useRoute()
 const apiBaseUrl = import.meta.env.VITE_API_URL || window.location.origin
 const activeLogView = ref<LogView>('system')
@@ -798,7 +802,6 @@ const currentPage = ref(1)
 const brokenPreviewUrls = ref<Set<string>>(new Set())
 const deleteTarget = ref<LogRow | null>(null)
 const deleteSelectedOpen = ref(false)
-const selectedLogIds = ref<string[]>([])
 const isDeleting = ref(false)
 const operationProgress = reactive({
   open: false,
@@ -968,9 +971,6 @@ const runtimeMetricItems = computed(() => [
 
 const activeMetricItems = computed(() => activeLogView.value === 'runtime' ? runtimeMetricItems.value : systemMetricItems.value)
 const currentLogIdSet = computed(() => new Set(logs.value.map((item) => item.id).filter(Boolean)))
-const selectedDeletableLogIds = computed(() => (
-  Array.from(new Set(selectedLogIds.value)).filter((id) => currentLogIdSet.value.has(id))
-))
 const runtimeRawText = computed(() => runtimeLogs.value.map(formatRuntimeLogLine).join('\n'))
 
 const activeSystemFilterCount = computed(() => [
@@ -1107,12 +1107,23 @@ const visibleLogs = computed(() => {
   return logs.value
 })
 
+// 可见日志多选；selectedDeletableLogIds 保留「仅当前列表可删」语义
+const {
+  selected: selectedLogIds,
+  allVisibleSelected: allVisibleLogsSelected,
+  toggle: toggleLogSelection,
+  toggleAllVisible: toggleSelectAllVisibleLogs,
+  clear: clearLogSelection,
+  prune: pruneLogSelection,
+} = useSelectionSet<string>({
+  getVisibleIds: () => visibleLogs.value.map((item) => item.id).filter(Boolean),
+})
+
+const selectedDeletableLogIds = computed(() => (
+  selectedLogIds.value.filter((id) => currentLogIdSet.value.has(id))
+))
 const selectedLogIdSet = computed(() => new Set(selectedDeletableLogIds.value))
 const selectedLogCount = computed(() => selectedDeletableLogIds.value.length)
-const allVisibleLogsSelected = computed(() => {
-  if (visibleLogs.value.length === 0) return false
-  return visibleLogs.value.every((item) => selectedLogIdSet.value.has(item.id))
-})
 
 const selectedBottleneckStep = computed<DetailTimelineStep | null>(() => {
   const steps = selectedTimelineGroups.value.flatMap((group) => group.steps)
@@ -1233,7 +1244,7 @@ const selectedPrimaryDetailFields = computed<DetailField[]>(() => {
     { label: '接口', value: item.endpoint, copyable: true },
     { label: '模型', value: item.model, copyable: true },
     { label: '账号', value: item.accountEmail, copyable: true },
-    { label: '密钥', value: maskKeyLabel([item.keyName, item.keyId].filter(Boolean).join(' / ')) },
+    { label: '密钥', value: maskApiKey([item.keyName, item.keyId].filter(Boolean).join(' / ')) },
     { label: '出口', value: egressDetailValue(item) },
     { label: '会话 ID', value: item.conversationId, copyable: true },
     { label: '时间', value: timeRangeDetailValue(item), wide: true },
@@ -1491,18 +1502,6 @@ function timelineStepNote(item: LogRow, step: DetailTimelineStepConfig): string 
   return parts.filter(Boolean).join(' · ')
 }
 
-function maskEmail(value: string): string {
-  const email = cleanString(value)
-  if (!email || !email.includes('@')) return email
-  const [name, domain] = email.split('@')
-  const masked = name.length <= 2 ? `${name.slice(0, 1)}*` : `${name.slice(0, 2)}***${name.slice(-1)}`
-  return `${masked}@${domain}`
-}
-
-function maskKeyLabel(value: string): string {
-  return cleanString(value).replace(/sk-[A-Za-z0-9_-]{6,}/g, (token) => `${token.slice(0, 5)}***${token.slice(-4)}`)
-}
-
 function proxySourceLabel(value: unknown): string {
   const source = cleanString(value)
   if (!source) return ''
@@ -1747,56 +1746,26 @@ async function downloadLogPreviewFile(file: GalleryFile) {
 async function copyLogPreviewFile(file: GalleryFile | null) {
   if (!file) return
   const url = resolveGalleryFileUrl(file.url)
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(url)
-    } else {
-      const input = document.createElement('input')
-      input.value = url
-      document.body.appendChild(input)
-      input.select()
-      document.execCommand('copy')
-      document.body.removeChild(input)
-    }
-    copiedLogPreviewKey.value = file.path
-    if (logPreviewCopyResetTimer !== null) {
-      window.clearTimeout(logPreviewCopyResetTimer)
-    }
-    logPreviewCopyResetTimer = window.setTimeout(() => {
-      copiedLogPreviewKey.value = ''
-      logPreviewCopyResetTimer = null
-    }, 1800)
-    toast.success('图片链接已复制。', '复制成功')
-  } catch {
+  const ok = await copy(url, {
+    success: '图片链接已复制。',
+    error: '复制图片链接失败。',
+  })
+  if (!ok) {
     copiedLogPreviewKey.value = ''
-    toast.error('复制图片链接失败。', '复制失败')
+    return
   }
+  copiedLogPreviewKey.value = file.path
+  if (logPreviewCopyResetTimer !== null) {
+    window.clearTimeout(logPreviewCopyResetTimer)
+  }
+  logPreviewCopyResetTimer = window.setTimeout(() => {
+    copiedLogPreviewKey.value = ''
+    logPreviewCopyResetTimer = null
+  }, 1800)
 }
 
 function isLogSelected(id: string): boolean {
   return selectedLogIdSet.value.has(id)
-}
-
-function toggleLogSelection(id: string, checked?: boolean) {
-  const next = new Set(selectedLogIds.value)
-  const shouldSelect = typeof checked === 'boolean' ? checked : !next.has(id)
-  if (shouldSelect) next.add(id)
-  else next.delete(id)
-  selectedLogIds.value = Array.from(next)
-}
-
-function toggleSelectAllVisibleLogs(checked?: boolean) {
-  const next = new Set(selectedLogIds.value)
-  const shouldSelect = typeof checked === 'boolean' ? checked : !allVisibleLogsSelected.value
-  visibleLogs.value.forEach((item) => {
-    if (shouldSelect) next.add(item.id)
-    else next.delete(item.id)
-  })
-  selectedLogIds.value = Array.from(next)
-}
-
-function clearLogSelection() {
-  selectedLogIds.value = []
 }
 
 function requestDeleteLog(item: LogRow) {
@@ -1811,12 +1780,7 @@ function requestDeleteSelectedLogs() {
 async function copyText(value: string) {
   const text = cleanString(value)
   if (!text) return
-  try {
-    await navigator.clipboard.writeText(text)
-    toast.success('已复制')
-  } catch {
-    toast.error('复制失败')
-  }
+  await copy(text)
 }
 
 async function fetchLogs() {
@@ -1838,8 +1802,7 @@ async function fetchLogs() {
       offset: (currentPage.value - 1) * filters.limit,
     })
     logs.value = response.items.map((item, index) => normalizeSystemLogRow(item, index, { apiBaseUrl }))
-    const visibleIds = new Set(logs.value.map((item) => item.id))
-    selectedLogIds.value = selectedLogIds.value.filter((id) => visibleIds.has(id))
+    pruneLogSelection(logs.value.map((item) => item.id))
     const targetId = routeTargetLogId.value
     if (targetId) {
       const targetLog = logs.value.find((item) => item.id === targetId)
@@ -1936,7 +1899,7 @@ async function deleteLog() {
     operationProgress.statusLabel = '已处理'
     operationProgress.message = '删除完成，正在刷新列表...'
     if (selectedLog.value?.id === item.id) selectedLog.value = null
-    selectedLogIds.value = selectedLogIds.value.filter((id) => id !== item.id)
+    toggleLogSelection(item.id, false)
     toast.success('日志已删除')
     await fetchLogs()
     operationProgress.message = '日志已删除'

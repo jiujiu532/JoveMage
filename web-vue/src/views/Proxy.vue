@@ -442,6 +442,7 @@ import { actionMenuGroups } from '@/components/ai/menuItems'
 import GroupedSelectMenu from '@/components/ui/GroupedSelectMenu.vue'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useSettingsStore } from '@/stores/settings'
+import { useClipboard } from '@/composables/useClipboard'
 import { useToast } from '@/composables/useToast'
 import type { Settings } from '@/types/api'
 
@@ -462,6 +463,7 @@ const DEFAULT_PROXY_NODE_IMAGE_CONCURRENCY = 30
 
 const settingsStore = useSettingsStore()
 const toast = useToast()
+const { copy } = useClipboard()
 const confirmDialog = useConfirmDialog()
 
 const loading = ref(false)
@@ -602,24 +604,7 @@ function proxyGroupReference(group: Pick<ProxyGroup, 'id'>) {
 async function copyText(value: string, message = '已复制') {
   const text = String(value || '').trim()
   if (!text) return
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text)
-    } else {
-      const input = document.createElement('textarea')
-      input.value = text
-      input.setAttribute('readonly', 'readonly')
-      input.style.position = 'fixed'
-      input.style.opacity = '0'
-      document.body.appendChild(input)
-      input.select()
-      document.execCommand('copy')
-      document.body.removeChild(input)
-    }
-    toast.success(message)
-  } catch {
-    toast.error('复制失败')
-  }
+  await copy(text, { success: message })
 }
 
 function copyProxyGroupReference(group: Pick<ProxyGroup, 'id'>) {

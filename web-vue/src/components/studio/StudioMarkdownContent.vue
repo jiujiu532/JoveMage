@@ -5,6 +5,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import MarkdownIt from 'markdown-it'
+import { useClipboard } from '@/composables/useClipboard'
 import hljs from 'highlight.js/lib/core'
 import bash from 'highlight.js/lib/languages/bash'
 import css from 'highlight.js/lib/languages/css'
@@ -25,6 +26,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   'citation-click': [href: string]
 }>()
+
+const { copy } = useClipboard()
 
 const MAX_RENDER_CACHE_SIZE = 360
 const renderCache = new Map<string, string>()
@@ -122,34 +125,10 @@ async function handleMarkdownClick(event: MouseEvent) {
   const block = button.closest('.studio-code-block')
   const code = block?.querySelector('code')?.textContent || ''
   if (!code) return
-  try {
-    await writeClipboardText(code)
-    button.textContent = '已复制'
-    window.setTimeout(() => {
-      button.textContent = '复制'
-    }, 1200)
-  } catch {
-    button.textContent = '复制失败'
-    window.setTimeout(() => {
-      button.textContent = '复制'
-    }, 1200)
-  }
-}
-
-async function writeClipboardText(text: string) {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text)
-    return
-  }
-  const textarea = document.createElement('textarea')
-  textarea.value = text
-  textarea.setAttribute('readonly', 'readonly')
-  textarea.style.position = 'fixed'
-  textarea.style.left = '-9999px'
-  document.body.appendChild(textarea)
-  textarea.select()
-  const ok = document.execCommand('copy')
-  document.body.removeChild(textarea)
-  if (!ok) throw new Error('copy failed')
+  const ok = await copy(code, { silent: true })
+  button.textContent = ok ? '已复制' : '复制失败'
+  window.setTimeout(() => {
+    button.textContent = '复制'
+  }, 1200)
 }
 </script>

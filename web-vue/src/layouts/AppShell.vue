@@ -663,6 +663,7 @@ import PageLoadingState from '@/components/ai/PageLoadingState.vue'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useMediaQuery } from '@/composables/useMediaQuery'
 import { MQ } from '@/lib/breakpoints'
+import { useClipboard } from '@/composables/useClipboard'
 import { useToast } from '@/composables/useToast'
 import { getBooleanPreference, preferenceKeys, setBooleanPreference } from '@/lib/preferences'
 import { applyThemeMode, getStoredThemeMode, setStoredThemeMode, type ThemeMode } from '@/lib/theme'
@@ -681,6 +682,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 const settingsStore = useSettingsStore()
 const toast = useToast()
+const { copy } = useClipboard()
 const isSidebarOpen = ref(false)
 const isSidebarCollapsed = ref(false)
 const confirmDialog = useConfirmDialog()
@@ -967,29 +969,7 @@ async function openApiInfo() {
 async function copyText(value: string) {
   const text = String(value || '').trim()
   if (!text) return
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text)
-    } else {
-      const input = document.createElement('textarea')
-      input.value = text
-      input.setAttribute('readonly', 'readonly')
-      input.style.position = 'fixed'
-      input.style.left = '-9999px'
-      input.style.top = '0'
-      document.body.appendChild(input)
-      input.focus()
-      input.select()
-      input.setSelectionRange(0, input.value.length)
-      const copied = document.execCommand('copy')
-      document.body.removeChild(input)
-      if (!copied) throw new Error('execCommand copy failed')
-    }
-    toast.success('已复制')
-  } catch (error) {
-    console.error('Copy failed', error)
-    toast.error('复制失败，请手动复制')
-  }
+  await copy(text, { error: '复制失败，请手动复制' })
 }
 
 async function openInfiniteCanvas() {

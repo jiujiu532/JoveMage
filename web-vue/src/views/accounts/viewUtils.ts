@@ -1,5 +1,6 @@
 import type { Account, AccountLane } from '@/api/accounts'
 import { proxyReferenceLabel } from '@/api/proxy'
+import { maskToken } from '@/lib/mask'
 
 export type QuotaKey = 'fast' | 'thinking' | 'pro' | 'image' | 'music' | 'video'
 export type AccountStatusFilter = 'all' | 'normal' | 'limited' | 'abnormal' | 'disabled'
@@ -525,8 +526,7 @@ export function accountTokenPreview(item: Account): string {
   if (masked) return masked
   const token = cleanString(item.access_token)
   if (!token) return '缺失'
-  if (token.length <= 12) return '********'
-  return `${token.slice(0, 6)}...${token.slice(-4)}`
+  return maskToken(token)
 }
 
 export function accountQuotaText(item: Account): string {

@@ -321,7 +321,9 @@ import PanelHeader from '@/components/ai/PanelHeader.vue'
 import SelectionBulkBar from '@/components/ai/SelectionBulkBar.vue'
 import StateBlock from '@/components/ai/StateBlock.vue'
 import GroupedSelectMenu from '@/components/ui/GroupedSelectMenu.vue'
+import { useClipboard } from '@/composables/useClipboard'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import { useSelectionSet } from '@/composables/useSelectionSet'
 import { useToast } from '@/composables/useToast'
 import { downloadUrlAsFile, saveBlob } from '@/lib/downloads'
 import { getNumberPreference, preferenceKeys, setNumberPreference } from '@/lib/preferences'
@@ -331,6 +333,7 @@ const GalleryTagEditorModal = defineAsyncComponent(() => import('@/components/ai
 const OperationProgressModal = defineAsyncComponent(() => import('@/components/ai/OperationProgressModal.vue'))
 
 const toast = useToast()
+const { copy } = useClipboard()
 const confirmDialog = useConfirmDialog()
 
 const files = ref<GalleryFile[]>([])
@@ -355,7 +358,6 @@ const currentPage = ref(1)
 const pageCount = ref(1)
 const counts = ref({ all: 0, image: 0, video: 0, music: 0 })
 const allTags = ref<string[]>([])
-const selectedPaths = ref<Set<string>>(new Set())
 const brokenImagePaths = ref<Set<string>>(new Set())
 const storageStats = ref<ImageStorageStats | null>(null)
 const isStorageModalOpen = ref(false)
@@ -381,8 +383,18 @@ const tagOptions = computed(() => [
 ])
 
 const paginationSummary = computed(() => `第 ${currentPage.value} / ${pageCount.value} 页，共 ${totalItems.value} 张`)
-const selectedCount = computed(() => selectedPaths.value.size)
-const allVisibleSelected = computed(() => files.value.length > 0 && files.value.every((file) => selectedPaths.value.has(file.path)))
+const {
+  selected: selectedPaths,
+  selectedCount,
+  allVisibleSelected,
+  isSelected,
+  toggle: toggleSelect,
+  toggleAllVisible: toggleSelectAllVisible,
+  clear: clearSelection,
+  prune: pruneSelectionIds,
+} = useSelectionSet<string>({
+  getVisibleIds: () => files.value.map((file) => file.path),
+})
 const draftTags = computed(() => parseTags(tagDraft.value))
 const storageUsagePercent = computed(() => {
   const stats = storageStats.value
@@ -425,7 +437,7 @@ async function loadGallery() {
     pageCount.value = Math.max(1, data.page_count)
     allTags.value = tags || []
     brokenImagePaths.value = new Set()
-    pruneSelection()
+    pruneSelectionIds(files.value.map((file) => file.path))
     void galleryApi.getStorage()
       .then((storage) => {
         if (loadToken === latestLoadToken) storageStats.value = storage || null
@@ -604,8 +616,7 @@ async function handleDelete(file: GalleryFile) {
     operationProgress.current = 1
     operationProgress.statusLabel = '已处理'
     operationProgress.message = '删除完成，正在刷新列表...'
-    selectedPaths.value.delete(file.path)
-    selectedPaths.value = new Set(selectedPaths.value)
+    toggleSelect(file.path, false)
     if (previewFile.value?.path === file.path) closePreview()
     if (tagEditorFile.value?.path === file.path) closeTagEditor()
     if (files.value.length === 1 && currentPage.value > 1) {
@@ -705,30 +716,22 @@ async function downloadFile(file: GalleryFile) {
 async function copyFileLink(file: GalleryFile | null) {
   if (!file) return
   const url = getFileUrl(file.url)
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(url)
-    } else {
-      const input = document.createElement('input')
-      input.value = url
-      document.body.appendChild(input)
-      input.select()
-      document.execCommand('copy')
-      document.body.removeChild(input)
-    }
-    copiedFileKey.value = file.path
-    if (copyResetTimer !== null) {
-      window.clearTimeout(copyResetTimer)
-    }
-    copyResetTimer = window.setTimeout(() => {
-      copiedFileKey.value = ''
-      copyResetTimer = null
-    }, 1800)
-    toast.success('图片链接已复制。', '复制成功')
-  } catch {
+  const ok = await copy(url, {
+    success: '图片链接已复制。',
+    error: '复制链接失败。',
+  })
+  if (!ok) {
     copiedFileKey.value = ''
-    toast.error('复制链接失败。', '复制失败')
+    return
   }
+  copiedFileKey.value = file.path
+  if (copyResetTimer !== null) {
+    window.clearTimeout(copyResetTimer)
+  }
+  copyResetTimer = window.setTimeout(() => {
+    copiedFileKey.value = ''
+    copyResetTimer = null
+  }, 1800)
 }
 
 function openPreview(file: GalleryFile) {
@@ -794,42 +797,6 @@ function toggleDraftTag(tag: string) {
 function setTagFilter(tag: string) {
   tagFilter.value = tag
   resetAndLoad()
-}
-
-function toggleSelect(path: string, checked?: boolean) {
-  const next = new Set(selectedPaths.value)
-  const shouldSelect = typeof checked === 'boolean' ? checked : !next.has(path)
-  if (shouldSelect) {
-    next.add(path)
-  } else {
-    next.delete(path)
-  }
-  selectedPaths.value = next
-}
-
-function toggleSelectAllVisible(checked?: boolean) {
-  const next = new Set(selectedPaths.value)
-  const shouldSelect = typeof checked === 'boolean' ? checked : !allVisibleSelected.value
-  for (const file of files.value) {
-    if (shouldSelect) next.add(file.path)
-    else next.delete(file.path)
-  }
-  selectedPaths.value = next
-}
-
-function isSelected(path: string) {
-  return selectedPaths.value.has(path)
-}
-
-function clearSelection() {
-  selectedPaths.value = new Set()
-}
-
-function pruneSelection() {
-  if (selectedPaths.value.size === 0) return
-  const loadedPaths = new Set(files.value.map((file) => file.path))
-  const next = new Set(Array.from(selectedPaths.value).filter((path) => loadedPaths.has(path)))
-  selectedPaths.value = next
 }
 
 function formatSize(bytes: number): string {

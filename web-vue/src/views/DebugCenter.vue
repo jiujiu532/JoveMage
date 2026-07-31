@@ -165,11 +165,13 @@ import StateBadge from '@/components/ai/StateBadge.vue'
 import { debugApi } from '@/api/debug'
 import type { DebugChatCompletion, DebugChatMessage, DebugEditableFileTask, DebugEditableKind, DebugSearchResult } from '@/api/debug'
 import { getAuthToken } from '@/api/client'
+import { useClipboard } from '@/composables/useClipboard'
 import { useToast } from '@/composables/useToast'
 
 type DebugTab = 'search' | 'skills' | 'ppt' | 'psd' | 'chat'
 
 const toast = useToast()
+const { copy } = useClipboard()
 const activeTab = ref<DebugTab>('search')
 const tabOptions = [
   { label: '搜索', value: 'search' },
@@ -315,12 +317,7 @@ watch(activeTab, (tab) => {
 }, { immediate: true })
 
 async function copyText(value: string) {
-  try {
-    await navigator.clipboard.writeText(value)
-    toast.success('已复制')
-  } catch {
-    toast.error('复制失败')
-  }
+  await copy(value)
 }
 
 async function runSearch() {

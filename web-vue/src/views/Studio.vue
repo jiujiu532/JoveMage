@@ -167,6 +167,7 @@ import {
 } from '@/api/imageTasks'
 import { useModelCatalog } from '@/composables/useModelCatalog'
 import { useSettingsStore } from '@/stores/settings'
+import { useClipboard } from '@/composables/useClipboard'
 import { useToast } from '@/composables/useToast'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useMediaQuery } from '@/composables/useMediaQuery'
@@ -212,6 +213,7 @@ const StudioPromptPicker = defineAsyncComponent(() => import('@/components/studi
 
 const settingsStore = useSettingsStore()
 const toast = useToast()
+const { copy } = useClipboard()
 const confirmDialog = useConfirmDialog()
 const { catalog, chatModels, imageModels, loadModelCatalog } = useModelCatalog(() => settingsStore.settings)
 
@@ -1419,12 +1421,7 @@ function openImageCompare(before: StudioPreviewImage, after: StudioPreviewImage)
 
 async function copyText(value: string) {
   if (!value) return
-  try {
-    await navigator.clipboard.writeText(value)
-    toast.success('已复制')
-  } catch {
-    toast.error('复制失败')
-  }
+  await copy(value)
 }
 
 async function downloadPreviewImage() {

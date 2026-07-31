@@ -1,4 +1,5 @@
-﻿import apiClient from './client'
+﻿import { maskToken } from '@/lib/mask'
+import apiClient from './client'
 import type { ProxyGroup } from './proxy'
 
 export type AccountLane = 'fast' | 'thinking' | 'pro'
@@ -258,12 +259,6 @@ function toTimestampSeconds(value: unknown): number {
   if (!raw) return 0
   const parsed = Date.parse(raw.replace(' ', 'T'))
   return Number.isNaN(parsed) ? 0 : Math.floor(parsed / 1000)
-}
-
-function maskToken(token: string): string {
-  if (!token) return ''
-  if (token.length <= 12) return '********'
-  return `${token.slice(0, 6)}...${token.slice(-4)}`
 }
 
 function isMaskedToken(value: string): boolean {

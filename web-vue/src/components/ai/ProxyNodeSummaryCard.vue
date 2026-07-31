@@ -20,6 +20,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { ProxyNode } from '@/api/proxy'
+import { maskProxyUrl } from '@/lib/mask'
 
 const props = withDefaults(defineProps<{
   node: Pick<ProxyNode, 'id' | 'name' | 'url' | 'enabled' | 'image_concurrency_limit'>
@@ -31,13 +32,7 @@ const props = withDefaults(defineProps<{
 const isEnabled = computed(() => props.node.enabled !== false)
 const displayName = computed(() => props.node.name || props.node.id)
 const imageLimit = computed(() => Math.max(0, Number(props.node.image_concurrency_limit || 0)))
-const maskedUrl = computed(() => maskProxy(props.node.url))
-
-function maskProxy(value: unknown) {
-  const raw = String(value || '').trim()
-  if (!raw) return ''
-  return raw.replace(/:\/\/([^/@:]+):([^/@]+)@/, (_match, user) => `://${user}:***@`)
-}
+const maskedUrl = computed(() => maskProxyUrl(props.node.url))
 </script>
 
 <style scoped>

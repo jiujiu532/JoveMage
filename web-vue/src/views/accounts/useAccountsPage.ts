@@ -11,10 +11,12 @@ import type {
   AccountRefreshProgress,
   Account,
 } from '@/api/accounts'
+import { useClipboard } from '@/composables/useClipboard'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useMediaQuery } from '@/composables/useMediaQuery'
-import { MQ } from '@/lib/breakpoints'
+import { useSelectionSet } from '@/composables/useSelectionSet'
 import { useToast } from '@/composables/useToast'
+import { MQ } from '@/lib/breakpoints'
 import { saveBlob } from '@/lib/downloads'
 import {
   getNumberPreference,
@@ -216,7 +218,6 @@ export function useAccountsPage() {
   const accounts = ref<Account[]>([])
   const accountListTotal = ref(0)
   const accountAllTotal = ref(0)
-  const selectedIds = ref<string[]>([])
   const batchBusy = ref(false)
   const batchActionLabel = ref('')
   const viewMode = ref<AccountsViewMode>('compact')
@@ -255,6 +256,7 @@ export function useAccountsPage() {
   const refreshProgressKind = ref<BulkProgressKind>('refresh')
   const bulkStopRequested = ref(false)
   const toast = useToast()
+  const { copy } = useClipboard()
   const confirmDialog = useConfirmDialog()
   const form = reactive(createDefaultForm())
   const accountGroupForm = reactive(createDefaultAccountGroupForm())
@@ -307,9 +309,21 @@ export function useAccountsPage() {
     { label: '自定义代理', value: 'custom' },
   ] as const
 
-  const selectedSet = computed(() => new Set(selectedIds.value))
-
-  const selectedCount = computed(() => selectedIds.value.length)
+  // 可见可选：当前页非 demo 账号；对外仍暴露 selectedIds 等旧名
+  const {
+    selected: selectedIds,
+    selectedCount,
+    allVisibleSelected,
+    isSelected,
+    toggle: toggleSelect,
+    toggleAllVisible: toggleSelectAllVisible,
+    clear: clearSelection,
+    prune: pruneSelection,
+  } = useSelectionSet<string>({
+    getVisibleIds: () => pagedAccounts.value
+      .filter((item) => !item.is_demo)
+      .map((item) => item.id),
+  })
 
   const abnormalAccountIds = computed(() => (
     accounts.value
@@ -318,13 +332,6 @@ export function useAccountsPage() {
   ))
 
   const abnormalAccountCount = computed(() => abnormalAccountIds.value.length)
-  const allVisibleSelected = computed(() => {
-    const visible = pagedAccounts.value
-      .filter((item) => !item.is_demo)
-      .map((item) => item.id)
-    if (!visible.length) return false
-    return visible.every((id) => selectedSet.value.has(id))
-  })
 
   const refreshProgressPercent = computed(() => {
     const progress = refreshProgress.value
@@ -461,12 +468,10 @@ export function useAccountsPage() {
       return
     }
 
-    try {
-      await navigator.clipboard.writeText(token)
-      toast.success('Token 已复制')
-    } catch (error) {
-      setError('复制 Token 失败', error)
-    }
+    await copy(token, {
+      success: 'Token 已复制',
+      error: '复制 Token 失败',
+    })
   }
 
   function resetForm() {
@@ -612,8 +617,7 @@ export function useAccountsPage() {
           pro: item.model_ids?.pro || '',
         },
       }))
-      const existingIds = new Set(accounts.value.map((item) => item.id))
-      selectedIds.value = selectedIds.value.filter((id) => existingIds.has(id))
+      pruneSelection(accounts.value.map((item) => item.id))
     } catch (error) {
       setError('加载失败', error, !options?.silentErrorToast)
     } finally {
@@ -809,38 +813,6 @@ export function useAccountsPage() {
     const next = normalizeAccountsViewMode(mode)
     viewMode.value = next
     setStringPreference(preferenceKeys.accountsViewMode, next)
-  }
-
-  function isSelected(accountId: string) {
-    return selectedSet.value.has(accountId)
-  }
-
-  function toggleSelect(accountId: string, checked?: boolean) {
-    const next = new Set(selectedIds.value)
-    const shouldSelect = typeof checked === 'boolean' ? checked : !next.has(accountId)
-    if (shouldSelect) {
-      next.add(accountId)
-    } else {
-      next.delete(accountId)
-    }
-    selectedIds.value = Array.from(next)
-  }
-
-  function clearSelection() {
-    selectedIds.value = []
-  }
-
-  function toggleSelectAllVisible(checked?: boolean) {
-    const ids = pagedAccounts.value
-      .filter((item) => !item.is_demo)
-      .map((item) => item.id)
-    const next = new Set(selectedIds.value)
-    const shouldSelect = typeof checked === 'boolean' ? checked : !allVisibleSelected.value
-    for (const id of ids) {
-      if (shouldSelect) next.add(id)
-      else next.delete(id)
-    }
-    selectedIds.value = Array.from(next)
   }
 
   function setImportMode(mode: AccountImportMode) {
