@@ -186,8 +186,11 @@ def _lookup_pixels(
     return table.get(key)
 
 
-def size_from_ratio(ratio: str, output_resolution: str = "2k") -> dict[str, int]:
-    """nano 族：ratio + 分辨率 → {width, height}；未知回退 16:9 2k。"""
+def _size_from_ratio(ratio: str, output_resolution: str = "2k") -> dict[str, int]:
+    """nano 族：ratio + 分辨率 → {width, height}；未知回退 16:9 2k。
+
+    仅 catalog 内部/测试辅助；生产路径走 resolve_firefly_image_model。
+    """
     res = (output_resolution or "2k").lower()
     if res not in _RESOLUTIONS:
         res = "2k"
@@ -198,10 +201,13 @@ def size_from_ratio(ratio: str, output_resolution: str = "2k") -> dict[str, int]
     return {"width": int(pixels[0]), "height": int(pixels[1])}
 
 
-def gpt_image_pixels_from_ratio(
+def _gpt_image_pixels_from_ratio(
     ratio: str, output_resolution: str = "2k"
 ) -> dict[str, int] | None:
-    """gpt-image 族像素；不支持的比例返回 None。"""
+    """gpt-image 族像素；不支持的比例返回 None。
+
+    仅 catalog 内部/测试辅助；生产路径走 resolve_firefly_image_model。
+    """
     res = (output_resolution or "2k").lower()
     if res not in _RESOLUTIONS:
         res = "2k"
@@ -364,9 +370,14 @@ def resolve_firefly_image_model(
 ) -> dict[str, Any] | None:
     """解析完整 id 或族级 id(+size) → 模型信息 dict；未知返回 None。
 
-    返回字段：
-      family, resolution, ratio, width, height,
-      modelId, modelVersion, upstreamModel, full_id, aspect_ratio
+    返回字段（生产单套，无测试别名）：
+      family, resolution, ratio, aspect_ratio, width, height,
+      modelId, modelVersion, upstreamModel, full_id, pixel_table,
+      output_resolution, description
+
+    说明：modelId/modelVersion/upstreamModel 保留 Adobe camelCase，
+    因 payloads / orchestration 直接读取；payload 请求体再写 Adobe 字段。
+    其余语义字段用 snake_case（aspect_ratio / output_resolution / pixel_table）。
     """
     raw = str(model_id or "").strip()
     if not raw:
@@ -422,17 +433,12 @@ def resolve_firefly_image_model(
         "aspect_ratio": aspect,
         "width": width,
         "height": height,
+        # Adobe 字段名：payloads / orchestration 直接读
         "modelId": fam["modelId"],
         "modelVersion": fam["modelVersion"],
         "upstreamModel": fam["upstreamModel"],
-        # 测试兼容别名（snake_case）
-        "upstream_model_id": fam["modelId"],
-        "upstream_model_version": fam["modelVersion"],
-        "upstreamModelId": fam["modelId"],
-        "upstreamModelVersion": fam["modelVersion"],
         "full_id": full_id,
         "pixel_table": fam["pixel_table"],
         "output_resolution": resolution.upper(),
-        "outputResolution": resolution.upper(),
         "description": f"{fam['description']} ({resolution.upper()} {aspect})",
     }

@@ -33,12 +33,8 @@ def _as_size(model_info: dict[str, Any]) -> dict[str, int]:
 
 
 def _aspect_ratio(model_info: dict[str, Any]) -> str:
-    """payload 用冒号比例。"""
-    aspect = str(
-        model_info.get("aspect_ratio")
-        or model_info.get("aspectRatio")
-        or ""
-    ).strip()
+    """payload 用冒号比例（读 catalog snake_case）。"""
+    aspect = str(model_info.get("aspect_ratio") or "").strip()
     if aspect:
         return aspect.replace("x", ":").replace("×", ":")
     ratio = str(model_info.get("ratio") or "16x9").strip()
@@ -57,17 +53,16 @@ def _engine(model_info: dict[str, Any]) -> str:
 
 
 def _generate_audio(model_info: dict[str, Any]) -> bool:
+    """读 catalog snake_case generate_audio；缺省时 kling3 开音频。"""
     if "generate_audio" in model_info:
         return bool(model_info.get("generate_audio"))
-    if "generateAudio" in model_info:
-        return bool(model_info.get("generateAudio"))
     # kling3 默认开音频
     return _engine(model_info) == "kling3"
 
 
 def _reference_mode(model_info: dict[str, Any]) -> str | None:
-    mode = model_info.get("reference_mode") or model_info.get("referenceMode")
-    text = str(mode or "").strip().lower()
+    """读 catalog snake_case reference_mode。"""
+    text = str(model_info.get("reference_mode") or "").strip().lower()
     return text or None
 
 
@@ -171,10 +166,9 @@ def build_firefly_video_payload(
         else _generate_audio(model_info)
     )
     ref_mode = _reference_mode(model_info)
+    # catalog 生产键：upstreamModel（Adobe camelCase）
     upstream_model = str(
-        model_info.get("upstreamModel")
-        or model_info.get("upstream_model")
-        or "openai:firefly:colligo:sora2"
+        model_info.get("upstreamModel") or "openai:firefly:colligo:sora2"
     )
 
     # ------------------------------------------------------------------

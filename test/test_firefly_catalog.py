@@ -35,12 +35,16 @@ class ResolveFireflyImageModelTests(unittest.TestCase):
         # nano-banana 2K 16:9 像素表：2752x1536
         self.assertEqual(int(width), 2752)
         self.assertEqual(int(height), 1536)
+        # 生产键：modelId / modelVersion（Adobe camelCase）
         self.assertEqual(
-            str(_get(conf, "upstream_model_id", "upstreamModelId") or ""),
+            str(_get(conf, "modelId", "upstream_model_id", "upstreamModelId") or ""),
             "gemini-flash",
         )
         self.assertEqual(
-            str(_get(conf, "upstream_model_version", "upstreamModelVersion") or ""),
+            str(
+                _get(conf, "modelVersion", "upstream_model_version", "upstreamModelVersion")
+                or ""
+            ),
             "nano-banana-2",
         )
 
@@ -50,11 +54,14 @@ class ResolveFireflyImageModelTests(unittest.TestCase):
         self.assertIsNotNone(conf)
 
         self.assertEqual(
-            str(_get(conf, "upstream_model_id", "upstreamModelId") or ""),
+            str(_get(conf, "modelId", "upstream_model_id", "upstreamModelId") or ""),
             "gpt-image",
         )
         self.assertEqual(
-            str(_get(conf, "upstream_model_version", "upstreamModelVersion") or ""),
+            str(
+                _get(conf, "modelVersion", "upstream_model_version", "upstreamModelVersion")
+                or ""
+            ),
             "2",
         )
         self.assertEqual(
@@ -87,11 +94,14 @@ class ResolveFireflyImageModelTests(unittest.TestCase):
         self.assertEqual(resolution, "2K")
         self.assertEqual(ratio, "16:9")
         self.assertEqual(
-            str(_get(conf, "upstream_model_id", "upstreamModelId") or ""),
+            str(_get(conf, "modelId", "upstream_model_id", "upstreamModelId") or ""),
             "gemini-flash",
         )
         self.assertEqual(
-            str(_get(conf, "upstream_model_version", "upstreamModelVersion") or ""),
+            str(
+                _get(conf, "modelVersion", "upstream_model_version", "upstreamModelVersion")
+                or ""
+            ),
             "nano-banana-2",
         )
 

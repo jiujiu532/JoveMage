@@ -162,3 +162,103 @@ def make_jwt(claims: dict) -> str:
 # 兼容设计文档里的下划线命名
 _b64url = b64url
 _make_jwt = make_jwt
+
+
+def loose_model_info(
+    *,
+    aspect_ratio: str = "16:9",
+    output_resolution: str = "2K",
+    upstream_model_id: str = "",
+    upstream_model_version: str = "",
+) -> dict[str, Any]:
+    """测试用：散参数 → 对齐 resolve 生产键的 model_info。
+
+    生产已删除 _model_info_from_loose_params / candidates 壳；
+    测试通过本 helper + build_text2image_payload / build_image2image_payload。
+    """
+    from services.backends.firefly_catalog import (
+        SIZE_TABLE_GPT,
+        SIZE_TABLE_NANO,
+        ratio_to_suffix,
+    )
+
+    model_id = upstream_model_id or "gemini-flash"
+    model_version = upstream_model_version or "nano-banana-2"
+    is_gpt = model_id.lower() == "gpt-image"
+    table = SIZE_TABLE_GPT if is_gpt else SIZE_TABLE_NANO
+    res = str(output_resolution or "2k").strip().lower()
+    res = res if res in {"1k", "2k", "4k"} else "2k"
+    ratio_sfx = ratio_to_suffix(aspect_ratio)
+    pixels = table.get((res, ratio_sfx)) or table.get(("2k", "16x9")) or (2752, 1536)
+
+    return {
+        "modelId": model_id,
+        "modelVersion": model_version,
+        "width": int(pixels[0]),
+        "height": int(pixels[1]),
+        "pixel_table": "gpt" if is_gpt else "nano",
+        "output_resolution": res.upper(),
+        "aspect_ratio": str(aspect_ratio or "").replace("x", ":"),
+        "ratio": ratio_sfx,
+        "resolution": res,
+    }
+
+
+# 设计文档 / 旧测试命名
+_loose_model_info = loose_model_info
+
+
+def build_image_payload_from_loose(
+    *,
+    prompt: str,
+    aspect_ratio: str = "16:9",
+    output_resolution: str = "2K",
+    upstream_model_id: str = "",
+    upstream_model_version: str = "",
+    quality_level: str = "medium",
+    seeds: list[int] | None = None,
+    n: int = 1,
+) -> dict[str, Any]:
+    """测试用：散参数 → 文生图 payload（单 dict，非 list candidates）。"""
+    from services.backends.firefly_payloads import build_text2image_payload
+
+    model_info = loose_model_info(
+        aspect_ratio=aspect_ratio,
+        output_resolution=output_resolution,
+        upstream_model_id=upstream_model_id,
+        upstream_model_version=upstream_model_version,
+    )
+    return build_text2image_payload(
+        model_info, prompt, n=n, quality=quality_level, seeds=seeds
+    )
+
+
+def build_image2image_payload_from_loose(
+    *,
+    prompt: str,
+    aspect_ratio: str = "16:9",
+    output_resolution: str = "2K",
+    upstream_model_id: str = "",
+    upstream_model_version: str = "",
+    reference_image_ids: list[str] | None = None,
+    quality_level: str = "medium",
+    seeds: list[int] | None = None,
+    n: int = 1,
+) -> dict[str, Any]:
+    """测试用：散参数 → 图生图 payload（单 dict）。"""
+    from services.backends.firefly_payloads import build_image2image_payload
+
+    model_info = loose_model_info(
+        aspect_ratio=aspect_ratio,
+        output_resolution=output_resolution,
+        upstream_model_id=upstream_model_id,
+        upstream_model_version=upstream_model_version,
+    )
+    return build_image2image_payload(
+        model_info,
+        prompt,
+        list(reference_image_ids or []),
+        n=n,
+        quality=quality_level,
+        seeds=seeds,
+    )

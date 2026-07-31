@@ -7,6 +7,7 @@ os.environ.setdefault("CHATGPT2API_AUTH_KEY", "test-auth")
 
 from services.backends import firefly_payloads as payloads  # noqa: E402
 from test._firefly_helpers import (  # noqa: E402
+    build_image_payload_from_loose,
     first_callable,
     first_payload_candidate as _first_candidate,
 )
@@ -22,13 +23,8 @@ def _detail_level_fn():
 
 
 def _build_candidates(**kwargs):
-    fn = first_callable(
-        payloads,
-        "build_firefly_image_payload_candidates",
-        "build_image_payload_candidates",
-        "build_firefly_image_payload",
-    )
-    return fn(**kwargs)
+    """散参数 → payload；生产 candidates 壳已删，走 test helper。"""
+    return build_image_payload_from_loose(**kwargs)
 
 
 class GptImagePayloadTests(unittest.TestCase):
@@ -118,24 +114,6 @@ class QualityDetailLevelTests(unittest.TestCase):
         self.assertEqual(int(fn("low")), 1)
         self.assertEqual(int(fn("medium")), 3)
         self.assertEqual(int(fn("high")), 5)
-
-
-class SeedsPayloadTests(unittest.TestCase):
-    """seeds 传入时应写入 payload。"""
-
-    def test_seeds_are_set_when_provided(self) -> None:
-        """显式 seeds 应出现在请求体，不被随机值覆盖。"""
-        seeds = [424242]
-        result = _build_candidates(
-            prompt="seeded",
-            aspect_ratio="1:1",
-            output_resolution="2K",
-            upstream_model_id="gpt-image",
-            upstream_model_version="2",
-            seeds=seeds,
-        )
-        payload = _first_candidate(result)
-        self.assertEqual(payload.get("seeds"), seeds)
 
 
 if __name__ == "__main__":

@@ -30,41 +30,6 @@ def _is_gpt_family(model_info: dict[str, Any]) -> bool:
     return pixel_table == "gpt" or model_id == "gpt-image"
 
 
-def _model_info_from_loose_params(
-    *,
-    aspect_ratio: str,
-    output_resolution: str,
-    upstream_model_id: str,
-    upstream_model_version: str,
-) -> dict[str, Any]:
-    """测试兼容入口：散参数 → model_info。"""
-    from services.backends.firefly_catalog import (
-        SIZE_TABLE_GPT,
-        SIZE_TABLE_NANO,
-        ratio_to_suffix,
-    )
-
-    model_id = upstream_model_id or "gemini-flash"
-    model_version = upstream_model_version or "nano-banana-2"
-    is_gpt = model_id.lower() == "gpt-image"
-    table = SIZE_TABLE_GPT if is_gpt else SIZE_TABLE_NANO
-    res = output_resolution.lower() if output_resolution else "2k"
-    ratio_sfx = ratio_to_suffix(aspect_ratio)
-    pixels = table.get((res, ratio_sfx)) or table.get(("2k", "16x9")) or (2752, 1536)
-
-    return {
-        "modelId": model_id,
-        "modelVersion": model_version,
-        "width": pixels[0],
-        "height": pixels[1],
-        "pixel_table": "gpt" if is_gpt else "nano",
-        "output_resolution": res.upper(),
-        "aspect_ratio": str(aspect_ratio or "").replace("x", ":"),
-        "ratio": ratio_sfx,
-        "resolution": res,
-    }
-
-
 def build_text2image_payload(
     model_info: dict[str, Any],
     prompt: str,
@@ -76,6 +41,10 @@ def build_text2image_payload(
 
     gpt-image 族：modelSpecificPayload.size="WxH" + generationSettings.detailLevel
     nano-banana 族：modelSpecificPayload.aspectRatio + parameters.addWatermark=false
+
+    model_info 生产键：modelId / modelVersion / width / height /
+    pixel_table / output_resolution / aspect_ratio / ratio / resolution。
+    输出给 Adobe 的字段保持 camelCase。
     """
     if not isinstance(model_info, dict):
         raise ValueError("model_info is required")
@@ -200,57 +169,3 @@ def build_image2image_payload(
         {"id": image_id, "usage": usage} for image_id in image_ids
     ]
     return payload
-
-
-def build_firefly_image_payload_candidates(
-    *,
-    prompt: str,
-    aspect_ratio: str = "16:9",
-    output_resolution: str = "2K",
-    upstream_model_id: str = "",
-    upstream_model_version: str = "",
-    quality_level: str = "medium",
-    seeds: list[int] | None = None,
-    n: int = 1,
-) -> list[dict[str, Any]]:
-    """测试兼容别名：把散参数组装成 model_info dict 后调 build_text2image_payload。"""
-    model_info = _model_info_from_loose_params(
-        aspect_ratio=aspect_ratio,
-        output_resolution=output_resolution,
-        upstream_model_id=upstream_model_id,
-        upstream_model_version=upstream_model_version,
-    )
-    payload = build_text2image_payload(
-        model_info, prompt, n=n, quality=quality_level, seeds=seeds
-    )
-    return [payload]
-
-
-def build_firefly_image2image_payload_candidates(
-    *,
-    prompt: str,
-    aspect_ratio: str = "16:9",
-    output_resolution: str = "2K",
-    upstream_model_id: str = "",
-    upstream_model_version: str = "",
-    reference_image_ids: list[str] | None = None,
-    quality_level: str = "medium",
-    seeds: list[int] | None = None,
-    n: int = 1,
-) -> list[dict[str, Any]]:
-    """测试兼容别名：散参数 → build_image2image_payload。"""
-    model_info = _model_info_from_loose_params(
-        aspect_ratio=aspect_ratio,
-        output_resolution=output_resolution,
-        upstream_model_id=upstream_model_id,
-        upstream_model_version=upstream_model_version,
-    )
-    payload = build_image2image_payload(
-        model_info,
-        prompt,
-        list(reference_image_ids or []),
-        n=n,
-        quality=quality_level,
-        seeds=seeds,
-    )
-    return [payload]

@@ -211,26 +211,20 @@ def _register_video_catalog() -> None:
                         "resolution": resolution,
                         "width": int(width),
                         "height": int(height),
+                        # Adobe 字段名：video payloads 直接读 modelVersion/upstreamModel
                         "modelId": spec["modelId"],
                         "modelVersion": spec["modelVersion"],
                         "upstreamModel": spec["upstreamModel"],
-                        # 兼容别名
-                        "upstream_model_id": spec["modelId"],
-                        "upstream_model_version": spec["modelVersion"],
-                        "upstreamModelId": spec["modelId"],
-                        "upstreamModelVersion": spec["modelVersion"],
                         "generate_audio": bool(spec.get("generate_audio")),
-                        "generateAudio": bool(spec.get("generate_audio")),
                         "full_id": model_id,
                         "description": (
                             f"{spec['label']} "
                             f"({int(duration)}s {aspect} {resolution})"
                         ),
+                        "max_input_images": max_input_images(spec["family"]),
                     }
                     if spec.get("reference_mode"):
                         entry["reference_mode"] = spec["reference_mode"]
-                        entry["referenceMode"] = spec["reference_mode"]
-                    entry["max_input_images"] = max_input_images(spec["family"])
                     FIREFLY_VIDEO_MODEL_CATALOG[model_id] = entry
 
 
@@ -291,10 +285,14 @@ def resolve_firefly_video_model(
 ) -> dict[str, Any] | None:
     """解析完整或族级视频 model id → 模型信息；未知返回 None。
 
-    返回字段：
-      family, engine, duration, ratio, resolution, width, height,
-      modelId, modelVersion, upstreamModel, max_input_images
-      （以及 aspect_ratio / generate_audio / reference_mode / full_id 等）
+    返回字段（生产单套，无测试别名）：
+      family, engine, duration, ratio, aspect_ratio, resolution,
+      width, height, modelId, modelVersion, upstreamModel,
+      generate_audio, full_id, description, max_input_images
+      （可选 reference_mode）
+
+    说明：modelId/modelVersion/upstreamModel 保留 Adobe camelCase，
+    因 video payloads 直接读取；其余语义字段 snake_case。
 
     族级 id（如 firefly-sora2 / sora2）先映射到该族默认完整 id
     （最短 duration + 16x9 + 族默认 resolution），再走完整 id 逻辑；

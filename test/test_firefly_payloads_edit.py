@@ -5,129 +5,30 @@ import unittest
 
 os.environ.setdefault("CHATGPT2API_AUTH_KEY", "test-auth")
 
-from services.backends import firefly_payloads as payloads  # noqa: E402
 from test._firefly_helpers import (  # noqa: E402
-    first_callable,
+    build_image2image_payload_from_loose,
     first_payload_candidate as _first_candidate,
 )
 
 
 def _build_image2image(**kwargs):
-    """图生图 payload 构造：多名称 / 多签名兼容。
-
-    优先散参数 candidates（测试友好），再回落 model_info 版 build_image2image_payload。
-    """
+    """图生图 payload 构造：走 test helper（生产 candidates 壳已删）。"""
     image_ids = (
         kwargs.get("reference_image_ids")
         or kwargs.get("source_image_ids")
         or kwargs.get("image_ids")
         or []
     )
-    prompt = kwargs.get("prompt") or ""
-    aspect_ratio = kwargs.get("aspect_ratio") or "1:1"
-    output_resolution = kwargs.get("output_resolution") or "2K"
-    upstream_model_id = kwargs.get("upstream_model_id") or ""
-    upstream_model_version = kwargs.get("upstream_model_version") or ""
-    quality_level = kwargs.get("quality_level") or kwargs.get("quality") or "medium"
-    seeds = kwargs.get("seeds")
-    n = int(kwargs.get("n") or 1)
-
-    # 1) 散参数 candidates（与 Phase 1 文生图测试入口对称）
-    for name in (
-        "build_firefly_image2image_payload_candidates",
-        "build_image2image_payload_candidates",
-    ):
-        fn = first_callable(payloads, name, required=False)
-        if fn is None:
-            continue
-        for id_key in ("reference_image_ids", "source_image_ids", "image_ids"):
-            try:
-                return fn(
-                    prompt=prompt,
-                    aspect_ratio=aspect_ratio,
-                    output_resolution=output_resolution,
-                    upstream_model_id=upstream_model_id,
-                    upstream_model_version=upstream_model_version,
-                    quality_level=quality_level,
-                    seeds=seeds,
-                    n=n,
-                    **{id_key: list(image_ids)},
-                )
-            except TypeError:
-                continue
-
-    # 2) 直接 build_image2image_payload(model_info, prompt, reference_image_ids, ...)
-    build = first_callable(payloads, "build_image2image_payload", required=False)
-    if build is not None:
-        model_info_fn = first_callable(
-            payloads, "_model_info_from_loose_params", required=False
-        )
-        if model_info_fn is not None:
-            model_info = model_info_fn(
-                aspect_ratio=aspect_ratio,
-                output_resolution=output_resolution,
-                upstream_model_id=upstream_model_id,
-                upstream_model_version=upstream_model_version,
-            )
-        else:
-            # 最小 model_info（gpt / nano 足以触发 usage 分叉）
-            is_gpt = str(upstream_model_id).lower() == "gpt-image"
-            model_info = {
-                "modelId": upstream_model_id or "gemini-flash",
-                "modelVersion": upstream_model_version or "nano-banana-2",
-                "width": 2048 if is_gpt else 2752,
-                "height": 2048 if is_gpt else 1536,
-                "pixel_table": "gpt" if is_gpt else "nano",
-                "output_resolution": str(output_resolution).upper(),
-                "aspect_ratio": str(aspect_ratio).replace("x", ":"),
-            }
-        try:
-            return build(
-                model_info,
-                prompt,
-                list(image_ids),
-                n=n,
-                quality=quality_level,
-                seeds=seeds,
-            )
-        except TypeError:
-            return build(
-                model_info,
-                prompt,
-                reference_image_ids=list(image_ids),
-                n=n,
-                quality=quality_level,
-                seeds=seeds,
-            )
-
-    # 3) 文生图 candidates + source_image_ids 扩展
-    for name in (
-        "build_firefly_image_payload_candidates",
-        "build_image_payload_candidates",
-    ):
-        fn = first_callable(payloads, name, required=False)
-        if fn is None:
-            continue
-        for id_key in ("source_image_ids", "reference_image_ids", "image_ids"):
-            try:
-                return fn(
-                    prompt=prompt,
-                    aspect_ratio=aspect_ratio,
-                    output_resolution=output_resolution,
-                    upstream_model_id=upstream_model_id,
-                    upstream_model_version=upstream_model_version,
-                    quality_level=quality_level,
-                    seeds=seeds,
-                    n=n,
-                    **{id_key: list(image_ids)},
-                )
-            except TypeError:
-                continue
-
-    raise AssertionError(
-        "missing image2image payload builder "
-        "(expected build_firefly_image2image_payload_candidates / "
-        "build_image2image_payload)"
+    return build_image2image_payload_from_loose(
+        prompt=kwargs.get("prompt") or "",
+        aspect_ratio=kwargs.get("aspect_ratio") or "1:1",
+        output_resolution=kwargs.get("output_resolution") or "2K",
+        upstream_model_id=kwargs.get("upstream_model_id") or "",
+        upstream_model_version=kwargs.get("upstream_model_version") or "",
+        reference_image_ids=list(image_ids),
+        quality_level=kwargs.get("quality_level") or kwargs.get("quality") or "medium",
+        seeds=kwargs.get("seeds"),
+        n=int(kwargs.get("n") or 1),
     )
 
 
