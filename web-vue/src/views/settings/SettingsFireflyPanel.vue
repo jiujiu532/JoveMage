@@ -38,6 +38,7 @@
               <Input
                 :model-value="genTimeoutField.input.value"
                 type="number"
+                step="1"
                 block
                 placeholder="180"
                 @update:model-value="genTimeoutField.update"
@@ -51,6 +52,7 @@
               <Input
                 :model-value="pollIntervalField.input.value"
                 type="number"
+                step="1"
                 block
                 placeholder="3"
                 @update:model-value="pollIntervalField.update"
@@ -64,9 +66,24 @@
               <Input
                 :model-value="retryMaxField.input.value"
                 type="number"
+                step="1"
                 block
                 placeholder="3"
                 @update:model-value="retryMaxField.update"
+              />
+            </FormField>
+
+            <FormField label="Cookie 刷新间隔（小时）">
+              <template #label-extra>
+                <HelpTip text="单位小时，Firefly 账号 Cookie 主动刷新间隔，默认 15 小时。" />
+              </template>
+              <Input
+                :model-value="refreshIntervalField.input.value"
+                type="number"
+                step="1"
+                block
+                placeholder="15"
+                @update:model-value="refreshIntervalField.update"
               />
             </FormField>
 
@@ -174,7 +191,7 @@ const pollIntervalField = createNumberField(
   (value) => {
     props.settings.firefly_poll_interval_sec = value
   },
-  { min: 0.5, fallback: 3 },
+  { integer: true, min: 1, fallback: 3 },
 )
 
 const retryMaxField = createNumberField(
@@ -183,6 +200,14 @@ const retryMaxField = createNumberField(
     props.settings.firefly_retry_max_attempts = value
   },
   { integer: true, min: 1, fallback: 3 },
+)
+
+const refreshIntervalField = createNumberField(
+  () => Number(props.settings.firefly_refresh_interval_hours ?? 15),
+  (value) => {
+    props.settings.firefly_refresh_interval_hours = value
+  },
+  { integer: true, min: 1, fallback: 15 },
 )
 
 const defaultModelProxy = computed({

@@ -206,6 +206,7 @@ export interface Settings {
   firefly_gen_timeout_sec?: number
   firefly_poll_interval_sec?: number
   firefly_retry_max_attempts?: number
+  firefly_refresh_interval_hours?: number
   firefly_default_model?: string
   /** 域名黑名单自定义匹配规则；名单条目本身不走设置保存 */
   domain_ban_rules?: DomainBanRule[]
