@@ -1,7 +1,7 @@
-"""Adobe Firefly 3P 图像客户端：提交 → 轮询 → 下载。
+"""Adobe Firefly 3P 图像客户端：提交 → 轮询 → 下载；图生图参考图上传。
 
 移植自 adobe2api adobe_client.generate 与 GPT2Image-Pro firefly-direct/client.ts。
-Phase 1 仅文生图；upload_image 预留给 Phase 2 图生图。
+Phase 1 文生图；Phase 2 增加 upload_image（storage/image）。
 """
 
 from __future__ import annotations
@@ -33,6 +33,9 @@ DEFAULT_SEC_CH_UA = (
     '"Not:A-Brand";v="99", "Google Chrome";v="145", "Chromium";v="145"'
 )
 _IMPERSONATE = "chrome124"
+
+# 上传参考图允许的 Content-Type
+ALLOWED_UPLOAD_MIMES = frozenset({"image/png", "image/jpeg", "image/webp"})
 
 # 451 回落用标准 requests（可选依赖；没有则继续 curl_cffi）
 try:
@@ -394,26 +397,60 @@ def _download_bytes(url: str, *, proxy: str | None = None) -> bytes:
     return content
 
 
+def _normalize_upload_mime(mime: str) -> str:
+    """校验并规范化上传 mime；image/jpg → image/jpeg。"""
+    normalized = str(mime or "").strip().lower()
+    if normalized == "image/jpg":
+        normalized = "image/jpeg"
+    if normalized not in ALLOWED_UPLOAD_MIMES:
+        raise FireflyRequestError(
+            f"unsupported image mime: {mime or '(empty)'}; "
+            "allowed: image/png, image/jpeg, image/webp"
+        )
+    return normalized
+
+
 def upload_image(
     access_token: str,
     image_bytes: bytes,
-    mime_type: str = "image/jpeg",
+    mime: str = "image/png",
     *,
     proxy: str | None = None,
+    mime_type: str | None = None,
 ) -> str:
-    """上传图拿 Adobe image id（Phase 2 图生图前置；Phase 1 预留）。"""
+    """上传参考图到 Adobe 存储，返回 image_id。
+
+    POST https://firefly-3p.ff.adobe.io/v2/storage/image
+    body: raw bytes；Content-Type 为传入 mime。
+
+    错误分类同 generate_image：
+    - taste_exhausted → FireflyQuotaExhausted
+    - 401/403 → FireflyAuthError
+    - 429/451/5xx → FireflyUpstreamTemporary
+    - 其它 → FireflyRequestError
+
+    mime_type 为历史参数名，与 mime 二选一（mime_type 优先若显式传入）。
+    """
     token = str(access_token or "").strip()
     if not token:
         raise FireflyAuthError("empty access token", status_code=401)
     if not image_bytes:
         raise FireflyRequestError("image is empty")
 
-    headers = {
-        "authorization": f"Bearer {token}",
-        "x-api-key": DEFAULT_API_KEY,
-        "content-type": mime_type,
-        "accept": "application/json",
-    }
+    content_type = _normalize_upload_mime(
+        mime_type if mime_type is not None else mime
+    )
+
+    # headers 与 generate 一致：Bearer + x-api-key + 浏览器伪装
+    headers = browser_headers()
+    headers.update(
+        {
+            "Authorization": f"Bearer {token}",
+            "x-api-key": DEFAULT_API_KEY,
+            "content-type": content_type,
+            "accept": "application/json",
+        }
+    )
     proxies = _proxy_dict(proxy)
     try:
         resp = curl_requests.post(
@@ -425,6 +462,10 @@ def upload_image(
             proxies=proxies,
         )
     except Exception as exc:
+        logger.warning(
+            "firefly upload network error: %s",
+            redact_auth_diagnostic(str(exc))[:300],
+        )
         raise FireflyUpstreamTemporary(
             f"upload network error: {exc}",
             error_type="network",
@@ -436,6 +477,11 @@ def upload_image(
             body = resp.text or ""
         except Exception:
             body = ""
+        logger.warning(
+            "firefly upload failed status=%s body=%s",
+            resp.status_code,
+            redact_auth_diagnostic(body)[:300],
+        )
         _raise_for_http(resp.status_code, resp.headers, body, "upload image failed")
 
     try:

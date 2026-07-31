@@ -1,7 +1,7 @@
-"""Firefly 文生图请求体构造（Phase 1，单候选）。
+"""Firefly 文生图 / 图生图请求体构造（单候选）。
 
 移植自 adobe2api payloads.py / GPT2Image-Pro firefly-direct/payloads.ts。
-图生图（referenceBlobs）留 Phase 2，本模块只做 text2image。
+Phase 2：image2image + referenceBlobs（gpt=subject / nano=general）。
 """
 
 from __future__ import annotations
@@ -22,6 +22,47 @@ def gpt_image_detail_level_from_quality(quality: str | None) -> int:
 
 def _seed_now() -> int:
     return int(time.time()) % 999999
+
+
+def _is_gpt_family(model_info: dict[str, Any]) -> bool:
+    pixel_table = str(model_info.get("pixel_table") or "").strip().lower()
+    model_id = str(model_info.get("modelId") or "").strip().lower()
+    return pixel_table == "gpt" or model_id == "gpt-image"
+
+
+def _model_info_from_loose_params(
+    *,
+    aspect_ratio: str,
+    output_resolution: str,
+    upstream_model_id: str,
+    upstream_model_version: str,
+) -> dict[str, Any]:
+    """测试兼容入口：散参数 → model_info。"""
+    from services.backends.firefly_catalog import (
+        SIZE_TABLE_GPT,
+        SIZE_TABLE_NANO,
+        ratio_to_suffix,
+    )
+
+    model_id = upstream_model_id or "gemini-flash"
+    model_version = upstream_model_version or "nano-banana-2"
+    is_gpt = model_id.lower() == "gpt-image"
+    table = SIZE_TABLE_GPT if is_gpt else SIZE_TABLE_NANO
+    res = output_resolution.lower() if output_resolution else "2k"
+    ratio_sfx = ratio_to_suffix(aspect_ratio)
+    pixels = table.get((res, ratio_sfx)) or table.get(("2k", "16x9")) or (2752, 1536)
+
+    return {
+        "modelId": model_id,
+        "modelVersion": model_version,
+        "width": pixels[0],
+        "height": pixels[1],
+        "pixel_table": "gpt" if is_gpt else "nano",
+        "output_resolution": res.upper(),
+        "aspect_ratio": str(aspect_ratio or "").replace("x", ":"),
+        "ratio": ratio_sfx,
+        "resolution": res,
+    }
 
 
 def build_text2image_payload(
@@ -58,8 +99,7 @@ def build_text2image_payload(
     if width <= 0 or height <= 0:
         raise ValueError("model_info missing positive width/height")
 
-    pixel_table = str(model_info.get("pixel_table") or "").strip().lower()
-    is_gpt = pixel_table == "gpt" or model_id.lower() == "gpt-image"
+    is_gpt = _is_gpt_family(model_info)
 
     if is_gpt:
         detail = gpt_image_detail_level_from_quality(quality)
@@ -122,6 +162,46 @@ def build_text2image_payload(
     return payload
 
 
+def build_image2image_payload(
+    model_info: dict[str, Any],
+    prompt: str,
+    reference_image_ids: list[str],
+    n: int = 1,
+    quality: str = "medium",
+    seeds: list[int] | None = None,
+) -> dict[str, Any]:
+    """图生图请求体。关键区别：module=image2image + referenceBlobs。
+
+    **usage 两族相反（最易错）：**
+    - gpt-image 族：usage="subject"
+    - nano-banana 族：usage="general"
+    """
+    if not isinstance(reference_image_ids, (list, tuple)):
+        raise ValueError("reference_image_ids is required")
+    image_ids = [str(x).strip() for x in reference_image_ids if str(x or "").strip()]
+    if not image_ids:
+        raise ValueError("reference_image_ids is required")
+
+    payload = build_text2image_payload(
+        model_info,
+        prompt,
+        n=n,
+        quality=quality,
+        seeds=seeds,
+    )
+
+    # gpt → subject；nano → general（Adobe 两族不可共用）
+    usage = "subject" if _is_gpt_family(model_info) else "general"
+    payload["generationMetadata"] = {
+        "module": "image2image",
+        "submodule": "ff-image-generate",
+    }
+    payload["referenceBlobs"] = [
+        {"id": image_id, "usage": usage} for image_id in image_ids
+    ]
+    return payload
+
+
 def build_firefly_image_payload_candidates(
     *,
     prompt: str,
@@ -134,30 +214,43 @@ def build_firefly_image_payload_candidates(
     n: int = 1,
 ) -> list[dict[str, Any]]:
     """测试兼容别名：把散参数组装成 model_info dict 后调 build_text2image_payload。"""
-    from services.backends.firefly_catalog import (
-        SIZE_TABLE_GPT,
-        SIZE_TABLE_NANO,
-        ratio_to_suffix,
+    model_info = _model_info_from_loose_params(
+        aspect_ratio=aspect_ratio,
+        output_resolution=output_resolution,
+        upstream_model_id=upstream_model_id,
+        upstream_model_version=upstream_model_version,
     )
+    payload = build_text2image_payload(
+        model_info, prompt, n=n, quality=quality_level, seeds=seeds
+    )
+    return [payload]
 
-    model_id = upstream_model_id or "gemini-flash"
-    model_version = upstream_model_version or "nano-banana-2"
-    is_gpt = model_id.lower() == "gpt-image"
-    table = SIZE_TABLE_GPT if is_gpt else SIZE_TABLE_NANO
-    res = output_resolution.lower() if output_resolution else "2k"
-    ratio_sfx = ratio_to_suffix(aspect_ratio)
-    pixels = table.get((res, ratio_sfx)) or table.get(("2k", "16x9")) or (2752, 1536)
 
-    model_info: dict[str, Any] = {
-        "modelId": model_id,
-        "modelVersion": model_version,
-        "width": pixels[0],
-        "height": pixels[1],
-        "pixel_table": "gpt" if is_gpt else "nano",
-        "output_resolution": res.upper(),
-        "aspect_ratio": aspect_ratio.replace("x", ":"),
-        "ratio": ratio_sfx,
-        "resolution": res,
-    }
-    payload = build_text2image_payload(model_info, prompt, n=n, quality=quality_level, seeds=seeds)
+def build_firefly_image2image_payload_candidates(
+    *,
+    prompt: str,
+    aspect_ratio: str = "16:9",
+    output_resolution: str = "2K",
+    upstream_model_id: str = "",
+    upstream_model_version: str = "",
+    reference_image_ids: list[str] | None = None,
+    quality_level: str = "medium",
+    seeds: list[int] | None = None,
+    n: int = 1,
+) -> list[dict[str, Any]]:
+    """测试兼容别名：散参数 → build_image2image_payload。"""
+    model_info = _model_info_from_loose_params(
+        aspect_ratio=aspect_ratio,
+        output_resolution=output_resolution,
+        upstream_model_id=upstream_model_id,
+        upstream_model_version=upstream_model_version,
+    )
+    payload = build_image2image_payload(
+        model_info,
+        prompt,
+        list(reference_image_ids or []),
+        n=n,
+        quality=quality_level,
+        seeds=seeds,
+    )
     return [payload]
