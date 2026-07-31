@@ -321,12 +321,14 @@ import PanelHeader from '@/components/ai/PanelHeader.vue'
 import SelectionBulkBar from '@/components/ai/SelectionBulkBar.vue'
 import StateBlock from '@/components/ai/StateBlock.vue'
 import GroupedSelectMenu from '@/components/ui/GroupedSelectMenu.vue'
+import { useBrokenMedia } from '@/composables/useBrokenMedia'
 import { useClipboard } from '@/composables/useClipboard'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import { usePagedList } from '@/composables/usePagedList'
 import { useSelectionSet } from '@/composables/useSelectionSet'
 import { useToast } from '@/composables/useToast'
 import { downloadUrlAsFile, saveBlob } from '@/lib/downloads'
-import { getNumberPreference, preferenceKeys, setNumberPreference } from '@/lib/preferences'
+import { preferenceKeys } from '@/lib/preferences'
 
 const GalleryLightbox = defineAsyncComponent(() => import('@/components/ai/GalleryLightbox.vue'))
 const GalleryTagEditorModal = defineAsyncComponent(() => import('@/components/ai/GalleryTagEditorModal.vue'))
@@ -335,10 +337,10 @@ const OperationProgressModal = defineAsyncComponent(() => import('@/components/a
 const toast = useToast()
 const { copy } = useClipboard()
 const confirmDialog = useConfirmDialog()
+const { isBroken, markBroken: handleImageError, reset: resetBrokenImages } = useBrokenMedia()
 
 const files = ref<GalleryFile[]>([])
 const totalSize = ref(0)
-const totalItems = ref(0)
 const isLoading = ref(true)
 const hasLoadedOnce = ref(false)
 const galleryLoadError = ref('')
@@ -353,12 +355,20 @@ const searchQuery = ref('')
 const startDate = ref('')
 const endDate = ref('')
 const galleryPageSizeOptions = [24, 48, 96] as const
-const pageSize = ref(getNumberPreference(preferenceKeys.galleryPageSize, 24, { allowed: galleryPageSizeOptions }))
-const currentPage = ref(1)
-const pageCount = ref(1)
+const {
+  page: currentPage,
+  pageSize,
+  pageCount,
+  totalCount: totalItems,
+  resetToFirst,
+} = usePagedList({
+  defaultPageSize: 24,
+  pageSizeOptions: galleryPageSizeOptions,
+  preferenceKey: preferenceKeys.galleryPageSize,
+  mode: 'page',
+})
 const counts = ref({ all: 0, image: 0, video: 0, music: 0 })
 const allTags = ref<string[]>([])
-const brokenImagePaths = ref<Set<string>>(new Set())
 const storageStats = ref<ImageStorageStats | null>(null)
 const isStorageModalOpen = ref(false)
 const isStorageBusy = ref(false)
@@ -434,9 +444,8 @@ async function loadGallery() {
     totalItems.value = data.total
     counts.value = data.counts
     currentPage.value = data.page
-    pageCount.value = Math.max(1, data.page_count)
     allTags.value = tags || []
-    brokenImagePaths.value = new Set()
+    resetBrokenImages()
     pruneSelectionIds(files.value.map((file) => file.path))
     void galleryApi.getStorage()
       .then((storage) => {
@@ -586,7 +595,7 @@ async function handleCleanupToTarget(dryRun: boolean) {
 
 function resetAndLoad() {
   if (currentPage.value !== 1) {
-    currentPage.value = 1
+    resetToFirst()
     return
   }
   void loadGallery()
@@ -831,13 +840,7 @@ function storageLabel(file: GalleryFile): string {
 }
 
 function canPreviewFile(file: GalleryFile): boolean {
-  return file.size > 128 && !brokenImagePaths.value.has(file.path)
-}
-
-function handleImageError(event: Event, path: string) {
-  const img = event.target as HTMLImageElement
-  img.style.opacity = '0'
-  brokenImagePaths.value = new Set([...brokenImagePaths.value, path])
+  return file.size > 128 && !isBroken(file.path)
 }
 
 watch([tagFilter, startDate, endDate, pageSize], () => {
@@ -850,10 +853,6 @@ const galleryMetricItems = computed(() => [
   { label: '当前占用', value: formatSize(totalSize.value), icon: 'lucide:database', iconClass: '!text-[hsl(var(--tone-warning-strong))]', iconBgClass: '!bg-transparent' },
   { label: '磁盘剩余', value: storageStats.value ? formatSize(storageStats.value.disk_free_mb * 1024 * 1024) : '-', icon: 'lucide:hard-drive', iconClass: '!text-[var(--bauhaus-ink)]', iconBgClass: '!bg-transparent' },
 ])
-
-watch(pageSize, (value) => {
-  setNumberPreference(preferenceKeys.galleryPageSize, value)
-})
 
 watch(searchQuery, () => {
   if (searchTimer !== null) {

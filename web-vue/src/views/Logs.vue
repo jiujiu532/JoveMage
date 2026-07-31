@@ -492,7 +492,9 @@ import {
   isSystemLogSuccess as isSuccess,
   normalizeSystemLogRow,
 } from '@/api/logs'
+import { useBrokenMedia } from '@/composables/useBrokenMedia'
 import { useClipboard } from '@/composables/useClipboard'
+import { usePagedList } from '@/composables/usePagedList'
 import { useSelectionSet } from '@/composables/useSelectionSet'
 import { useToast } from '@/composables/useToast'
 import { downloadUrlAsFile, saveBlob } from '@/lib/downloads'
@@ -537,6 +539,7 @@ type AdvancedConditionGroup = {
 const toast = useToast()
 const { copy } = useClipboard()
 const route = useRoute()
+const { isBroken: isPreviewBroken, markBroken: markPreviewBroken } = useBrokenMedia()
 const apiBaseUrl = import.meta.env.VITE_API_URL || window.location.origin
 const activeLogView = ref<LogView>('system')
 const logs = ref<LogRow[]>([])
@@ -549,8 +552,6 @@ const selectedLog = ref<LogRow | null>(null)
 const selectedDetailPreview = ref<DetailPreviewImage | null>(null)
 const copiedLogPreviewKey = ref('')
 const autoRefreshEnabled = ref(false)
-const currentPage = ref(1)
-const brokenPreviewUrls = ref<Set<string>>(new Set())
 const deleteTarget = ref<LogRow | null>(null)
 const deleteSelectedOpen = ref(false)
 const isDeleting = ref(false)
@@ -567,6 +568,21 @@ const operationProgress = reactive({
 })
 const DEFAULT_SYSTEM_LOG_LIMIT = 20
 const DEFAULT_RUNTIME_LOG_LIMIT = 500
+const systemLogPageSizeOptions = [20, 50, 100, 200, 500]
+const {
+  page: currentPage,
+  pageSize,
+  offset: pageOffset,
+  totalCount,
+  resetToFirst,
+} = usePagedList({
+  defaultPageSize: DEFAULT_SYSTEM_LOG_LIMIT,
+  // 不传 pageSizeOptions：原偏好用 min/max，避免 allowed 白名单改变可读范围
+  preferenceKey: preferenceKeys.systemLogLimit,
+  mode: 'offset',
+  minPageSize: 1,
+  maxPageSize: 20000,
+})
 
 const logMeta = reactive<SystemLogsResponse>({
   items: [],
@@ -602,7 +618,12 @@ const filters = reactive({
   search: '',
   startDate: '',
   endDate: '',
-  limit: DEFAULT_SYSTEM_LOG_LIMIT,
+  get limit() {
+    return pageSize.value
+  },
+  set limit(value: number) {
+    pageSize.value = value
+  },
 })
 
 const runtimeFilters = reactive({
@@ -628,7 +649,6 @@ const typeOptions = [
   { label: '全部类型', value: '' },
 ]
 
-const systemLogPageSizeOptions = [20, 50, 100, 200, 500]
 const runtimeLimitOptions = [
   { label: '100', value: '100' },
   { label: '300', value: '300' },
@@ -660,16 +680,6 @@ const routeTargetLogId = ref('')
 function cleanString(value: unknown): string {
   if (value === undefined || value === null) return ''
   return String(value).trim()
-}
-
-function isPreviewBroken(url: string): boolean {
-  return brokenPreviewUrls.value.has(url)
-}
-
-function markPreviewBroken(event: Event, url: string) {
-  const img = event.target as HTMLImageElement
-  img.style.opacity = '0'
-  brokenPreviewUrls.value = new Set([...brokenPreviewUrls.value, url])
 }
 
 function filenameFromUrl(url: string): string {
@@ -1124,7 +1134,7 @@ function updateRuntimeLimit(value: string) {
 }
 
 function loadStoredLogLimits() {
-  filters.limit = getNumberPreference(preferenceKeys.systemLogLimit, DEFAULT_SYSTEM_LOG_LIMIT, { min: 1, max: 20000 })
+  // system limit 由 usePagedList 偏好键加载；runtime 仍独立
   runtimeFilters.limit = getNumberPreference(preferenceKeys.runtimeLogLimit, DEFAULT_RUNTIME_LOG_LIMIT, { min: 1, max: 2000 })
 }
 
@@ -1167,7 +1177,7 @@ function applyRouteQuery() {
     if (Number.isFinite(limit) && limit > 0) {
       filters.limit = Math.min(Math.max(Math.trunc(limit), 1), 20000)
     }
-    currentPage.value = 1
+    resetToFirst()
     clearLogSelection()
     if (routeTargetLogId.value) selectedLog.value = null
   } finally {
@@ -1185,12 +1195,12 @@ function resetFilters() {
   filters.search = ''
   filters.startDate = ''
   filters.endDate = ''
-  currentPage.value = 1
+  resetToFirst()
   clearLogSelection()
 }
 
 function touchSystemFilters() {
-  currentPage.value = 1
+  resetToFirst()
   clearLogSelection()
 }
 
@@ -1340,7 +1350,7 @@ async function fetchLogs() {
       conversation_id: filters.conversationId || undefined,
       search: filters.search || undefined,
       limit: filters.limit,
-      offset: (currentPage.value - 1) * filters.limit,
+      offset: pageOffset.value,
     })
     logs.value = response.items.map((item, index) => normalizeSystemLogRow(item, index, { apiBaseUrl }))
     pruneLogSelection(logs.value.map((item) => item.id))
@@ -1350,6 +1360,7 @@ async function fetchLogs() {
       if (targetLog) selectedLog.value = targetLog
     }
     logMeta.total = response.total
+    totalCount.value = response.total
     logMeta.limit = response.limit
     logMeta.offset = response.offset
     logMeta.has_more = response.has_more
@@ -1507,7 +1518,7 @@ function scheduleFilterFetch() {
       void fetchLogs()
       return
     }
-    currentPage.value = 1
+    resetToFirst()
   }, 250)
 }
 
@@ -1535,13 +1546,6 @@ watch(
 watch(currentPage, () => {
   if (activeLogView.value === 'system') void fetchLogs()
 })
-
-watch(
-  () => filters.limit,
-  (limit) => {
-    setNumberPreference(preferenceKeys.systemLogLimit, limit)
-  },
-)
 
 watch(
   () => runtimeFilters.limit,

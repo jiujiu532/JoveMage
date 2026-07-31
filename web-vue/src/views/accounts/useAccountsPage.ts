@@ -14,15 +14,14 @@ import type {
 import { useClipboard } from '@/composables/useClipboard'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useMediaQuery } from '@/composables/useMediaQuery'
+import { usePagedList } from '@/composables/usePagedList'
 import { useSelectionSet } from '@/composables/useSelectionSet'
 import { useToast } from '@/composables/useToast'
 import { MQ } from '@/lib/breakpoints'
 import { saveBlob } from '@/lib/downloads'
 import {
-  getNumberPreference,
   getStringPreference,
   preferenceKeys,
-  setNumberPreference,
   setStringPreference,
 } from '@/lib/preferences'
 import { statusCategory, type AccountStatusFilter } from './viewUtils'
@@ -212,11 +211,21 @@ export function useAccountsPage() {
   const keyword = ref('')
   const statusFilter = ref<AccountStatusFilter>('all')
   const groupFilter = ref('all')
-  const currentPage = ref(1)
-  const pageSize = ref(DEFAULT_PAGE_SIZE)
+  const {
+    page: currentPage,
+    pageSize,
+    pageCount,
+    totalCount: accountListTotal,
+    pageSizeOptions,
+    resetToFirst,
+  } = usePagedList({
+    defaultPageSize: DEFAULT_PAGE_SIZE,
+    pageSizeOptions: ACCOUNT_PAGE_SIZE_OPTIONS,
+    preferenceKey: preferenceKeys.accountsPageSize,
+    mode: 'page',
+  })
   const editingId = ref<string | null>(null)
   const accounts = ref<Account[]>([])
-  const accountListTotal = ref(0)
   const accountAllTotal = ref(0)
   const batchBusy = ref(false)
   const batchActionLabel = ref('')
@@ -272,8 +281,6 @@ export function useAccountsPage() {
   let hasActivatedOnce = false
 
   const filteredAccounts = computed(() => accounts.value)
-
-  const pageCount = computed(() => Math.max(1, Math.ceil(accountListTotal.value / pageSize.value)))
 
   const pagedAccounts = computed(() => accounts.value)
 
@@ -1596,7 +1603,7 @@ export function useAccountsPage() {
     () => {
       clearSelection()
       if (currentPage.value !== 1) {
-        currentPage.value = 1
+        resetToFirst()
         return
       }
       scheduleListReload(200)
@@ -1604,13 +1611,9 @@ export function useAccountsPage() {
   )
 
   watch(pageSize, () => {
-    setNumberPreference(preferenceKeys.accountsPageSize, pageSize.value)
     clearSelection()
-    if (currentPage.value !== 1) {
-      currentPage.value = 1
-      return
-    }
-    scheduleListReload()
+    // pageSize 偏好与回第一页由 usePagedList 处理；已在第 1 页时需主动重载
+    if (currentPage.value === 1) scheduleListReload()
   })
 
   watch(currentPage, () => {
@@ -1618,16 +1621,8 @@ export function useAccountsPage() {
     scheduleListReload()
   })
 
-  watch(pageCount, (count) => {
-    if (currentPage.value > count) currentPage.value = count
-    if (currentPage.value < 1) currentPage.value = 1
-  })
-
   onMounted(async () => {
     viewMode.value = normalizeAccountsViewMode(getStringPreference(preferenceKeys.accountsViewMode))
-    pageSize.value = getNumberPreference(preferenceKeys.accountsPageSize, DEFAULT_PAGE_SIZE, {
-      allowed: ACCOUNT_PAGE_SIZE_OPTIONS,
-    })
     await Promise.all([
       loadData({ silentErrorToast: true }),
       loadAccountGroups({ silentErrorToast: true }),
@@ -1665,7 +1660,7 @@ export function useAccountsPage() {
     allVisibleSelected,
     currentPage,
     pageSize,
-    pageSizeOptions: ACCOUNT_PAGE_SIZE_OPTIONS,
+    pageSizeOptions,
     pageCount,
     batchBusy,
     batchActionLabel,
