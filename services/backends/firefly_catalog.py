@@ -461,8 +461,14 @@ def resolve_firefly_image_model(
         "modelId": fam["modelId"],
         "modelVersion": fam["modelVersion"],
         "upstreamModel": fam["upstreamModel"],
+        # 测试兼容别名（snake_case）
+        "upstream_model_id": fam["modelId"],
+        "upstream_model_version": fam["modelVersion"],
+        "upstreamModelId": fam["modelId"],
+        "upstreamModelVersion": fam["modelVersion"],
         "full_id": full_id,
         "pixel_table": fam["pixel_table"],
         "output_resolution": resolution.upper(),
+        "outputResolution": resolution.upper(),
         "description": f"{fam['description']} ({resolution.upper()} {aspect})",
     }

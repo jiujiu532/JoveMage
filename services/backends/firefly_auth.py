@@ -155,7 +155,7 @@ def is_token_expired(token: str, *, skew_seconds: int = 300) -> bool:
     return exp - int(skew_seconds) <= int(time.time())
 
 
-def refresh_access_token(cookie: str, *, proxy: str | None = None) -> dict[str, Any]:
+def refresh_access_token(cookie: str, *, proxy: str | None = None, **_kwargs: Any) -> dict[str, Any]:
     """Cookie → IMS access_token。返回 {access_token, expires_in, raw}。"""
     cookie_str = normalize_cookie(cookie)
     if not cookie_str:

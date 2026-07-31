@@ -120,3 +120,44 @@ def build_text2image_payload(
         # Adobe 要 "16:9" 形式
         payload["modelSpecificPayload"]["aspectRatio"] = aspect.replace("x", ":")
     return payload
+
+
+def build_firefly_image_payload_candidates(
+    *,
+    prompt: str,
+    aspect_ratio: str = "16:9",
+    output_resolution: str = "2K",
+    upstream_model_id: str = "",
+    upstream_model_version: str = "",
+    quality_level: str = "medium",
+    seeds: list[int] | None = None,
+    n: int = 1,
+) -> list[dict[str, Any]]:
+    """测试兼容别名：把散参数组装成 model_info dict 后调 build_text2image_payload。"""
+    from services.backends.firefly_catalog import (
+        SIZE_TABLE_GPT,
+        SIZE_TABLE_NANO,
+        ratio_to_suffix,
+    )
+
+    model_id = upstream_model_id or "gemini-flash"
+    model_version = upstream_model_version or "nano-banana-2"
+    is_gpt = model_id.lower() == "gpt-image"
+    table = SIZE_TABLE_GPT if is_gpt else SIZE_TABLE_NANO
+    res = output_resolution.lower() if output_resolution else "2k"
+    ratio_sfx = ratio_to_suffix(aspect_ratio)
+    pixels = table.get((res, ratio_sfx)) or table.get(("2k", "16x9")) or (2752, 1536)
+
+    model_info: dict[str, Any] = {
+        "modelId": model_id,
+        "modelVersion": model_version,
+        "width": pixels[0],
+        "height": pixels[1],
+        "pixel_table": "gpt" if is_gpt else "nano",
+        "output_resolution": res.upper(),
+        "aspect_ratio": aspect_ratio.replace("x", ":"),
+        "ratio": ratio_sfx,
+        "resolution": res,
+    }
+    payload = build_text2image_payload(model_info, prompt, n=n, quality=quality_level, seeds=seeds)
+    return [payload]
