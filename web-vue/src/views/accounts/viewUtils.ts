@@ -1,6 +1,7 @@
 import type { Account, AccountLane } from '@/api/accounts'
 import { proxyReferenceLabel } from '@/api/proxy'
 import { maskToken } from '@/lib/mask'
+import { isFireflySourceType } from './accountPageShared'
 
 export type QuotaKey = 'fast' | 'thinking' | 'pro' | 'image' | 'music' | 'video'
 export type AccountStatusFilter = 'all' | 'normal' | 'limited' | 'abnormal' | 'disabled'
@@ -521,7 +522,7 @@ export function accountSecondaryText(item: Account): string {
 export function accountSourceText(item: Account): string {
   const type = cleanString(item.type) || 'free'
   const sourceType = cleanString(item.source_type) || 'web'
-  if (sourceType === 'firefly') return `Firefly / ${type || 'adobe'}`
+  if (isFireflySourceType(sourceType)) return `Firefly / ${type || 'adobe'}`
   return `${type} / ${sourceType}`
 }
 
@@ -530,7 +531,7 @@ export function accountProxyText(item: Account): string {
 }
 
 export function accountTokenPreview(item: Account): string {
-  const isFirefly = cleanString(item.source_type).toLowerCase() === 'firefly'
+  const isFirefly = isFireflySourceType(item.source_type)
   if (isFirefly) {
     const cookie = cleanString(item.cookie)
     if (cookie) return maskToken(cookie)

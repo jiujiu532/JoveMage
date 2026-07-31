@@ -1,4 +1,5 @@
 import apiClient from './client'
+import { isFireflyImageModel, isFireflyVideoModel, isImageModelId as isCatalogImageModelId } from '@/config/modelCatalog'
 
 export type ImageTaskStatus = 'queued' | 'running' | 'success' | 'error'
 export type ImageTaskMode = 'generate' | 'edit'
@@ -175,17 +176,15 @@ export const IMAGE_SIZE_OPTIONS: ImageSizeOption[] = IMAGE_SIZE_PRESETS
 export function supportsHighResolutionImageSizes(model: string, upscaleEnabled = false) {
   if (upscaleEnabled) return true
   const value = String(model || '').toLowerCase()
-  // Firefly 族尺寸由后端 catalog 解析 size 字符串（如 1024x1024 / 2K 像素），前端放行高分辨率预设
-  if (value.startsWith('firefly-') || value.startsWith('firefly_')) return true
+  // Firefly 图像族尺寸由后端 catalog 解析；视频模型不走图像高分辨率预设
+  if (isFireflyVideoModel(value)) return false
+  if (isFireflyImageModel(value) || value.startsWith('firefly-') || value.startsWith('firefly_')) return true
   return value.includes('codex-gpt-image-2') || value.includes('gpt-image-2-codex')
 }
 
-/** 识别图片模型 id（含 firefly-* 族） */
+/** 识别图片模型 id（含 firefly 图像族；排除视频） */
 export function isImageModelId(model: string): boolean {
-  const value = String(model || '').trim().toLowerCase()
-  if (!value) return false
-  if (value.startsWith('firefly-') || value.startsWith('firefly_')) return true
-  return value.includes('image') || value.includes('dall-e') || value.includes('gpt-image')
+  return isCatalogImageModelId(model)
 }
 
 export function resolveImageSizePresets(model: string, upscaleEnabled = false): ImageSizePreset[] {

@@ -1,5 +1,6 @@
 ﻿import apiClient from './client'
 import type { ProxyGroup } from './proxy'
+import { isFireflySourceType } from '@/views/accounts/accountPageShared'
 
 export type AccountLane = 'fast' | 'thinking' | 'pro'
 export type AccountBackendStatus = '正常' | '限流' | '异常' | '禁用'
@@ -505,7 +506,7 @@ function backendStatusForPayload(payload: Partial<Account>): AccountBackendStatu
 
 function accountFromPayload(payload: Partial<Account>) {
   const sourceType = cleanString(payload.source_type) || 'web'
-  const isFirefly = sourceType === 'firefly'
+  const isFirefly = isFireflySourceType(sourceType)
   const accessToken = payloadToken(payload)
   const cookie = payloadCookie(payload)
 
@@ -683,7 +684,7 @@ export const accountsApi = {
     const account = accountFromPayload(payload) as Record<string, unknown>
     const existingToken = payload.id ? accountTokenById.get(payload.id) : ''
     const nextAccessToken = cleanString(account.access_token)
-    const isFirefly = cleanString(account.source_type) === 'firefly'
+    const isFirefly = isFireflySourceType(account.source_type)
     if (existingToken && nextAccessToken && existingToken === nextAccessToken && !isFirefly) {
       const response = await apiClient.post<
         {

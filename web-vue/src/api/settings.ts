@@ -104,6 +104,10 @@ const SETTINGS_SAVE_KEYS = [
   'firefly_retry_max_attempts',
   'firefly_refresh_interval_hours',
   'firefly_default_model',
+  'firefly_video_enabled',
+  'firefly_video_poll_interval_sec',
+  'firefly_video_timeout_sec',
+  'firefly_video_default_model',
   'domain_ban_rules',
 ] as const
 
@@ -351,6 +355,10 @@ export function normalizeSettings(raw: RawSettings | null | undefined): Settings
     firefly_retry_max_attempts: numberValue(source.firefly_retry_max_attempts, 3, 1),
     firefly_refresh_interval_hours: Math.trunc(numberValue(source.firefly_refresh_interval_hours, 15, 1)),
     firefly_default_model: cleanString(source.firefly_default_model) || 'firefly-nano-banana-pro',
+    firefly_video_enabled: boolValue(source.firefly_video_enabled, false),
+    firefly_video_poll_interval_sec: Math.trunc(numberValue(source.firefly_video_poll_interval_sec, 3, 1)),
+    firefly_video_timeout_sec: numberValue(source.firefly_video_timeout_sec, 600, 1),
+    firefly_video_default_model: cleanString(source.firefly_video_default_model) || 'firefly-sora2-4s-16x9',
     domain_ban_rules: normalizeDomainBanRules(source.domain_ban_rules),
     proxy_profiles: Array.isArray(source.proxy_profiles) ? source.proxy_profiles : [],
   } as Settings
@@ -403,6 +411,10 @@ function toBackendSettings(settings: Settings): RawSettings {
     firefly_retry_max_attempts: numberValue(normalized.firefly_retry_max_attempts, 3, 1),
     firefly_refresh_interval_hours: Math.trunc(numberValue(normalized.firefly_refresh_interval_hours, 15, 1)),
     firefly_default_model: cleanString(normalized.firefly_default_model) || 'firefly-nano-banana-pro',
+    firefly_video_enabled: boolValue(normalized.firefly_video_enabled, false),
+    firefly_video_poll_interval_sec: Math.trunc(numberValue(normalized.firefly_video_poll_interval_sec, 3, 1)),
+    firefly_video_timeout_sec: numberValue(normalized.firefly_video_timeout_sec, 600, 1),
+    firefly_video_default_model: cleanString(normalized.firefly_video_default_model) || 'firefly-sora2-4s-16x9',
     domain_ban_rules: normalizeDomainBanRules(normalized.domain_ban_rules),
   }
   payload.image_retention_days = numberValue(

@@ -3,7 +3,7 @@
     <FormSection
       collapsible
       title="Adobe Firefly"
-      subtitle="独立于 ChatGPT 的代理 / Cloudflare 配置，仅影响 firefly-* 生图渠道。"
+      subtitle="独立于 ChatGPT 的代理 / Cloudflare 配置，仅影响 firefly-* 生图 / 视频渠道。"
     >
       <div class="settings-block-stack">
         <section class="settings-block">
@@ -105,6 +105,70 @@
           </div>
         </section>
 
+        <section class="settings-block">
+          <header class="settings-block__header">
+            <p class="settings-block__title">视频</p>
+            <p class="settings-block__desc">控制 Firefly 视频生成（sora2 / veo31 / kling）开关与等待节奏。</p>
+          </header>
+          <div class="settings-check-grid settings-check-grid--single mb-3">
+            <div class="settings-check-item">
+              <div class="settings-check-control">
+                <Checkbox
+                  :model-value="Boolean(settings.firefly_video_enabled)"
+                  @update:model-value="settings.firefly_video_enabled = Boolean($event)"
+                >
+                  启用 Firefly 视频生成
+                </Checkbox>
+              </div>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <FormField label="视频超时">
+              <template #label-extra>
+                <HelpTip text="单位秒，单次 Firefly 视频从提交到拿到结果的最长等待，默认 600 秒。" />
+              </template>
+              <Input
+                :model-value="videoTimeoutField.input.value"
+                type="number"
+                step="1"
+                block
+                placeholder="600"
+                @update:model-value="videoTimeoutField.update"
+              />
+            </FormField>
+
+            <FormField label="视频轮询间隔">
+              <template #label-extra>
+                <HelpTip text="单位秒，轮询 Adobe 视频任务状态的间隔，默认 3 秒。" />
+              </template>
+              <Input
+                :model-value="videoPollIntervalField.input.value"
+                type="number"
+                step="1"
+                block
+                placeholder="3"
+                @update:model-value="videoPollIntervalField.update"
+              />
+            </FormField>
+
+            <FormField label="默认视频模型">
+              <template #label-extra>
+                <HelpTip text="Firefly 视频默认模型 id，例如 firefly-sora2-4s-16x9。" />
+              </template>
+              <Input
+                v-model.trim="videoDefaultModelProxy"
+                block
+                root-class="font-mono"
+                placeholder="firefly-sora2-4s-16x9"
+                list="firefly-video-default-model-suggestions"
+              />
+              <datalist id="firefly-video-default-model-suggestions">
+                <option v-for="model in videoDefaultModelSuggestions" :key="model" :value="model" />
+              </datalist>
+            </FormField>
+          </div>
+        </section>
+
         <SurfaceBox tone="muted" density="compact" class="text-xs leading-5 text-muted-foreground">
           账号请在「账号管理」中以 source_type = firefly 录入 Express Cookie。本页配置不参与 ChatGPT 的 CF / FlareSolverr 清障链路。
         </SurfaceBox>
@@ -130,6 +194,13 @@ const defaultModelSuggestions = [
   'firefly-nano-banana2',
   'firefly-gpt-image-2',
   'firefly-gpt-image-1.5',
+]
+
+const videoDefaultModelSuggestions = [
+  'firefly-sora2-4s-16x9',
+  'firefly-sora2-pro-8s-16x9',
+  'firefly-veo31-8s-16x9-720p',
+  'firefly-kling-o3-5s-16x9',
 ]
 
 type NumberFieldBinding = {
@@ -214,6 +285,29 @@ const defaultModelProxy = computed({
   get: () => String(props.settings.firefly_default_model || ''),
   set: (value: string) => {
     props.settings.firefly_default_model = value.trim()
+  },
+})
+
+const videoTimeoutField = createNumberField(
+  () => Number(props.settings.firefly_video_timeout_sec ?? 600),
+  (value) => {
+    props.settings.firefly_video_timeout_sec = value
+  },
+  { integer: true, min: 1, fallback: 600 },
+)
+
+const videoPollIntervalField = createNumberField(
+  () => Number(props.settings.firefly_video_poll_interval_sec ?? 3),
+  (value) => {
+    props.settings.firefly_video_poll_interval_sec = value
+  },
+  { integer: true, min: 1, fallback: 3 },
+)
+
+const videoDefaultModelProxy = computed({
+  get: () => String(props.settings.firefly_video_default_model || ''),
+  set: (value: string) => {
+    props.settings.firefly_video_default_model = value.trim()
   },
 })
 </script>

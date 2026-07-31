@@ -19,6 +19,7 @@ import { statusCategory } from './viewUtils'
 import {
   createDefaultForm,
   createExportFilename,
+  isFireflySourceType,
   normalizeErrorMessage,
   normalizeQuota,
   uniqueTokens,
@@ -214,7 +215,7 @@ export function useAccountsPage() {
   const selectedProxyGroupId = ref('')
   const customProxyInput = ref('')
   const form = reactive(createDefaultForm())
-  const isFireflyForm = computed(() => String(form.source_type || '').trim().toLowerCase() === 'firefly')
+  const isFireflyForm = computed(() => isFireflySourceType(form.source_type))
   const accountStatusOptions = [
     { label: '正常', value: '正常' },
     { label: '限流', value: '限流' },
@@ -277,7 +278,7 @@ export function useAccountsPage() {
   })
 
   async function copyAccountToken(item: Account) {
-    const isFirefly = String(item.source_type || '').trim().toLowerCase() === 'firefly'
+    const isFirefly = isFireflySourceType(item.source_type)
     const token = isFirefly
       ? String(item.cookie || item.access_token || '').trim()
       : String(item.access_token || item.cookie || '').trim()
@@ -410,7 +411,7 @@ export function useAccountsPage() {
     form.id = item.id
     form.access_token = item.access_token || ''
     form.cookie = item.cookie || ''
-    form.type = item.type || (String(item.source_type || '').toLowerCase() === 'firefly' ? 'firefly' : 'free')
+    form.type = item.type || (isFireflySourceType(item.source_type) ? 'firefly' : 'free')
     form.source_type = item.source_type || 'web'
     form.group_id = item.group_id || ''
     form.proxy = item.proxy || ''
@@ -428,7 +429,7 @@ export function useAccountsPage() {
 
   async function saveAccount() {
     const sourceType = form.source_type.trim() || 'web'
-    const isFirefly = sourceType === 'firefly'
+    const isFirefly = isFireflySourceType(sourceType)
     if (isFirefly) {
       if (!form.cookie.trim() && !form.access_token.trim()) {
         toast.warning('请填写 Adobe Express Cookie（或已有 Access Token）')

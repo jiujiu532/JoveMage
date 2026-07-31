@@ -268,7 +268,7 @@ import {
   resolveImageSizePresets,
   type ImageSizeResolution,
 } from '@/api/imageTasks'
-import { isFireflyModelId } from '@/config/modelCatalog'
+import { isFireflyImageModel } from '@/config/modelCatalog'
 import type { StudioComposeMode, StudioImageForm, StudioReference } from './types'
 
 const props = defineProps<{
@@ -383,7 +383,8 @@ const imageModelSelectGroups = computed(() => {
   const firefly: Array<{ label: string; value: string }> = []
   for (const model of props.imageModelOptions) {
     const option = { label: model, value: model }
-    if (isFireflyModelId(model)) firefly.push(option)
+    // 图像路径只认 Firefly 图像族，避免 sora2/veo/kling 视频模型误入
+    if (isFireflyImageModel(model)) firefly.push(option)
     else chatgpt.push(option)
   }
   const groups: Array<{ label?: string; options: Array<{ label: string; value: string }> }> = []
