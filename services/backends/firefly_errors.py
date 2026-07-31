@@ -42,7 +42,7 @@ class FireflyUpstreamTemporary(FireflyError):
 
 
 class FireflyRequestError(FireflyError):
-    """其它 4xx / 业务失败 / 超时等，换号通常无用。"""
+    """其它 4xx / 业务失败等，换号通常无用。"""
 
 
 # 可重试的 HTTP 状态码（含 451 地区/合规）

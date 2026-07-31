@@ -36,6 +36,8 @@ _IMPERSONATE = "chrome124"
 
 # 上传参考图允许的 Content-Type
 ALLOWED_UPLOAD_MIMES = frozenset({"image/png", "image/jpeg", "image/webp"})
+# 上传体积上限，与 fetch_image_bytes 默认 10MB 对齐
+MAX_UPLOAD_IMAGE_BYTES = 10 * 1024 * 1024
 
 # 451 回落用标准 requests（可选依赖；没有则继续 curl_cffi）
 try:
@@ -254,7 +256,7 @@ def generate_image(
     错误分类：
     - taste_exhausted → FireflyQuotaExhausted
     - 401/403 → FireflyAuthError
-    - 429/451/5xx → FireflyUpstreamTemporary
+    - 429/451/5xx / 网络 / 超时 → FireflyUpstreamTemporary
     - 其它 → FireflyRequestError
     """
     token = str(access_token or "").strip()
@@ -350,7 +352,8 @@ def generate_image(
             raise FireflyRequestError(f"image job failed: {detail}")
 
         if time.time() >= deadline:
-            raise FireflyRequestError(
+            # 超时视为上游临时问题，允许换号重试
+            raise FireflyUpstreamTemporary(
                 "generation timed out",
                 error_type="timeout",
             )
@@ -436,6 +439,11 @@ def upload_image(
         raise FireflyAuthError("empty access token", status_code=401)
     if not image_bytes:
         raise FireflyRequestError("image is empty")
+    if len(image_bytes) > MAX_UPLOAD_IMAGE_BYTES:
+        raise FireflyRequestError(
+            f"image too large: {len(image_bytes)} bytes "
+            f"(max {MAX_UPLOAD_IMAGE_BYTES})"
+        )
 
     content_type = _normalize_upload_mime(
         mime_type if mime_type is not None else mime

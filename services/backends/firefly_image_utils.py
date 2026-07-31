@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import base64
 import binascii
+import ipaddress
+import socket
 from typing import Any
-from urllib.parse import unquote_to_bytes
+from urllib.parse import unquote_to_bytes, urlparse
 
 from curl_cffi import requests as curl_requests
 
@@ -33,6 +35,55 @@ def _proxy_dict(proxy: str | None) -> dict[str, str] | None:
     if not text:
         return None
     return {"http": text, "https": text}
+
+
+def _is_blocked_ip(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """内网 / 环回 / 链路本地 / 保留 / 组播 / 未指定 均拒绝。"""
+    return bool(
+        addr.is_private
+        or addr.is_loopback
+        or addr.is_link_local
+        or addr.is_reserved
+        or addr.is_multicast
+        or addr.is_unspecified
+    )
+
+
+def _is_private_host(host: str) -> bool:
+    """解析 host，判断是否指向内网/环回/链路本地/保留地址。
+
+    DNS 解析失败时按任务约定返回 False（不因解析失败误杀）；
+    字面 IP 与已解析地址仍严格屏蔽私网段。
+    """
+    text = str(host or "").strip().strip("[]")
+    if not text:
+        return True
+    if text.lower() in {"localhost"}:
+        return True
+    try:
+        # 字面 IP 优先
+        try:
+            return _is_blocked_ip(ipaddress.ip_address(text))
+        except ValueError:
+            pass
+        # 主机名 → IPv4（gethostbyname）；失败则视为非私网
+        addr = ipaddress.ip_address(socket.gethostbyname(text))
+        return _is_blocked_ip(addr)
+    except Exception:
+        return False
+
+
+def _assert_public_http_url(url: str) -> None:
+    """仅允许 http(s)，并拒绝内网/元数据等 SSRF 目标。"""
+    parsed = urlparse(str(url or "").strip())
+    scheme = (parsed.scheme or "").lower()
+    if scheme not in {"http", "https"}:
+        raise FireflyRequestError("only http(s) or data URL images are supported")
+    host = parsed.hostname
+    if not host:
+        raise FireflyRequestError("image url missing host")
+    if _is_private_host(host):
+        raise FireflyRequestError("image url host is not allowed")
 
 
 def normalize_image_mime(mime: str, *, default: str = "image/png") -> str:
@@ -196,6 +247,7 @@ def fetch_image_bytes(
     if raw.startswith("data:"):
         image_bytes, mime = _decode_data_url(raw)
     elif raw.lower().startswith(("http://", "https://")):
+        _assert_public_http_url(raw)
         image_bytes, mime = _download_http_image(
             raw, proxy=proxy, timeout=float(timeout)
         )
