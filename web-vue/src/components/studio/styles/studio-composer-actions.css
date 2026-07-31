@@ -1,0 +1,110 @@
+.chat-input-actions {
+  display: flex;
+  min-height: 2.25rem;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-top: 1px solid hsl(var(--border) / 0.52);
+  padding-top: 0.55rem;
+}
+
+.chat-input-action-row {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.chat-settings-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
+.chat-input-action {
+  display: inline-flex;
+  box-sizing: border-box;
+  min-height: 2rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3125rem;
+  overflow: hidden;
+  border: 2px solid transparent;
+  border-radius: var(--radius);
+  background: hsl(var(--secondary) / 0.58);
+  color: hsl(var(--muted-foreground));
+  padding: 0.3rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1rem;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.chat-input-action:hover,
+.chat-input-action:focus-visible,
+.chat-input-action-active {
+  border-color: var(--bauhaus-ink, hsl(var(--foreground) / 0.22));
+  background: hsl(var(--secondary));
+  color: hsl(var(--foreground));
+}
+
+.chat-input-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.chat-input-action .icon {
+  display: inline-flex;
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 1rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.chat-input-action .text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-select-wrap {
+  display: inline-flex;
+  min-width: 0;
+  max-width: min(18rem, 45vw);
+}
+
+.chat-select-wrap--effort {
+  min-width: 0;
+  max-width: 9rem;
+}
+
+.chat-input-status {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.6875rem;
+}
+
+.chat-input-submit-row {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.chat-input-count {
+  flex: 0 0 auto;
+  border: 2px solid var(--bauhaus-line-soft, hsl(var(--border) / 0.64));
+  border-radius: var(--radius);
+  background: hsl(var(--secondary) / 0.48);
+  padding: 0.125rem 0.5rem;
+  color: hsl(var(--muted-foreground));
+  font-weight: 650;
+}
+

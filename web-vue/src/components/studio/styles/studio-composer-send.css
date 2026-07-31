@@ -1,0 +1,79 @@
+.chat-input-send {
+  display: inline-flex;
+  width: 2.35rem;
+  height: 2.35rem;
+  flex: 0 0 2.35rem;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid transparent;
+  border-radius: var(--radius);
+  padding: 0;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 650;
+  line-height: 1;
+  outline: none;
+  box-shadow: none;
+  transition: transform 0.15s, border-color 0.15s, background 0.15s, color 0.15s, opacity 0.15s, box-shadow 0.15s;
+}
+
+.chat-input-send:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.chat-input-send-ready {
+  border-color: var(--bauhaus-ink);
+  background: var(--bauhaus-blue);
+  color: #ffffff;
+  box-shadow: var(--shadow-hard-sm);
+}
+
+.chat-input-send-idle {
+  border-color: var(--bauhaus-ink);
+  background: transparent;
+  color: var(--bauhaus-ink);
+  box-shadow: var(--shadow-hard-sm);
+}
+
+.chat-input-send-ready:hover,
+.chat-input-send-ready:focus-visible {
+  background: color-mix(in srgb, var(--bauhaus-blue) 88%, #ffffff);
+  border-color: var(--bauhaus-ink);
+  box-shadow: var(--shadow-hard);
+  transform: none;
+}
+
+.chat-input-send-idle:hover,
+.chat-input-send-idle:focus-visible {
+  background: color-mix(in srgb, var(--bauhaus-ink) 8%, transparent);
+  border-color: var(--bauhaus-ink);
+}
+
+.chat-input-send-danger {
+  border-color: var(--bauhaus-red, hsl(var(--tone-error-border) / 0.45));
+  background: hsl(var(--tone-error-bg));
+  color: hsl(var(--tone-error-strong));
+  box-shadow: var(--shadow-hard-sm);
+}
+
+html[data-theme='dark'] .chat-input-send-ready,
+html[data-theme='dark'] .chat-input-send-idle,
+html[data-theme='dark'] .chat-input-send-danger {
+  box-shadow: var(--shadow-hard-soft);
+}
+
+html[data-theme='dark'] .chat-input-send-ready:hover,
+html[data-theme='dark'] .chat-input-send-ready:focus-visible {
+  box-shadow: var(--shadow-hard-soft-lg, var(--shadow-hard-soft));
+}
+
+html[data-theme='dark'] .chat-input-send-idle {
+  color: var(--bauhaus-ink);
+  border-color: var(--bauhaus-ink);
+}
+
+.chat-input-send-label {
+  display: none;
+}
+

@@ -1,0 +1,48 @@
+.chat-input-panel-inner {
+  position: relative;
+  display: block;
+  min-height: 2.7rem;
+  cursor: text;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.chat-input-panel-inner:focus-within {
+  background: transparent;
+  box-shadow: none;
+}
+
+.chat-input-panel-inner-attach {
+  min-height: 7.5rem;
+}
+
+.chat-input {
+  width: 100%;
+  height: 2.7rem;
+  min-height: 2.7rem;
+  max-height: 8.5rem;
+  resize: none;
+  overflow-y: hidden;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  padding: 0.15rem 0.25rem 0.15rem 0.25rem;
+  color: hsl(var(--foreground));
+  font-family: inherit;
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  outline: none;
+}
+
+.chat-input-panel-inner-attach .chat-input {
+  min-height: 2.7rem;
+  padding-top: 0.15rem;
+  padding-bottom: 0.2rem;
+}
+
+.chat-input::placeholder {
+  color: hsl(var(--muted-foreground));
+}
+

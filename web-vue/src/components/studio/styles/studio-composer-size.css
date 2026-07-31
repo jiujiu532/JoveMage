@@ -1,0 +1,64 @@
+.studio-size-popover {
+  position: absolute;
+  z-index: 220;
+  right: 0;
+  bottom: calc(100% + 0.5rem);
+  width: min(28rem, calc(100vw - 3rem));
+  max-height: min(34rem, calc(100dvh - 8rem));
+  overflow-y: auto;
+  border: 2px solid var(--bauhaus-ink, hsl(var(--border)));
+  border-radius: var(--radius);
+  background: var(--bauhaus-card, hsl(var(--card)));
+  padding: 0.9rem;
+  box-shadow: var(--shadow-hard-lg);
+}
+
+html[data-theme='dark'] .studio-size-popover {
+  box-shadow: var(--shadow-hard-soft-lg, var(--shadow-hard-soft));
+}
+
+.studio-size-section + .studio-size-section {
+  margin-top: 0.85rem;
+}
+
+.studio-size-label {
+  margin-bottom: 0.45rem;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.studio-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.studio-choice-grid.is-ratio {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.studio-choice-button {
+  min-height: 2.125rem;
+  border: 2px solid var(--bauhaus-line-soft, hsl(var(--border)));
+  border-radius: var(--radius);
+  background: hsl(var(--background));
+  color: hsl(var(--muted-foreground));
+  font-size: 0.8125rem;
+  font-weight: 600;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.studio-choice-button:hover,
+.studio-choice-button.is-active {
+  border-color: var(--bauhaus-ink, hsl(var(--foreground) / 0.22));
+  background: var(--bauhaus-ink, hsl(var(--foreground)));
+  color: var(--bauhaus-paper, hsl(var(--background)));
+}
+
+.studio-size-current {
+  margin-top: 0.5rem;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.75rem;
+}
+
