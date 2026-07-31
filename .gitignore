@@ -66,6 +66,13 @@ tests/
 !/test/test_mail_remote_domains.py
 !/test/test_sse_framing_fixes.py
 !/test/test_conversation_fixes.py
+!/test/test_firefly_auth.py
+!/test/test_firefly_catalog.py
+!/test/test_firefly_errors.py
+!/test/test_firefly_payloads.py
+!/test/test_firefly_upload.py
+!/test/test_firefly_payloads_edit.py
+!/test/test_firefly_fetch_image.py
 docs/*.md
 scripts/test_*.py
 web/
