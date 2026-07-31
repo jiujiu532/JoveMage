@@ -140,11 +140,12 @@ import { Button } from 'nanocat-ui'
 import type { ActionMenuItem, UiSize } from 'nanocat-ui'
 import type { CSSProperties } from 'vue'
 import { MQ } from '@/lib/breakpoints'
+import { computeFloatingPosition, type FloatingPlacement } from '@/lib/floatingPlacement'
 
 type FloatingActionMenuItem = ActionMenuItem & {
   children?: FloatingActionMenuItem[]
 }
-type FloatingMenuPlacement = 'auto' | 'top' | 'bottom' | 'left' | 'right'
+type FloatingMenuPlacement = FloatingPlacement
 
 const props = withDefaults(defineProps<{
   label: string
@@ -294,52 +295,25 @@ function updatePosition() {
 
   const rect = root.getBoundingClientRect()
   const viewportWidth = window.innerWidth || document.documentElement.clientWidth
-  const viewportHeight = window.innerHeight || document.documentElement.clientHeight
   const margin = 8
-  const gap = 8
   const menuWidth = Math.max(
     menu.offsetWidth || 0,
     isNarrow.value ? Math.min(viewportWidth - margin * 2, 320) : rect.width,
   )
   const menuHeight = menu.offsetHeight || 0
-  const availableDown = Math.max(0, viewportHeight - margin - rect.bottom - gap)
-  const availableUp = Math.max(0, rect.top - margin - gap)
-  const availableRight = Math.max(0, viewportWidth - margin - rect.right - gap)
-  const availableLeft = Math.max(0, rect.left - margin - gap)
-  // 窄屏优先上下展开，避免侧开
-  const placement = isNarrow.value
-    ? (availableDown >= availableUp ? 'bottom' : 'top')
-    : resolvePlacement(props.placement, {
-      menuWidth,
-      menuHeight,
-      availableDown,
-      availableUp,
-      availableRight,
-      availableLeft,
-    })
-  const verticalLeft = props.align === 'left' ? rect.left : rect.right - menuWidth
-  const horizontalTop = rect.top
-  const maxLeft = Math.max(margin, viewportWidth - margin - menuWidth)
-  const maxTop = Math.max(margin, viewportHeight - margin - menuHeight)
-  let left = Math.min(maxLeft, Math.max(margin, verticalLeft))
-  let top = rect.bottom + gap
-  let maxHeight = availableDown
-
-  if (placement === 'top') {
-    top = rect.top - gap - menuHeight
-    maxHeight = availableUp
-  } else if (placement === 'left') {
-    left = rect.left - gap - menuWidth
-    top = horizontalTop
-    maxHeight = viewportHeight - margin * 2
-  } else if (placement === 'right') {
-    left = rect.right + gap
-    top = horizontalTop
-    maxHeight = viewportHeight - margin * 2
-  }
-
-  left = Math.min(maxLeft, Math.max(margin, left))
-  top = Math.min(maxTop, Math.max(margin, top))
+  // 窄屏优先上下展开，避免侧开；对齐/宽高仍由本组件控制
+  const { left, top, maxHeight } = computeFloatingPosition(
+    rect,
+    { width: menuWidth, height: menuHeight },
+    {
+      placement: props.placement,
+      align: props.align,
+      gap: 8,
+      margin,
+      verticalOnly: isNarrow.value,
+      viewportWidth,
+    },
+  )
 
   menuPosition.value = {
     left,
@@ -347,31 +321,12 @@ function updatePosition() {
     minWidth: isNarrow.value
       ? Math.min(viewportWidth - margin * 2, Math.max(rect.width, 200))
       : rect.width,
-    maxHeight: Math.max(96, Math.floor(maxHeight)),
+    maxHeight,
   }
 
   if (activeParentKey.value && !isNarrow.value) {
     void nextTick(updateSubmenuPosition)
   }
-}
-
-function resolvePlacement(
-  placement: FloatingMenuPlacement,
-  space: {
-    menuWidth: number
-    menuHeight: number
-    availableDown: number
-    availableUp: number
-    availableRight: number
-    availableLeft: number
-  },
-): Exclude<FloatingMenuPlacement, 'auto'> {
-  if (placement !== 'auto') return placement
-  if (space.menuHeight <= space.availableDown) return 'bottom'
-  if (space.menuHeight <= space.availableUp) return 'top'
-  if (space.menuWidth <= space.availableRight) return 'right'
-  if (space.menuWidth <= space.availableLeft) return 'left'
-  return space.availableDown >= space.availableUp ? 'bottom' : 'top'
 }
 
 function updateSubmenuPosition() {

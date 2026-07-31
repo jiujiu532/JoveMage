@@ -72,6 +72,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computeFloatingPosition, type FloatingPlacement } from '@/lib/floatingPlacement'
 
 type GroupedSelectOption = {
   label: string
@@ -83,7 +84,7 @@ type GroupedSelectGroup = {
   label?: string
   options: GroupedSelectOption[]
 }
-type FloatingMenuPlacement = 'auto' | 'top' | 'bottom' | 'left' | 'right' | 'up' | 'down'
+type FloatingMenuPlacement = FloatingPlacement
 
 const props = withDefaults(defineProps<{
   modelValue: string | string[]
@@ -165,74 +166,21 @@ function updateMenuPosition() {
   if (!trigger.value) return
 
   const rect = trigger.value.getBoundingClientRect()
-  const spacing = 8
-  const padding = 8
-
   const menuWidth = menu.value?.offsetWidth || rect.width
   const menuHeight = menu.value?.offsetHeight || 0
-  const viewportWidth = window.innerWidth || document.documentElement.clientWidth
-  const viewportHeight = window.innerHeight || document.documentElement.clientHeight
-  const availableDown = Math.max(0, viewportHeight - padding - rect.bottom - spacing)
-  const availableUp = Math.max(0, rect.top - padding - spacing)
-  const availableRight = Math.max(0, viewportWidth - padding - rect.right - spacing)
-  const availableLeft = Math.max(0, rect.left - padding - spacing)
-  const placement = resolvePlacement(props.placement, {
-    menuWidth,
-    menuHeight,
-    availableDown,
-    availableUp,
-    availableRight,
-    availableLeft,
-  })
-  const maxLeft = Math.max(padding, viewportWidth - menuWidth - padding)
-  const maxTop = Math.max(padding, viewportHeight - menuHeight - padding)
-  let left = rect.left
-  let top = rect.bottom + spacing
-  let maxHeight = availableDown
+  // up/down 归一化与贴边算法在 lib 内完成；width 仍跟 trigger
+  const { left, top, maxHeight } = computeFloatingPosition(
+    rect,
+    { width: menuWidth, height: menuHeight },
+    {
+      placement: props.placement,
+      align: 'left',
+      gap: 8,
+      margin: 8,
+    },
+  )
 
-  if (placement === 'top') {
-    top = rect.top - menuHeight - spacing
-    maxHeight = availableUp
-  } else if (placement === 'left') {
-    left = rect.left - menuWidth - spacing
-    top = rect.top
-    maxHeight = viewportHeight - padding * 2
-  } else if (placement === 'right') {
-    left = rect.right + spacing
-    top = rect.top
-    maxHeight = viewportHeight - padding * 2
-  }
-
-  left = Math.min(Math.max(left, padding), maxLeft)
-  top = Math.min(Math.max(top, padding), maxTop)
-
-  menuPosition.value = { top, left, width: rect.width, maxHeight: Math.max(96, Math.floor(maxHeight)) }
-}
-
-function normalizePlacement(placement: FloatingMenuPlacement) {
-  if (placement === 'up') return 'top'
-  if (placement === 'down') return 'bottom'
-  return placement
-}
-
-function resolvePlacement(
-  placement: FloatingMenuPlacement,
-  space: {
-    menuWidth: number
-    menuHeight: number
-    availableDown: number
-    availableUp: number
-    availableRight: number
-    availableLeft: number
-  },
-) {
-  const normalized = normalizePlacement(placement)
-  if (normalized !== 'auto') return normalized
-  if (space.menuHeight <= space.availableDown) return 'bottom'
-  if (space.menuHeight <= space.availableUp) return 'top'
-  if (space.menuWidth <= space.availableRight) return 'right'
-  if (space.menuWidth <= space.availableLeft) return 'left'
-  return space.availableDown >= space.availableUp ? 'bottom' : 'top'
+  menuPosition.value = { top, left, width: rect.width, maxHeight }
 }
 
 async function openMenu() {
