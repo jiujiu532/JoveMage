@@ -27,6 +27,7 @@ export function useAccountListQuery(options: UseAccountListQueryOptions) {
   const keyword = ref('')
   const statusFilter = ref<AccountStatusFilter>('all')
   const groupFilter = ref('all')
+  const sourceFilter = ref<'all' | 'chatgpt' | 'firefly'>('all')
   const {
     page: currentPage,
     pageSize,
@@ -57,6 +58,20 @@ export function useAccountListQuery(options: UseAccountListQueryOptions) {
     { label: '禁用', value: 'disabled' },
   ] as const
 
+  const sourceFilterOptions = [
+    { label: '全部渠道', value: 'all' },
+    { label: 'ChatGPT', value: 'chatgpt' },
+    { label: 'Firefly', value: 'firefly' },
+  ] as const
+
+  function matchesSourceFilter(item: Account, filter: string) {
+    const source = String(item.source_type || '').trim().toLowerCase()
+    if (filter === 'all' || !filter) return true
+    if (filter === 'firefly') return source === 'firefly'
+    if (filter === 'chatgpt') return source !== 'firefly'
+    return source === filter
+  }
+
   function accountListParams(): AccountListParams {
     return {
       page: currentPage.value,
@@ -64,6 +79,7 @@ export function useAccountListQuery(options: UseAccountListQueryOptions) {
       keyword: keyword.value.trim(),
       status: statusFilter.value,
       group_id: groupFilter.value,
+      source_type: sourceFilter.value,
     }
   }
 
@@ -82,9 +98,7 @@ export function useAccountListQuery(options: UseAccountListQueryOptions) {
     loading.value = true
     try {
       const res = await accountsApi.list(accountListParams())
-      accountListTotal.value = Number(res.total ?? res.accounts?.length ?? 0)
-      accountAllTotal.value = Number(res.all_total ?? 0)
-      accounts.value = (res.accounts || []).map((item) => ({
+      const rawAccounts = (res.accounts || []).map((item) => ({
         ...item,
         lanes: Array.isArray(item.lanes) ? item.lanes : [],
         model_ids: {
@@ -93,6 +107,13 @@ export function useAccountListQuery(options: UseAccountListQueryOptions) {
           pro: item.model_ids?.pro || '',
         },
       }))
+      // 后端若尚未识别 source_type 查询参数，前端再兜底过滤
+      const nextAccounts = rawAccounts.filter((item) => matchesSourceFilter(item, sourceFilter.value))
+      accountListTotal.value = sourceFilter.value === 'all'
+        ? Number(res.total ?? rawAccounts.length ?? 0)
+        : nextAccounts.length
+      accountAllTotal.value = Number(res.all_total ?? 0)
+      accounts.value = nextAccounts
       options.pruneSelection?.(accounts.value.map((item) => item.id))
     } catch (error) {
       setError('加载失败', error, !loadOptions?.silentErrorToast)
@@ -110,7 +131,9 @@ export function useAccountListQuery(options: UseAccountListQueryOptions) {
     keyword,
     statusFilter,
     groupFilter,
+    sourceFilter,
     statusFilterOptions,
+    sourceFilterOptions,
     accounts,
     accountListTotal,
     accountAllTotal,

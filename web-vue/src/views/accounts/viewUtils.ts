@@ -501,19 +501,27 @@ export function laneLineClass(lane: AccountLane, lanes: AccountLane[]): string {
 }
 
 export function accountPrimaryText(item: Account): string {
-  return cleanString(item.email) || cleanString(item.user_id) || cleanString(item.name) || item.id
+  return cleanString(item.display_name)
+    || cleanString(item.email)
+    || cleanString(item.user_id)
+    || cleanString(item.name)
+    || item.id
 }
 
 export function accountSecondaryText(item: Account): string {
-  const userId = cleanString(item.user_id)
+  const displayName = cleanString(item.display_name)
   const email = cleanString(item.email)
+  const userId = cleanString(item.user_id)
+  if (displayName && email) return email
   if (email && userId) return userId
+  if (email && email !== accountPrimaryText(item)) return email
   return item.id
 }
 
 export function accountSourceText(item: Account): string {
   const type = cleanString(item.type) || 'free'
   const sourceType = cleanString(item.source_type) || 'web'
+  if (sourceType === 'firefly') return `Firefly / ${type || 'adobe'}`
   return `${type} / ${sourceType}`
 }
 
@@ -522,16 +530,45 @@ export function accountProxyText(item: Account): string {
 }
 
 export function accountTokenPreview(item: Account): string {
-  const masked = cleanString(item.cookie)
-  if (masked) return masked
+  const isFirefly = cleanString(item.source_type).toLowerCase() === 'firefly'
+  if (isFirefly) {
+    const cookie = cleanString(item.cookie)
+    if (cookie) return maskToken(cookie)
+    const token = cleanString(item.access_token)
+    if (token) return maskToken(token)
+    return 'Cookie 缺失'
+  }
   const token = cleanString(item.access_token)
-  if (!token) return '缺失'
-  return maskToken(token)
+  if (token) return maskToken(token)
+  const cookie = cleanString(item.cookie)
+  if (cookie) return cookie.includes('...') ? cookie : maskToken(cookie)
+  return '缺失'
 }
 
 export function accountQuotaText(item: Account): string {
+  const credits = item.credits
+  if (credits && (credits.available != null || credits.total != null || credits.used != null)) {
+    const available = credits.available
+    const total = credits.total
+    const used = credits.used
+    if (available != null && total != null) return `${available}/${total}`
+    if (available != null && used != null) return `${available} 可用 / 已用 ${used}`
+    if (available != null) return String(available)
+    if (total != null && used != null) return `${Math.max(0, total - used)}/${total}`
+    if (total != null) return String(total)
+  }
   if (item.image_quota_unknown) return '未知'
   return `${Math.max(0, Number(item.quota || 0))}`
+}
+
+export function accountCreditsText(item: Account): string {
+  const credits = item.credits
+  if (!credits) return ''
+  const parts: string[] = []
+  if (credits.available != null) parts.push(`可用 ${credits.available}`)
+  if (credits.used != null) parts.push(`已用 ${credits.used}`)
+  if (credits.total != null) parts.push(`总计 ${credits.total}`)
+  return parts.join(' · ')
 }
 
 export function accountCreatedText(item: Account): string {

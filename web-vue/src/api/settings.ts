@@ -98,6 +98,11 @@ const SETTINGS_SAVE_KEYS = [
   'backup',
   'chat_completion_cache',
   'third_party_apps',
+  'firefly_enabled',
+  'firefly_gen_timeout_sec',
+  'firefly_poll_interval_sec',
+  'firefly_retry_max_attempts',
+  'firefly_default_model',
   'domain_ban_rules',
 ] as const
 
@@ -339,6 +344,11 @@ export function normalizeSettings(raw: RawSettings | null | undefined): Settings
         url: thirdPartyApps.infinite_canvas.url,
       },
     },
+    firefly_enabled: boolValue(source.firefly_enabled, false),
+    firefly_gen_timeout_sec: numberValue(source.firefly_gen_timeout_sec, 180, 1),
+    firefly_poll_interval_sec: numberValue(source.firefly_poll_interval_sec, 3, 0.5),
+    firefly_retry_max_attempts: numberValue(source.firefly_retry_max_attempts, 3, 1),
+    firefly_default_model: cleanString(source.firefly_default_model) || 'firefly-nano-banana-pro',
     domain_ban_rules: normalizeDomainBanRules(source.domain_ban_rules),
     proxy_profiles: Array.isArray(source.proxy_profiles) ? source.proxy_profiles : [],
   } as Settings
@@ -385,6 +395,11 @@ function toBackendSettings(settings: Settings): RawSettings {
     backup: cloneRawSettings(normalized.backup),
     chat_completion_cache: cloneRawSettings(normalized.chat_completion_cache),
     third_party_apps: cloneRawSettings(normalized.third_party_apps),
+    firefly_enabled: boolValue(normalized.firefly_enabled, false),
+    firefly_gen_timeout_sec: numberValue(normalized.firefly_gen_timeout_sec, 180, 1),
+    firefly_poll_interval_sec: numberValue(normalized.firefly_poll_interval_sec, 3, 0.5),
+    firefly_retry_max_attempts: numberValue(normalized.firefly_retry_max_attempts, 3, 1),
+    firefly_default_model: cleanString(normalized.firefly_default_model) || 'firefly-nano-banana-pro',
     domain_ban_rules: normalizeDomainBanRules(normalized.domain_ban_rules),
   }
   payload.image_retention_days = numberValue(

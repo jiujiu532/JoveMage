@@ -1,15 +1,22 @@
-﻿import { maskToken } from '@/lib/mask'
-import apiClient from './client'
+﻿import apiClient from './client'
 import type { ProxyGroup } from './proxy'
 
 export type AccountLane = 'fast' | 'thinking' | 'pro'
 export type AccountBackendStatus = '正常' | '限流' | '异常' | '禁用'
+
+export interface AccountCredits {
+  total?: number
+  used?: number
+  available?: number
+  available_until?: string
+}
 
 export interface Account {
   id: string
   access_token?: string
   backend_status?: string
   email?: string
+  display_name?: string
   user_id?: string
   type?: string
   source_type?: string
@@ -17,6 +24,8 @@ export interface Account {
   group_id?: string
   quota?: number
   image_quota_unknown?: boolean
+  /** Adobe Firefly credits（total/used/available），后端有则展示 */
+  credits?: AccountCredits
   name: string
   status?: 'ready' | 'incomplete' | 'disabled' | 'invalid' | 'auto_disabled' | 'cooling' | 'backoff'
   status_reason?: string
@@ -35,6 +44,7 @@ export interface Account {
     | 'upstream_error'
     | 'image_quota_exhausted'
     | ''
+  /** Firefly: Express 登录 cookie；ChatGPT 列表里可能为空（展示用 access_token 脱敏） */
   cookie: string
   snlm0e: string
   push_id: string
@@ -341,6 +351,23 @@ function backendStatusToFrontend(item: BackendAccount): Pick<
   }
 }
 
+function normalizeCredits(raw: unknown): AccountCredits | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const source = raw as Record<string, unknown>
+  const total = Number(source.total)
+  const used = Number(source.used)
+  const available = Number(source.available)
+  const availableUntil = cleanString(source.available_until || source.availableUntil)
+  const hasAny = [total, used, available].some((value) => Number.isFinite(value)) || Boolean(availableUntil)
+  if (!hasAny) return undefined
+  return {
+    total: Number.isFinite(total) ? Math.max(0, Math.trunc(total)) : undefined,
+    used: Number.isFinite(used) ? Math.max(0, Math.trunc(used)) : undefined,
+    available: Number.isFinite(available) ? Math.max(0, Math.trunc(available)) : undefined,
+    available_until: availableUntil || undefined,
+  }
+}
+
 function mapBackendAccount(item: BackendAccount, index: number, usedIds: Set<string>): Account {
   const accessToken = cleanString(item.access_token || item.accessToken)
   const id = displayIdForAccount(item, index, usedIds)
@@ -357,13 +384,17 @@ function mapBackendAccount(item: BackendAccount, index: number, usedIds: Set<str
   const type = cleanString(item.type || item.plan_type || 'free')
   const sourceType = cleanString(item.source_type || 'web')
   const email = cleanString(item.email)
-  const userId = cleanString(item.user_id)
+  const displayName = cleanString(item.display_name || item.displayName)
+  const userId = cleanString(item.user_id || item.account_id)
+  const realCookie = cleanString(item.cookie)
+  const credits = normalizeCredits(item.credits || item.credits_balance)
 
   return {
     id,
     access_token: accessToken,
     backend_status: rawStatus || STATUS_NORMAL,
     email,
+    display_name: displayName,
     user_id: userId,
     type,
     source_type: sourceType,
@@ -371,8 +402,10 @@ function mapBackendAccount(item: BackendAccount, index: number, usedIds: Set<str
     group_id: cleanString(item.group_id),
     quota,
     image_quota_unknown: imageQuotaUnknown,
-    name: email || `${type} / ${sourceType}`,
-    cookie: maskToken(accessToken),
+    credits,
+    name: displayName || email || `${type} / ${sourceType}`,
+    // Firefly 保留真实 cookie；ChatGPT 不把脱敏 token 塞进 cookie 字段，展示走 access_token
+    cookie: realCookie,
     snlm0e: '',
     push_id: '',
     enabled: status.enabled,
@@ -423,6 +456,8 @@ export type AccountListParams = {
   keyword?: string
   status?: 'all' | 'normal' | 'limited' | 'abnormal' | 'disabled'
   group_id?: string
+  /** 渠道筛选：all | chatgpt | firefly；后端未识别时前端会再过滤一次 */
+  source_type?: 'all' | 'chatgpt' | 'firefly' | string
 }
 
 function mapAccountsResponse(response: BackendAccountsResponse): AccountsResponse {
@@ -445,9 +480,15 @@ function resolveToken(accountIdOrToken: string): string {
 
 function payloadToken(payload: Partial<Account>): string {
   const mappedToken = payload.id ? accountTokenById.get(payload.id) : ''
-  const candidate = cleanString(payload.access_token || payload.cookie || mappedToken)
+  const candidate = cleanString(payload.access_token || mappedToken)
   if (candidate && !isMaskedToken(candidate)) return candidate
   return mappedToken || ''
+}
+
+function payloadCookie(payload: Partial<Account>): string {
+  const candidate = cleanString(payload.cookie)
+  if (!candidate || isMaskedToken(candidate)) return ''
+  return candidate
 }
 
 function backendStatusForEnabled(enabled: boolean | undefined): AccountBackendStatus {
@@ -463,14 +504,34 @@ function backendStatusForPayload(payload: Partial<Account>): AccountBackendStatu
 }
 
 function accountFromPayload(payload: Partial<Account>) {
+  const sourceType = cleanString(payload.source_type) || 'web'
+  const isFirefly = sourceType === 'firefly'
   const accessToken = payloadToken(payload)
+  const cookie = payloadCookie(payload)
+
+  if (isFirefly) {
+    if (!cookie && !accessToken) {
+      throw new Error('请填写 Adobe Express Cookie（或已有 access token）')
+    }
+    return {
+      ...(accessToken ? { access_token: accessToken } : {}),
+      ...(cookie ? { cookie } : {}),
+      type: cleanString(payload.type) || 'firefly',
+      source_type: 'firefly',
+      proxy: payload.proxy,
+      group_id: payload.group_id,
+      quota: payload.quota,
+      status: backendStatusForPayload(payload),
+    }
+  }
+
   if (!accessToken) {
     throw new Error('请填写 access token')
   }
   return {
     access_token: accessToken,
     type: payload.type,
-    source_type: payload.source_type,
+    source_type: sourceType,
     proxy: payload.proxy,
     group_id: payload.group_id,
     quota: payload.quota,
@@ -619,9 +680,11 @@ export const accountsApi = {
     ),
 
   upsert: async (payload: Partial<Account>) => {
-    const account = accountFromPayload(payload)
+    const account = accountFromPayload(payload) as Record<string, unknown>
     const existingToken = payload.id ? accountTokenById.get(payload.id) : ''
-    if (existingToken && existingToken === account.access_token) {
+    const nextAccessToken = cleanString(account.access_token)
+    const isFirefly = cleanString(account.source_type) === 'firefly'
+    if (existingToken && nextAccessToken && existingToken === nextAccessToken && !isFirefly) {
       const response = await apiClient.post<
         {
           access_token: string
@@ -631,16 +694,48 @@ export const accountsApi = {
           quota?: number
           proxy?: string
           group_id?: string
+          cookie?: string
         },
         BackendAccountMutationResponse
       >('/api/accounts/update', {
         access_token: existingToken,
-        type: account.type,
-        source_type: account.source_type,
-        status: account.status,
-        quota: account.quota,
-        proxy: account.proxy,
-        group_id: account.group_id,
+        type: account.type as string | undefined,
+        source_type: account.source_type as string | undefined,
+        status: account.status as string | undefined,
+        quota: account.quota as number | undefined,
+        proxy: account.proxy as string | undefined,
+        group_id: account.group_id as string | undefined,
+        ...(account.cookie ? { cookie: cleanString(account.cookie) } : {}),
+      })
+      return {
+        status: 'ok',
+        account: response.item ? mapBackendAccount(response.item, 0, new Set()) : undefined,
+      }
+    }
+
+    // Firefly 更新：优先走 update（有 access_token 时），否则走新增导入
+    if (existingToken && isFirefly) {
+      const response = await apiClient.post<
+        {
+          access_token: string
+          type?: string
+          source_type?: string
+          status?: string
+          quota?: number
+          proxy?: string
+          group_id?: string
+          cookie?: string
+        },
+        BackendAccountMutationResponse
+      >('/api/accounts/update', {
+        access_token: existingToken,
+        type: account.type as string | undefined,
+        source_type: 'firefly',
+        status: account.status as string | undefined,
+        quota: account.quota as number | undefined,
+        proxy: account.proxy as string | undefined,
+        group_id: account.group_id as string | undefined,
+        ...(account.cookie ? { cookie: cleanString(account.cookie) } : {}),
       })
       return {
         status: 'ok',
@@ -656,7 +751,11 @@ export const accountsApi = {
       accounts: [account],
     })
     const mapped = mapAccountsResponse({ items: response.items || [] })
-    return { status: 'ok', account: mapped.accounts.find((item) => item.access_token === account.access_token) || mapped.accounts[0] }
+    const matched = mapped.accounts.find((item) => (
+      (nextAccessToken && item.access_token === nextAccessToken)
+      || (cleanString(account.cookie) && item.cookie === cleanString(account.cookie))
+    ))
+    return { status: 'ok', account: matched || mapped.accounts[0] }
   },
 
   importAccounts: async (

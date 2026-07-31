@@ -16,6 +16,7 @@ export type AccountGroupForm = {
 export type AccountForm = {
   id: string
   access_token: string
+  cookie: string
   type: string
   source_type: string
   group_id: string
@@ -29,10 +30,25 @@ export const DEFAULT_PAGE_SIZE = 20
 export const REFRESH_BATCH_SIZE = 20
 export const IMPORT_BATCH_SIZE = 20
 
+export const ACCOUNT_SOURCE_FILTER_OPTIONS = [
+  { label: '全部渠道', value: 'all' },
+  { label: 'ChatGPT', value: 'chatgpt' },
+  { label: 'Firefly', value: 'firefly' },
+] as const
+
+export const ACCOUNT_SOURCE_TYPE_OPTIONS = [
+  { label: 'ChatGPT · web', value: 'web' },
+  { label: 'ChatGPT · oauth_login', value: 'oauth_login' },
+  { label: 'ChatGPT · codex', value: 'codex' },
+  { label: 'ChatGPT · manual', value: 'manual' },
+  { label: 'Adobe Firefly', value: 'firefly' },
+] as const
+
 export function createDefaultForm(): AccountForm {
   return {
     id: '',
     access_token: '',
+    cookie: '',
     type: 'free',
     source_type: 'web',
     group_id: '',
@@ -40,6 +56,10 @@ export function createDefaultForm(): AccountForm {
     quota: '',
     status: '正常',
   }
+}
+
+export function isFireflySourceType(value: unknown): boolean {
+  return String(value || '').trim().toLowerCase() === 'firefly'
 }
 
 export function createDefaultAccountGroupForm(): AccountGroupForm {

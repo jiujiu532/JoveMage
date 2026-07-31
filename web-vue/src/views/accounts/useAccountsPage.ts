@@ -66,7 +66,9 @@ export function useAccountsPage() {
     keyword,
     statusFilter,
     groupFilter,
+    sourceFilter,
     statusFilterOptions,
+    sourceFilterOptions: sourceFilterOptionList,
     accounts,
     accountListTotal,
     accountAllTotal,
@@ -212,12 +214,21 @@ export function useAccountsPage() {
   const selectedProxyGroupId = ref('')
   const customProxyInput = ref('')
   const form = reactive(createDefaultForm())
+  const isFireflyForm = computed(() => String(form.source_type || '').trim().toLowerCase() === 'firefly')
   const accountStatusOptions = [
     { label: '正常', value: '正常' },
     { label: '限流', value: '限流' },
     { label: '异常', value: '异常' },
     { label: '禁用', value: '禁用' },
   ] as const
+  const accountSourceTypeOptions = [
+    { label: 'ChatGPT · web', value: 'web' },
+    { label: 'ChatGPT · oauth_login', value: 'oauth_login' },
+    { label: 'ChatGPT · codex', value: 'codex' },
+    { label: 'ChatGPT · manual', value: 'manual' },
+    { label: 'Adobe Firefly', value: 'firefly' },
+  ] as const
+  const sourceFilterOptions = sourceFilterOptionList
 
   let hasActivatedOnce = false
 
@@ -266,15 +277,18 @@ export function useAccountsPage() {
   })
 
   async function copyAccountToken(item: Account) {
-    const token = String(item.access_token || item.cookie || '').trim()
+    const isFirefly = String(item.source_type || '').trim().toLowerCase() === 'firefly'
+    const token = isFirefly
+      ? String(item.cookie || item.access_token || '').trim()
+      : String(item.access_token || item.cookie || '').trim()
     if (!token) {
-      toast.warning('当前账号没有可复制的 Token')
+      toast.warning(isFirefly ? '当前账号没有可复制的 Cookie / Token' : '当前账号没有可复制的 Token')
       return
     }
 
     await copy(token, {
-      success: 'Token 已复制',
-      error: '复制 Token 失败',
+      success: isFirefly ? '凭证已复制' : 'Token 已复制',
+      error: isFirefly ? '复制凭证失败' : '复制 Token 失败',
     })
   }
 
@@ -395,7 +409,8 @@ export function useAccountsPage() {
     editingId.value = item.id
     form.id = item.id
     form.access_token = item.access_token || ''
-    form.type = item.type || 'free'
+    form.cookie = item.cookie || ''
+    form.type = item.type || (String(item.source_type || '').toLowerCase() === 'firefly' ? 'firefly' : 'free')
     form.source_type = item.source_type || 'web'
     form.group_id = item.group_id || ''
     form.proxy = item.proxy || ''
@@ -412,7 +427,14 @@ export function useAccountsPage() {
   }
 
   async function saveAccount() {
-    if (!form.access_token.trim()) {
+    const sourceType = form.source_type.trim() || 'web'
+    const isFirefly = sourceType === 'firefly'
+    if (isFirefly) {
+      if (!form.cookie.trim() && !form.access_token.trim()) {
+        toast.warning('请填写 Adobe Express Cookie（或已有 Access Token）')
+        return
+      }
+    } else if (!form.access_token.trim()) {
       toast.warning('Access token 不能为空')
       return
     }
@@ -425,9 +447,10 @@ export function useAccountsPage() {
       const payloadId = editingId.value || form.id || undefined
       await accountsApi.upsert({
         id: payloadId,
-        access_token: form.access_token.trim(),
-        type: form.type.trim() || undefined,
-        source_type: form.source_type.trim() || undefined,
+        access_token: form.access_token.trim() || undefined,
+        cookie: form.cookie.trim() || undefined,
+        type: form.type.trim() || (isFirefly ? 'firefly' : undefined),
+        source_type: sourceType,
         group_id: form.group_id.trim(),
         proxy: form.proxy.trim(),
         quota: normalizeQuota(form.quota),
@@ -688,7 +711,7 @@ export function useAccountsPage() {
 
   // ── watchers / lifecycle ────────────────────────────────────────
   watch(
-    [keyword, statusFilter, groupFilter],
+    [keyword, statusFilter, groupFilter, sourceFilter],
     () => {
       clearSelection()
       if (currentPage.value !== 1) {
@@ -737,7 +760,9 @@ export function useAccountsPage() {
     keyword,
     statusFilter,
     groupFilter,
+    sourceFilter,
     statusFilterOptions,
+    sourceFilterOptions,
     groupFilterOptions,
     editingId,
     accounts,
@@ -797,6 +822,8 @@ export function useAccountsPage() {
     canStopRefreshProgress,
     bulkStopRequested,
     accountStatusOptions,
+    accountSourceTypeOptions,
+    isFireflyForm,
     form,
     filteredAccounts,
     pagedAccounts,

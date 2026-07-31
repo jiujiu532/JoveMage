@@ -27,8 +27,16 @@ function normalizeList(raw: unknown): string[] {
 }
 
 export function isImageModelId(model: string): boolean {
-  const value = model.toLowerCase()
+  const value = String(model || '').trim().toLowerCase()
+  if (!value) return false
+  // Adobe Firefly 族（含 nano-banana 等不含 image 字样的 id）
+  if (value.startsWith('firefly-') || value.startsWith('firefly_')) return true
   return value.includes('image') || value.includes('dall-e') || value.includes('gpt-image')
+}
+
+export function isFireflyModelId(model: string): boolean {
+  const value = String(model || '').trim().toLowerCase()
+  return value.startsWith('firefly-') || value.startsWith('firefly_')
 }
 
 export function resolveChatModels(settings: Settings | null | undefined): string[] {

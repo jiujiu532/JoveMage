@@ -552,6 +552,11 @@
         :canvas="localSettings.third_party_apps.infinite_canvas"
       />
 
+      <SettingsFireflyPanel
+        v-else-if="activeSettingsTab === 'firefly' && localSettings"
+        :settings="localSettings"
+      />
+
       <SettingsApiDocsPanel
         v-else-if="activeSettingsTab === 'api-docs'"
       />
@@ -614,6 +619,7 @@ const SettingsImageErrorsPanel = defineAsyncComponent(() => import('@/views/sett
 const SettingsStoragePanel = defineAsyncComponent(() => import('@/views/settings/SettingsStoragePanel.vue'))
 const SettingsCanvasPanel = defineAsyncComponent(() => import('@/views/settings/SettingsCanvasPanel.vue'))
 const SettingsApiDocsPanel = defineAsyncComponent(() => import('@/views/settings/SettingsApiDocsPanel.vue'))
+const SettingsFireflyPanel = defineAsyncComponent(() => import('@/views/settings/SettingsFireflyPanel.vue'))
 
 type NumberFieldBinding = {
   input: ReturnType<typeof ref<string>>
@@ -642,6 +648,7 @@ let hasActivatedOnce = false
 const settingsTabs = [
   { value: 'basic', label: '基础配置' },
   { value: 'image-errors', label: '图片错误' },
+  { value: 'firefly', label: 'Firefly' },
   { value: 'storage', label: '图片存储与审核' },
   { value: 'prompts', label: '提示词源' },
   { value: 'domain-blacklist', label: '域名黑名单' },

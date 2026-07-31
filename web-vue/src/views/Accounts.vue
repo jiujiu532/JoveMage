@@ -20,6 +20,13 @@
               aria-label="账号状态筛选"
             />
             <GroupedSelectMenu
+              v-model="sourceFilter"
+              :options="sourceFilterOptions"
+              placeholder="渠道筛选"
+              selected-indicator="none"
+              aria-label="账号渠道筛选"
+            />
+            <GroupedSelectMenu
               v-model="groupFilter"
               :options="groupFilterOptions"
               placeholder="账号组"
@@ -181,7 +188,16 @@
                 {{ accountCreatedText(item) }}
               </td>
               <td class="align-middle table-num">
-                <QuotaBadge :account="item" />
+                <div class="space-y-0.5">
+                  <QuotaBadge :account="item" />
+                  <p
+                    v-if="accountCreditsHint(item)"
+                    class="max-w-[8rem] truncate text-[11px] leading-tight text-muted-foreground"
+                    :title="accountCreditsHint(item)"
+                  >
+                    {{ accountCreditsHint(item) }}
+                  </p>
+                </div>
               </td>
               <td class="align-middle text-xs text-muted-foreground table-num">
                 {{ accountRestoreText(item) }}
@@ -278,7 +294,16 @@
           <div class="account-card-tile__metrics mt-3">
             <div class="account-card-tile__metric">
               <span class="account-card-tile__metric-label">图片额度</span>
-              <span class="account-card-tile__metric-value account-card-tile__metric-value--quota table-num">{{ accountQuotaText(item) }}</span>
+              <span class="account-card-tile__metric-value account-card-tile__metric-value--quota table-num">
+                {{ accountQuotaText(item) }}
+              </span>
+              <span
+                v-if="accountCreditsHint(item)"
+                class="mt-0.5 block max-w-full truncate text-[11px] text-muted-foreground"
+                :title="accountCreditsHint(item)"
+              >
+                {{ accountCreditsHint(item) }}
+              </span>
             </div>
             <div class="account-card-tile__metric">
               <span class="account-card-tile__metric-label">成功 / 失败</span>
@@ -405,36 +430,67 @@
                 </FormSection>
 
                 <FormSection surface="plain">
-                  <label class="block text-xs">
-                    <span class="ui-field-label">Access Token（必填）</span>
-                    <textarea
-                      v-model.trim="form.access_token"
-                      rows="3"
-                      class="ui-textarea-sm font-mono"
-                      placeholder="粘贴完整 access token"
-                      :disabled="!!editingId"
-                    ></textarea>
-                  </label>
+                  <div class="space-y-3">
+                    <template v-if="isFireflyForm">
+                      <label class="block text-xs">
+                        <span class="ui-field-label">Adobe Express Cookie（必填）</span>
+                        <textarea
+                          v-model.trim="form.cookie"
+                          rows="4"
+                          class="ui-textarea-sm font-mono"
+                          placeholder="粘贴 new.express.adobe.com 登录后的完整 Cookie"
+                          :disabled="!!editingId && !!form.access_token && !form.cookie"
+                        ></textarea>
+                      </label>
+                      <label class="block text-xs">
+                        <span class="ui-field-label">Access Token（可选）</span>
+                        <textarea
+                          v-model.trim="form.access_token"
+                          rows="2"
+                          class="ui-textarea-sm font-mono"
+                          placeholder="可留空，保存后由 Cookie 自动刷新 IMS token"
+                          :disabled="!!editingId"
+                        ></textarea>
+                      </label>
+                      <SurfaceBox tone="muted" density="compact" class="text-[11px] leading-5 text-muted-foreground">
+                        Firefly 账号以 Cookie 为刷新源，不使用 ChatGPT 的 refresh_token / id_token。
+                      </SurfaceBox>
+                    </template>
+                    <template v-else>
+                      <label class="block text-xs">
+                        <span class="ui-field-label">Access Token（必填）</span>
+                        <textarea
+                          v-model.trim="form.access_token"
+                          rows="3"
+                          class="ui-textarea-sm font-mono"
+                          placeholder="粘贴完整 access token"
+                          :disabled="!!editingId"
+                        ></textarea>
+                      </label>
+                    </template>
+                  </div>
                 </FormSection>
 
                 <FormSection title="调度属性" surface="plain">
                   <div class="grid grid-cols-1 gap-2 md:grid-cols-3">
-                    <label class="text-xs">
+                    <div class="text-xs">
                       <span class="ui-field-label">来源</span>
-                      <Input
-                        :model-value="form.source_type"
+                      <GroupedSelectMenu
+                        v-model="form.source_type"
+                        :options="accountSourceTypeOptions"
+                        placeholder="选择来源"
+                        selected-indicator="none"
+                        aria-label="账号来源"
                         block
-                        placeholder="web / oauth_login / codex"
-                        @update:model-value="form.source_type = $event.trim()"
                       />
-                    </label>
+                    </div>
                     <label class="text-xs">
-                      <span class="ui-field-label">图片额度</span>
+                      <span class="ui-field-label">{{ isFireflyForm ? '本地额度（可选）' : '图片额度' }}</span>
                       <Input
                         :model-value="form.quota"
                         type="number"
                         block
-                        placeholder="留空表示未知"
+                        :placeholder="isFireflyForm ? '留空，优先展示 credits' : '留空表示未知'"
                         @update:model-value="form.quota = $event.trim()"
                       />
                     </label>
@@ -812,6 +868,7 @@ import { parseProxyReference } from '@/api/proxy'
 import { useAccountsPage, type AccountImportMode } from './accounts/useAccountsPage'
 import {
   accountCreatedText,
+  accountCreditsText,
   accountPrimaryText,
   accountProxyText,
   accountQuotaText,
@@ -836,7 +893,9 @@ const {
   keyword,
   statusFilter,
   groupFilter,
+  sourceFilter,
   statusFilterOptions,
+  sourceFilterOptions,
   groupFilterOptions,
   editingId,
   accounts,
@@ -892,6 +951,8 @@ const {
   canStopRefreshProgress,
   bulkStopRequested,
   accountStatusOptions,
+  accountSourceTypeOptions,
+  isFireflyForm,
   form,
   filteredAccounts,
   pagedAccounts,
@@ -1007,7 +1068,13 @@ function accountTypeTone(item: Account): AccountTypeTone {
 }
 
 function accountSourceLabel(item: Account) {
-  return String(item.source_type || '').trim() || 'web'
+  const source = String(item.source_type || '').trim() || 'web'
+  if (source === 'firefly') return 'Firefly'
+  return source
+}
+
+function accountCreditsHint(item: Account) {
+  return accountCreditsText(item)
 }
 
 const refreshProgressItems = computed(() => [

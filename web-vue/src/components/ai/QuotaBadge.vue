@@ -15,15 +15,28 @@ const props = defineProps<{
   account: Account
 }>()
 
-const quotaValue = computed(() => Number(props.account.quota || 0))
+const quotaValue = computed(() => {
+  const creditsAvailable = Number(props.account.credits?.available)
+  if (Number.isFinite(creditsAvailable)) return creditsAvailable
+  return Number(props.account.quota || 0)
+})
 
 const quotaText = computed(() => {
+  const credits = props.account.credits
+  if (credits && (credits.available != null || credits.total != null)) {
+    if (credits.available != null && credits.total != null) {
+      return `${Math.max(0, Math.trunc(Number(credits.available)))}/${Math.max(0, Math.trunc(Number(credits.total)))}`
+    }
+    if (credits.available != null) return String(Math.max(0, Math.trunc(Number(credits.available))))
+  }
   if (props.account.image_quota_unknown) return '未知'
-  return String(Math.max(0, Math.trunc(quotaValue.value)))
+  return String(Math.max(0, Math.trunc(Number(props.account.quota || 0))))
 })
 
 const quotaClass = computed(() => {
-  if (props.account.image_quota_unknown) return 'quota-badge--muted'
+  if (props.account.image_quota_unknown && !(props.account.credits && props.account.credits.available != null)) {
+    return 'quota-badge--muted'
+  }
   if (quotaValue.value <= 0) return 'quota-badge--danger'
   if (quotaValue.value <= 3) return 'quota-badge--warning'
   return 'quota-badge--success'

@@ -132,8 +132,10 @@
                     <div class="studio-size-label">模型</div>
                     <GroupedSelectMenu
                       v-model="imageModelValue"
+                      :groups="imageModelSelectGroups"
                       :options="imageModelSelectOptions"
                       selected-indicator="none"
+                      show-group-labels
                       block
                     />
                   </div>
@@ -266,6 +268,7 @@ import {
   resolveImageSizePresets,
   type ImageSizeResolution,
 } from '@/api/imageTasks'
+import { isFireflyModelId } from '@/config/modelCatalog'
 import type { StudioComposeMode, StudioImageForm, StudioReference } from './types'
 
 const props = defineProps<{
@@ -374,6 +377,23 @@ const imageModelSelectOptions = computed(() => props.imageModelOptions.map((mode
   label: model,
   value: model,
 })))
+
+const imageModelSelectGroups = computed(() => {
+  const chatgpt: Array<{ label: string; value: string }> = []
+  const firefly: Array<{ label: string; value: string }> = []
+  for (const model of props.imageModelOptions) {
+    const option = { label: model, value: model }
+    if (isFireflyModelId(model)) firefly.push(option)
+    else chatgpt.push(option)
+  }
+  const groups: Array<{ label?: string; options: Array<{ label: string; value: string }> }> = []
+  if (chatgpt.length) groups.push({ label: 'ChatGPT', options: chatgpt })
+  if (firefly.length) groups.push({ label: 'Adobe Firefly', options: firefly })
+  if (!groups.length) {
+    groups.push({ options: imageModelSelectOptions.value })
+  }
+  return groups
+})
 
 const sizePresets = computed(() => resolveImageSizePresets(props.imageForm.model, props.imageUpscaleEnabled))
 const selectedPreset = computed(() => sizePresets.value.find((preset) => preset.value === props.imageForm.size))
