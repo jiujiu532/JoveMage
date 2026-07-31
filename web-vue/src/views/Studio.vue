@@ -154,15 +154,13 @@ import { Button } from 'nanocat-ui'
 import { computed, defineAsyncComponent, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from 'vue'
 import { imageTasksApi } from '@/api/imageTasks'
 import { streamChatCompletion } from '@/api/chatStream'
-import { debugApi, type DebugChatMessage, type DebugSearchImageGroup, type DebugSearchResult, type DebugSearchSource } from '@/api/debug'
+import { debugApi, type DebugChatMessage, type DebugSearchResult } from '@/api/debug'
 import {
   DEFAULT_IMAGE_MODEL,
   DEFAULT_IMAGE_QUALITY,
   DEFAULT_IMAGE_SIZE,
   isImageSizeSupportedByModel,
-  isImageTaskTerminal,
   normalizeImageCount,
-  taskPrimaryMessage,
   type ImageTask,
 } from '@/api/imageTasks'
 import { useModelCatalog } from '@/composables/useModelCatalog'
@@ -174,12 +172,10 @@ import { useMediaQuery } from '@/composables/useMediaQuery'
 import { MQ } from '@/lib/breakpoints'
 import {
   getBooleanPreference,
-  getJsonPreference,
   getNumberPreference,
   getStringPreference,
   preferenceKeys,
   setBooleanPreference,
-  setJsonPreference,
   setNumberPreference,
   setStringPreference,
 } from '@/lib/preferences'
@@ -192,16 +188,22 @@ import type {
   StudioComposeMode,
   StudioConversation,
   StudioConversationBadge,
-  StudioConversationBadgeState,
   StudioImageComparePreview,
   StudioImageForm,
   StudioMessage,
-  StudioMessageStatus,
   StudioPreviewImage,
   StudioReference,
-  StudioSearchImageGroup,
-  StudioSearchSource,
 } from '@/components/studio/types'
+import {
+  useStudioPersistence,
+  createId,
+  normalizeSearchImageGroups,
+  extractSearchImageGroupsFromText,
+  normalizeSearchSources,
+  cleanSearchAnswer,
+  linkSearchCitations,
+} from '@/views/studio/useStudioPersistence'
+import { useStudioImageTasks } from '@/views/studio/useStudioImageTasks'
 
 defineOptions({ name: 'Studio' })
 
@@ -228,7 +230,6 @@ const isStreaming = ref(false)
 const isNarrowStudio = useMediaQuery(MQ.notDesktop)
 const isFullscreen = ref(false)
 const isMobileHistoryOpen = ref(false)
-const isFetchingTasks = ref(false)
 const sidebarWidth = ref(getNumberPreference(preferenceKeys.studioSidebarWidth, defaultSidebarWidth, { min: 220, max: 380 }))
 type StudioMessageListExpose = { scrollToBottom: () => Promise<void> | void }
 const messageListRef = ref<StudioMessageListExpose | null>(null)
@@ -242,32 +243,30 @@ const imageForm = reactive<StudioImageForm>({
   n: 1,
 })
 
-const conversations = ref<StudioConversation[]>(loadConversations())
-const activeConversationId = ref(getStringPreference(preferenceKeys.studioActiveConversationId, ''))
-const conversationNotices = ref<Record<string, StudioConversationBadgeState>>(loadConversationNotices())
-const imageTasks = ref<ImageTask[]>([])
+const {
+  conversations,
+  activeConversationId,
+  conversationNotices,
+  schedulePersistConversations,
+  flushAllPersistence,
+  markConversationNotice,
+  clearConversationNotice,
+} = useStudioPersistence()
+
 const selectedFiles = ref<File[]>([])
 const referencePreviews = ref<StudioReference[]>([])
 const previewImage = ref<StudioPreviewImage | null>(null)
 const comparePreview = ref<StudioImageComparePreview | null>(null)
 const isPromptPickerOpen = ref(false)
 
-let imagePollTimer: number | null = null
 let streamController: AbortController | null = null
 let sidebarResizeStartX = 0
 let sidebarResizeStartWidth = defaultSidebarWidth
-let conversationsPersistTimer: number | null = null
-let conversationNoticesPersistTimer: number | null = null
-let activeConversationPersistTimer: number | null = null
-let imageRefreshTimer: number | null = null
-let imageRefreshQueued = false
-let imageRefreshQueuedForce = false
 let scrollFrameId: number | null = null
 let scrollScheduled = false
 let scrollRequestToken = 0
 let pendingConversationSelectId = ''
 let conversationSelectFrameId: number | null = null
-let lastSuccessfulImageRefreshSignature = ''
 let hasActivatedOnce = false
 let isStudioActive = true
 
@@ -279,6 +278,27 @@ const activeConversation = computed(() => {
     || conversations.value[0]
     || null
 })
+
+const {
+  imageTasks,
+  conversationTaskState,
+  activeRunningTaskCount,
+  refreshImageTasks,
+  mergeImageTasks,
+  rememberImageTaskId,
+  scheduleImagePoll,
+  clearImageTimers,
+} = useStudioImageTasks({
+  conversations,
+  activeConversation,
+  isStudioActive: () => isStudioActive,
+  touchConversation: (conversation) => touchConversation(conversation),
+  markConversationNotice,
+  setComposerError: (message) => { composerError.value = message },
+  clearComposerError: () => { composerError.value = '' },
+  errorMessage,
+})
+
 const activeHeaderSubtitle = computed(() => {
   if (isStreaming.value) return '正在回复'
   if (isSending.value) {
@@ -290,37 +310,6 @@ const activeHeaderSubtitle = computed(() => {
   const count = activeConversation.value?.messages.length || 0
   return count ? `${count} 条消息` : '准备就绪'
 })
-const taskById = computed(() => new Map(imageTasks.value.map((task) => [task.id, task])))
-const activeImageTaskIds = computed(() => {
-  const ids = activeConversation.value?.messages.map((message) => message.taskId).filter(Boolean) || []
-  return Array.from(new Set(ids)).slice(0, 80)
-})
-const conversationTaskState = computed(() => {
-  const pendingIds = new Set<string>()
-  const runningCounts: Record<string, number> = {}
-  conversations.value.forEach((conversation) => {
-    let running = 0
-    conversation.messages.forEach((message) => {
-      if (message.mode === 'image' && isImageMessageRunning(message)) {
-        running += 1
-        if (message.taskId) pendingIds.add(message.taskId)
-      } else if (message.status === 'sending' || message.status === 'streaming') {
-        running += 1
-      }
-    })
-    if (running > 0) runningCounts[conversation.id] = running
-  })
-  return {
-    pendingImageTaskIds: Array.from(pendingIds).slice(0, 160),
-    runningCounts,
-  }
-})
-const pendingImageTaskIds = computed(() => conversationTaskState.value.pendingImageTaskIds)
-const requestedImageTaskIds = computed(() => Array.from(new Set([
-  ...activeImageTaskIds.value,
-  ...pendingImageTaskIds.value,
-])).slice(0, 180))
-const activeRunningTaskCount = computed(() => activeConversation.value ? (conversationTaskState.value.runningCounts[activeConversation.value.id] || 0) : 0)
 const conversationBadges = computed<Record<string, StudioConversationBadge>>(() => {
   const badges: Record<string, StudioConversationBadge> = {}
   conversations.value.forEach((conversation) => {
@@ -349,11 +338,6 @@ const imageUpscaleEnabled = computed(() => Boolean(catalog.value?.capabilities?.
 watch(composeMode, (mode) => setStringPreference(preferenceKeys.studioActiveMode, mode))
 watch(chatModel, (model) => setStringPreference(preferenceKeys.studioChatModel, model || 'auto'))
 watch(chatReasoningEffort, (effort) => setStringPreference(preferenceKeys.studioChatReasoningEffort, effort || ''))
-watch(conversations, schedulePersistConversations)
-watch(conversationNotices, schedulePersistConversationNotices)
-watch(activeConversationId, schedulePersistActiveConversationId)
-watch(requestedImageTaskIds, () => scheduleImageTaskRefresh())
-watch(pendingImageTaskIds, scheduleImagePoll)
 watch(isNarrowStudio, (narrow) => {
   // 回到桌面宽度时强制退出全屏，避免壳层被 fixed 盖住（不写偏好，以免覆盖手机端全屏选择）
   if (!narrow && isFullscreen.value) {
@@ -376,239 +360,6 @@ function normalizeMode(value: string): StudioComposeMode {
 
 function uniqueStrings(values: string[]) {
   return values.map((value) => String(value || '').trim()).filter((value, index, arr) => value && arr.indexOf(value) === index)
-}
-
-function createId(prefix: string) {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return `${prefix}-${crypto.randomUUID()}`
-  }
-  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
-}
-
-function cleanText(value: unknown) {
-  return String(value ?? '').trim()
-}
-
-function loadConversations(): StudioConversation[] {
-  const items = getJsonPreference<unknown[]>(preferenceKeys.studioConversations, [])
-  if (!Array.isArray(items)) return []
-  return items.map(normalizeConversation).filter((item): item is StudioConversation => Boolean(item)).slice(0, 80)
-}
-
-function loadConversationNotices(): Record<string, StudioConversationBadgeState> {
-  const raw = getJsonPreference<Record<string, unknown>>(preferenceKeys.studioConversationBadges, {})
-  const notices: Record<string, StudioConversationBadgeState> = {}
-  Object.entries(raw || {}).forEach(([id, state]) => {
-    if (state === 'done' || state === 'error') notices[id] = state
-  })
-  return notices
-}
-
-function normalizeConversation(item: unknown): StudioConversation | null {
-  if (!item || typeof item !== 'object') return null
-  const raw = item as Partial<StudioConversation>
-  const messages = Array.isArray(raw.messages)
-    ? raw.messages.map(normalizeMessage).filter((message): message is StudioMessage => Boolean(message)).slice(-160)
-    : []
-  return {
-    id: cleanText(raw.id) || createId('studio'),
-    title: cleanText(raw.title) || '新对话',
-    createdAt: cleanText(raw.createdAt) || new Date().toISOString(),
-    updatedAt: cleanText(raw.updatedAt) || new Date().toISOString(),
-    messages,
-  }
-}
-
-function normalizeMessage(item: unknown): StudioMessage | null {
-  if (!item || typeof item !== 'object') return null
-  const raw = item as Partial<StudioMessage>
-  const content = cleanText(raw.content)
-  const taskId = cleanText(raw.taskId)
-  if (!content && !taskId) return null
-  const id = cleanText(raw.id) || createId('message')
-  const mode = raw.mode === 'chat' || raw.mode === 'search' ? raw.mode : 'image'
-  const normalizedContent = mode === 'search' ? cleanSearchAnswer(content) : content
-  const migratedSearchResult = mode === 'search' ? splitLegacySearchResult(normalizedContent) : { content: normalizedContent, sources: undefined }
-  const searchSources = normalizeSearchSources(raw.searchSources) || migratedSearchResult.sources
-  const searchImageGroups = mode === 'search'
-    ? normalizeSearchImageGroups(raw.searchImageGroups) || extractSearchImageGroupsFromText(content)
-    : undefined
-  return {
-    id,
-    role: raw.role === 'assistant' ? 'assistant' : 'user',
-    mode,
-    content: mode === 'search'
-      ? linkSearchCitations(migratedSearchResult.content, id, searchSources?.length || 0)
-      : migratedSearchResult.content,
-    createdAt: cleanText(raw.createdAt) || new Date().toISOString(),
-    status: normalizeMessageStatus(raw.status),
-    model: cleanText(raw.model) || undefined,
-    imageSize: cleanText(raw.imageSize) || undefined,
-    imageCount: Number.isFinite(Number(raw.imageCount)) ? normalizeImageCount(raw.imageCount) : undefined,
-    taskId: taskId || undefined,
-    error: cleanText(raw.error) || undefined,
-    attachments: Array.isArray(raw.attachments) ? raw.attachments.map(cleanText).filter(Boolean).slice(0, 8) : undefined,
-    searchSources,
-    searchImageGroups,
-  }
-}
-
-function normalizeSearchImageGroups(value: unknown): StudioSearchImageGroup[] | undefined {
-  if (!Array.isArray(value)) return undefined
-  const groups = value
-    .map((item) => {
-      if (!item || typeof item !== 'object') return null
-      const raw = item as DebugSearchImageGroup & { aspectRatio?: unknown; numPerQuery?: unknown; query?: unknown; queries?: unknown }
-      const rawQueries = Array.isArray(raw.queries)
-        ? raw.queries
-        : Array.isArray(raw.query)
-          ? raw.query
-          : typeof raw.query === 'string'
-            ? [raw.query]
-            : []
-      const queries = rawQueries.map((query) => cleanText(query)).filter(Boolean).slice(0, 6)
-      if (!queries.length) return null
-      const aspectRatio = cleanText(raw.aspect_ratio ?? raw.aspectRatio)
-      const numPerQueryValue = Number(raw.num_per_query ?? raw.numPerQuery)
-      return {
-        queries,
-        aspectRatio: aspectRatio || undefined,
-        numPerQuery: Number.isFinite(numPerQueryValue) && numPerQueryValue > 0 ? numPerQueryValue : undefined,
-      }
-    })
-    .filter((item): item is StudioSearchImageGroup => Boolean(item))
-    .slice(0, 4)
-  return groups.length ? groups : undefined
-}
-
-function extractSearchImageGroupsFromText(value: unknown): StudioSearchImageGroup[] | undefined {
-  const text = cleanText(value)
-  if (!text) return undefined
-  const groups: unknown[] = []
-  text.replace(/image_group([^]*)/g, (_match, payload: string) => {
-    try {
-      groups.push(JSON.parse(payload || '{}'))
-    } catch {
-      // ignore malformed upstream marker
-    }
-    return ''
-  })
-  return normalizeSearchImageGroups(groups)
-}
-
-function normalizeSearchSources(value: unknown): StudioSearchSource[] | undefined {
-  if (!Array.isArray(value)) return undefined
-  const sources = value
-    .map((item) => {
-      if (!item || typeof item !== 'object') return null
-      const raw = item as DebugSearchSource
-      const source = {
-        title: cleanText(raw.title),
-        url: cleanText(raw.url),
-        snippet: cleanText(raw.snippet),
-      }
-      return source.title || source.url || source.snippet ? source : null
-    })
-    .filter((item): item is StudioSearchSource => Boolean(item))
-  return sources.length ? sources : undefined
-}
-
-function splitLegacySearchResult(content: string): { content: string; sources?: StudioSearchSource[] } {
-  const match = content.match(/\n{2,}\*\*来源\*\*\n([\s\S]+)$/)
-  if (!match || typeof match.index !== 'number') return { content }
-  const sources = match[1]
-    .split('\n')
-    .map(parseLegacySearchSourceLine)
-    .filter((source): source is StudioSearchSource => Boolean(source))
-  if (!sources.length) return { content }
-  return { content: content.slice(0, match.index).trim(), sources }
-}
-
-function parseLegacySearchSourceLine(line: string): StudioSearchSource | null {
-  const raw = cleanText(line)
-  if (!raw) return null
-  const match = raw.match(/^\d+\.\s+(?:\[([^\]]+)\]\(([^)]+)\)|(.+?))(?:\s+—\s+(.+))?$/)
-  if (!match) return null
-  const title = cleanText((match[1] || match[3] || '').replace(/\\([\[\]])/g, '$1'))
-  const url = cleanText(match[2]).replace(/%20/g, ' ').replace(/%29/g, ')')
-  const snippet = cleanText(match[4])
-  return title || url || snippet ? { title, url, snippet } : null
-}
-
-function normalizeMessageStatus(value: unknown): StudioMessageStatus | undefined {
-  if (['sending', 'streaming', 'queued', 'running', 'done', 'error'].includes(String(value))) {
-    return String(value) as StudioMessageStatus
-  }
-  return undefined
-}
-
-function persistConversations() {
-  const payload = conversations.value.slice(0, 80).map((conversation) => ({
-    ...conversation,
-    messages: conversation.messages.slice(-160).map((message) => ({
-      ...message,
-      status: message.status === 'streaming' || message.status === 'sending' ? 'done' : message.status,
-    })),
-  }))
-  setJsonPreference(preferenceKeys.studioConversations, payload)
-}
-
-function schedulePersistConversations() {
-  if (conversationsPersistTimer !== null) return
-  conversationsPersistTimer = window.setTimeout(() => {
-    conversationsPersistTimer = null
-    persistConversations()
-  }, 300)
-}
-
-function flushPersistConversations() {
-  if (conversationsPersistTimer !== null) {
-    window.clearTimeout(conversationsPersistTimer)
-    conversationsPersistTimer = null
-  }
-  persistConversations()
-}
-
-function persistConversationNotices() {
-  const validIds = new Set(conversations.value.map((conversation) => conversation.id))
-  const payload = Object.fromEntries(
-    Object.entries(conversationNotices.value).filter(([id, state]) => validIds.has(id) && (state === 'done' || state === 'error')),
-  )
-  setJsonPreference(preferenceKeys.studioConversationBadges, payload)
-}
-
-function schedulePersistConversationNotices() {
-  if (conversationNoticesPersistTimer !== null) return
-  conversationNoticesPersistTimer = window.setTimeout(() => {
-    conversationNoticesPersistTimer = null
-    persistConversationNotices()
-  }, 300)
-}
-
-function flushPersistConversationNotices() {
-  if (conversationNoticesPersistTimer !== null) {
-    window.clearTimeout(conversationNoticesPersistTimer)
-    conversationNoticesPersistTimer = null
-  }
-  persistConversationNotices()
-}
-
-function schedulePersistActiveConversationId() {
-  if (activeConversationPersistTimer !== null) {
-    window.clearTimeout(activeConversationPersistTimer)
-  }
-  activeConversationPersistTimer = window.setTimeout(() => {
-    activeConversationPersistTimer = null
-    setStringPreference(preferenceKeys.studioActiveConversationId, activeConversationId.value)
-  }, 200)
-}
-
-function flushPersistActiveConversationId() {
-  if (activeConversationPersistTimer !== null) {
-    window.clearTimeout(activeConversationPersistTimer)
-    activeConversationPersistTimer = null
-  }
-  setStringPreference(preferenceKeys.studioActiveConversationId, activeConversationId.value)
 }
 
 function buildTitle(content: string) {
@@ -847,12 +598,6 @@ function fillComposerFromMessage(message: StudioMessage) {
   composerError.value = ''
 }
 
-function isImageMessageRunning(message: StudioMessage) {
-  if (!message.taskId) return message.status === 'queued' || message.status === 'running'
-  const task = taskById.value.get(message.taskId)
-  if (task) return !isImageTaskTerminal(task)
-  return message.status === 'queued' || message.status === 'running'
-}
 
 function addMessage(conversation: StudioConversation, message: Omit<StudioMessage, 'id' | 'createdAt'>) {
   const next: StudioMessage = {
@@ -875,24 +620,6 @@ function touchConversation(conversation: StudioConversation) {
   schedulePersistConversations()
 }
 
-function markConversationNotice(conversationId: string, state: StudioConversationBadgeState) {
-  if (!conversationId) return
-  const current = conversationNotices.value[conversationId]
-  const nextState = current === 'error' && state === 'done' ? current : state
-  conversationNotices.value = {
-    ...conversationNotices.value,
-    [conversationId]: nextState,
-  }
-  schedulePersistConversationNotices()
-}
-
-function clearConversationNotice(conversationId: string) {
-  if (!conversationId || !conversationNotices.value[conversationId]) return
-  const next = { ...conversationNotices.value }
-  delete next[conversationId]
-  conversationNotices.value = next
-  schedulePersistConversationNotices()
-}
 
 async function sendMessage() {
   const content = composerText.value.trim()
@@ -1127,28 +854,6 @@ function formatSearchResult(result: DebugSearchResult, ownerId: string, sourceCo
   return linkSearchCitations(answer, ownerId, sourceCount)
 }
 
-function cleanSearchAnswer(value: unknown) {
-  return cleanText(value)
-    .replace(/\ue200cite\ue202([^\ue201]*)\ue201/g, (_match, citationId: string) => {
-      const matched = String(citationId || '').match(/search(\d+)/)
-      return matched ? `[${Number(matched[1]) + 1}]` : ''
-    })
-    .replace(/\ue200image_group\ue202([^\ue201]*)\ue201/g, '')
-    .replace(/\ue200(?!cite\ue202|image_group\ue202)[a-zA-Z0-9_]+\ue202[^\ue201]*\ue201/g, '')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
-}
-
-function linkSearchCitations(content: string, ownerId: string, sourceCount: number) {
-  const encodedOwnerId = encodeURIComponent(ownerId)
-  return content.replace(/\[(\d{1,2})\](?!\()/g, (matched, rawIndex: string) => {
-    const index = Number(rawIndex)
-    if (!Number.isInteger(index) || index < 1) return matched
-    if (!sourceCount || index > sourceCount) return ''
-    return `[${index}](studio-citation:${encodedOwnerId}:${index})`
-  }).replace(/\s+([，。！？；：,.!?;:])/g, '$1')
-}
 
 async function sendImageMessage(conversation: StudioConversation, prompt: string, files: File[]) {
   const assistantMessage = addMessage(conversation, {
@@ -1229,267 +934,6 @@ function errorMessage(error: unknown, fallback: string) {
   return fallback
 }
 
-function storedImageTaskIds() {
-  const ids = getJsonPreference<unknown[]>(preferenceKeys.imageTaskLocalIds, [])
-  return Array.isArray(ids) ? ids.map((id) => cleanText(id)).filter(Boolean) : []
-}
-
-function rememberImageTaskId(taskId: string) {
-  if (!taskId) return
-  const ids = Array.from(new Set([taskId, ...storedImageTaskIds()])).slice(0, 160)
-  setJsonPreference(preferenceKeys.imageTaskLocalIds, ids)
-}
-
-async function refreshImageTasks(force = false) {
-  if (!isStudioActive) return
-  if (isFetchingTasks.value) {
-    imageRefreshQueued = true
-    imageRefreshQueuedForce = imageRefreshQueuedForce || force
-    return
-  }
-  const ids = requestedImageTaskIds.value
-  const signature = ids.join('\u0000')
-  if (!force && signature && signature === lastSuccessfulImageRefreshSignature) return
-  if (!ids.length) {
-    imageTasks.value = []
-    lastSuccessfulImageRefreshSignature = ''
-    return
-  }
-  isFetchingTasks.value = true
-  try {
-    const response = await imageTasksApi.list(ids)
-    mergeImageTasks(response.items)
-    markMissingImageTasks(response.missing_ids)
-    syncImageMessageStatuses()
-    composerError.value = ''
-    lastSuccessfulImageRefreshSignature = signature
-  } catch (error) {
-    composerError.value = errorMessage(error, '刷新图片任务失败')
-    lastSuccessfulImageRefreshSignature = ''
-  } finally {
-    isFetchingTasks.value = false
-    scheduleImagePoll()
-    if (imageRefreshQueued) {
-      const queuedForce = imageRefreshQueuedForce
-      imageRefreshQueued = false
-      imageRefreshQueuedForce = false
-      scheduleImageTaskRefresh(0, queuedForce)
-    }
-  }
-}
-
-function mergeImageTasks(items: ImageTask[]) {
-  const map = new Map(imageTasks.value.map((task) => [task.id, task]))
-  items.filter((task) => task.id).forEach((task) => map.set(task.id, task))
-  imageTasks.value = Array.from(map.values())
-  lastSuccessfulImageRefreshSignature = ''
-}
-
-function markMissingImageTasks(taskIds: string[]) {
-  const missing = new Set(taskIds.filter(Boolean))
-  if (!missing.size) return
-  conversations.value.forEach((conversation) => {
-    conversation.messages.forEach((message) => {
-      if (!message.taskId || !missing.has(message.taskId)) return
-      if (message.status === 'done' || message.status === 'error') return
-      message.status = 'error'
-      message.error = '图片任务已过期或不存在'
-      touchConversation(conversation)
-      markConversationNotice(conversation.id, 'error')
-    })
-  })
-}
-
-function syncImageMessageStatuses() {
-  conversations.value.forEach((conversation) => {
-    let changed = false
-    conversation.messages.forEach((message) => {
-      if (!message.taskId) return
-      const task = taskById.value.get(message.taskId)
-      if (!task) return
-      const previousStatus = message.status
-      if (task.status === 'success') {
-        message.status = 'done'
-        if (previousStatus !== 'done') markConversationNotice(conversation.id, 'done')
-      } else if (task.status === 'error') {
-        message.status = 'error'
-        message.error = taskPrimaryMessage(task) || task.error || '图片任务失败'
-        if (previousStatus !== 'error') markConversationNotice(conversation.id, 'error')
-      } else {
-        message.status = 'running'
-      }
-      if (message.status !== previousStatus) changed = true
-    })
-    if (changed) touchConversation(conversation)
-  })
-}
-
-function scheduleImagePoll() {
-  if (imagePollTimer !== null) {
-    window.clearTimeout(imagePollTimer)
-    imagePollTimer = null
-  }
-  if (!isStudioActive) return
-  if (!pendingImageTaskIds.value.length) return
-  imagePollTimer = window.setTimeout(() => {
-    imagePollTimer = null
-    void refreshImageTasks(true)
-  }, 4000)
-}
-
-function scheduleImageTaskRefresh(delay = 120, force = false) {
-  if (!isStudioActive) return
-  if (imageRefreshTimer !== null) {
-    window.clearTimeout(imageRefreshTimer)
-  }
-  imageRefreshTimer = window.setTimeout(() => {
-    imageRefreshTimer = null
-    void refreshImageTasks(force)
-  }, delay)
-}
-
-function isImageFile(file: File) {
-  return file.type.startsWith('image/') || /\.(avif|bmp|gif|heic|heif|ico|jpe?g|png|svg|tiff?|webp)$/i.test(file.name)
-}
-
-function readFileAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result || ''))
-    reader.onerror = () => reject(new Error('读取参考图失败'))
-    reader.readAsDataURL(file)
-  })
-}
-
-async function appendFiles(files: File[]) {
-  const imageFiles = files.filter(isImageFile).slice(0, Math.max(0, 8 - selectedFiles.value.length))
-  if (!imageFiles.length) return
-  for (const file of imageFiles) {
-    selectedFiles.value.push(file)
-    referencePreviews.value.push({
-      id: createId('source'),
-      name: file.name || '参考图',
-      type: file.type || 'image/png',
-      size: file.size,
-      dataUrl: await readFileAsDataUrl(file),
-    })
-  }
-  composeMode.value = 'image'
-}
-
-function removeReference(index: number) {
-  selectedFiles.value.splice(index, 1)
-  referencePreviews.value.splice(index, 1)
-}
-
-function clearReferences() {
-  selectedFiles.value = []
-  referencePreviews.value = []
-}
-
-function previewReference(reference: StudioReference) {
-  if (!reference.dataUrl) return
-  previewImage.value = {
-    src: reference.dataUrl,
-    name: reference.name,
-  }
-}
-
-function openPreview(src: string, name: string, localPath = '') {
-  if (!src) return
-  previewImage.value = { src, name, localPath }
-}
-
-function openPromptPicker() {
-  isPromptPickerOpen.value = true
-}
-
-function applyPromptTemplate(prompt: PromptLibraryItem) {
-  composerText.value = prompt.prompt
-  if (composeMode.value === 'image') {
-    if (prompt.image_model) imageForm.model = prompt.image_model
-    if (prompt.image_size) imageForm.size = prompt.image_size
-    if (prompt.image_count && prompt.image_count > 0) imageForm.n = prompt.image_count
-  }
-  isPromptPickerOpen.value = false
-}
-
-function openImageCompare(before: StudioPreviewImage, after: StudioPreviewImage) {
-  if (!before?.src || !after?.src) return
-  comparePreview.value = { before, after }
-}
-
-async function copyText(value: string) {
-  if (!value) return
-  await copy(value)
-}
-
-async function downloadPreviewImage() {
-  if (!previewImage.value) return
-  try {
-    await downloadUrlAsFile(previewImage.value.src, previewImage.value.name || 'image.png', { localPath: previewImage.value.localPath })
-    toast.success('已开始下载')
-  } catch (error: any) {
-    toast.error(`下载失败：${error.message || '无法读取图片文件'}`)
-  }
-}
-
-function scrollToBottom() {
-  void messageListRef.value?.scrollToBottom()
-}
-
-function scheduleScrollToBottom() {
-  if (!isStudioActive) return
-  if (scrollScheduled) return
-  const requestToken = ++scrollRequestToken
-  scrollScheduled = true
-  void nextTick(() => {
-    if (scrollFrameId !== null) return
-    scrollFrameId = window.requestAnimationFrame(() => {
-      scrollFrameId = null
-      scrollScheduled = false
-      if (requestToken !== scrollRequestToken || !isStudioActive) return
-      scrollToBottom()
-    })
-  })
-}
-
-function startSidebarResize(event: PointerEvent) {
-  event.preventDefault()
-  ;(event.currentTarget as HTMLElement | null)?.setPointerCapture?.(event.pointerId)
-  sidebarResizeStartX = event.clientX
-  sidebarResizeStartWidth = sidebarWidth.value
-  document.body.classList.add('studio-resizing')
-  window.addEventListener('pointermove', handleSidebarResize)
-  window.addEventListener('pointerup', stopSidebarResize, { once: true })
-  window.addEventListener('pointercancel', stopSidebarResize, { once: true })
-}
-
-function handleSidebarResize(event: PointerEvent) {
-  const nextWidth = sidebarResizeStartWidth + event.clientX - sidebarResizeStartX
-  sidebarWidth.value = Math.min(380, Math.max(220, Math.round(nextWidth)))
-}
-
-function stopSidebarResize() {
-  document.body.classList.remove('studio-resizing')
-  window.removeEventListener('pointermove', handleSidebarResize)
-  window.removeEventListener('pointerup', stopSidebarResize)
-  window.removeEventListener('pointercancel', stopSidebarResize)
-}
-
-function clearImagePollTimer() {
-  if (imagePollTimer !== null) {
-    window.clearTimeout(imagePollTimer)
-    imagePollTimer = null
-  }
-}
-
-function clearImageRefreshTimer() {
-  if (imageRefreshTimer !== null) {
-    window.clearTimeout(imageRefreshTimer)
-    imageRefreshTimer = null
-  }
-}
 
 function cancelScheduledScroll() {
   scrollRequestToken += 1
@@ -1534,12 +978,9 @@ function activateStudio() {
 
 function deactivateStudio() {
   isStudioActive = false
-  clearImagePollTimer()
-  clearImageRefreshTimer()
+  clearImageTimers()
   stopTransientStudioUi()
-  if (conversationsPersistTimer !== null) flushPersistConversations()
-  if (conversationNoticesPersistTimer !== null) flushPersistConversationNotices()
-  if (activeConversationPersistTimer !== null) flushPersistActiveConversationId()
+  flushAllPersistence()
 }
 
 function disposeStudio() {
