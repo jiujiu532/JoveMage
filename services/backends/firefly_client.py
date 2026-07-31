@@ -1,13 +1,14 @@
-"""Adobe Firefly 3P 图像客户端：提交 → 轮询 → 下载；图生图参考图上传。
+"""Adobe Firefly 3P 客户端：图像提交/轮询/下载、图生图上传、视频生成。
 
-移植自 adobe2api adobe_client.generate 与 GPT2Image-Pro firefly-direct/client.ts。
-Phase 1 文生图；Phase 2 增加 upload_image（storage/image）。
+移植自 adobe2api adobe_client 与 GPT2Image-Pro firefly-direct/client.ts。
+Phase 1 文生图；Phase 2 upload_image；Phase 3 generate_video + epo→bks 轮询改写。
 """
 
 from __future__ import annotations
 
 import time
 from typing import Any
+from urllib.parse import urlparse
 
 from curl_cffi import requests as curl_requests
 
@@ -22,6 +23,7 @@ from utils.diagnostics import redact_auth_diagnostic
 from utils.log import logger
 
 GENERATE_URL = "https://firefly-3p.ff.adobe.io/v2/3p-images/generate-async"
+VIDEO_GENERATE_URL = "https://firefly-3p.ff.adobe.io/v2/3p-videos/generate-async"
 UPLOAD_URL = "https://firefly-3p.ff.adobe.io/v2/storage/image"
 
 DEFAULT_API_KEY = "projectx_webapp"
@@ -128,6 +130,54 @@ def extract_result_link(headers: Any, submit_data: Any) -> str:
     if isinstance(result_link, dict):
         return str(result_link.get("href") or "").strip()
     return ""
+
+
+def normalize_video_poll_url(url: str) -> str:
+    """将 firefly-epo 分片轮询链接改写为 bks 任务查询地址。
+
+    输入: https://firefly-epo{shard}-<region>.adobe.io/.../jobs/.../{jobId}
+    输出: https://bks-epo{shard}.adobe.io/v2/jobs/result/{jobId}?host=<原host>/
+
+    非 epo 链接、非法分片、解析失败一律原样返回。
+    **漏改则 sora/veo 拿不到结果**（视频成功关键）。
+    """
+    raw_url = str(url or "")
+    if not raw_url:
+        return raw_url
+    try:
+        parsed = urlparse(raw_url)
+        host = parsed.netloc
+        path_parts = [p for p in parsed.path.split("/") if p]
+        if not host or not path_parts:
+            return raw_url
+        if not host.startswith("firefly-epo"):
+            return raw_url
+        job_id = path_parts[-1]
+        if not job_id:
+            return raw_url
+        # host 形如 firefly-epo1234-prod.adobe.io → suffix "1234-prod" → shard "1234"
+        host_suffix = host[len("firefly-epo") :].split(".", 1)[0]
+        shard = host_suffix[:4].strip()
+        if len(shard) != 4 or not shard.isdigit():
+            return raw_url
+        return (
+            f"https://bks-epo{shard}.adobe.io/v2/jobs/result/{job_id}"
+            f"?host={host}/"
+        )
+    except Exception:
+        return raw_url
+
+
+def _video_ext_from_content_type(content_type: str) -> str:
+    """按 contentType / Content-Type 选扩展名：mp4 / webm / ogv。"""
+    ct = str(content_type or "").strip().lower()
+    if "webm" in ct:
+        return "webm"
+    if "ogg" in ct or "ogv" in ct:
+        return "ogv"
+    if "mp4" in ct or "mpeg" in ct or "quicktime" in ct:
+        return "mp4"
+    return "mp4"
 
 
 def _classify_auth_or_quota(status_code: int, headers: Any, body: str, context: str):
@@ -362,12 +412,23 @@ def generate_image(
 
 def _download_bytes(url: str, *, proxy: str | None = None) -> bytes:
     """下载 presign（无需 TLS 伪装）。"""
+    content, _ctype = _download_bytes_with_type(url, proxy=proxy)
+    return content
+
+
+def _download_bytes_with_type(
+    url: str,
+    *,
+    proxy: str | None = None,
+    timeout: float = 120,
+) -> tuple[bytes, str]:
+    """下载 presign，返回 (bytes, content-type)。"""
     try:
         # 优先无 impersonate 的 curl_cffi；失败再试标准 requests
         resp = curl_requests.get(
             url,
             headers={"accept": "*/*"},
-            timeout=60,
+            timeout=timeout,
             proxies=_proxy_dict(proxy),
         )
     except Exception as exc:
@@ -380,7 +441,7 @@ def _download_bytes(url: str, *, proxy: str | None = None) -> bytes:
             resp = std_requests.get(
                 url,
                 headers={"accept": "*/*"},
-                timeout=60,
+                timeout=timeout,
                 proxies=_proxy_dict(proxy),
             )
         except Exception as exc2:
@@ -397,7 +458,141 @@ def _download_bytes(url: str, *, proxy: str | None = None) -> bytes:
     content = resp.content or b""
     if not content:
         raise FireflyRequestError("media download returned empty body")
-    return content
+    content_type = _header_get(getattr(resp, "headers", None), "content-type")
+    return content, content_type
+
+
+def generate_video(
+    access_token: str,
+    payload: dict[str, Any],
+    *,
+    proxy: str | None = None,
+    timeout: float = 600,
+    poll_interval: float = 3,
+) -> tuple[bytes, str]:
+    """提交视频 generate-async → epo→bks 归一化 → 轮询 → 下载。
+
+    Returns:
+        (video_bytes, ext) — ext 按 contentType 选 mp4/webm/ogv
+
+    错误分类同 generate_image：
+    - taste_exhausted → FireflyQuotaExhausted
+    - 401/403 → FireflyAuthError
+    - 429/451/5xx / 网络 / 超时 → FireflyUpstreamTemporary
+    - 其它 → FireflyRequestError
+    """
+    token = str(access_token or "").strip()
+    if not token:
+        raise FireflyAuthError("empty access token", status_code=401)
+    if not isinstance(payload, dict) or not payload:
+        raise FireflyRequestError("empty payload")
+
+    # 1. 提交
+    resp = _post_json(
+        VIDEO_GENERATE_URL,
+        headers=submit_headers(token),
+        payload=payload,
+        proxy=proxy,
+        timeout=min(60.0, float(timeout)),
+    )
+    body_text = ""
+    try:
+        body_text = resp.text or ""
+    except Exception:
+        body_text = ""
+
+    if resp.status_code != 200:
+        logger.warning(
+            "firefly video submit failed status=%s body=%s",
+            resp.status_code,
+            redact_auth_diagnostic(body_text)[:300],
+        )
+        _raise_for_http(
+            resp.status_code, resp.headers, body_text, "video submit failed"
+        )
+
+    try:
+        submit_data = resp.json()
+    except Exception:
+        submit_data = {}
+
+    raw_poll_url = extract_result_link(resp.headers, submit_data)
+    if not raw_poll_url:
+        raise FireflyRequestError("video submit succeeded but no poll url returned")
+    poll_url = normalize_video_poll_url(str(raw_poll_url))
+
+    # 2. 轮询（视频更久，默认 600s / 3s）
+    deadline = time.time() + float(timeout)
+    interval = max(0.5, float(poll_interval))
+    latest: dict[str, Any] = {}
+
+    while True:
+        poll_resp = _get(
+            poll_url,
+            headers=poll_headers(token),
+            proxy=proxy,
+            timeout=60,
+            impersonate=True,
+        )
+        if poll_resp.status_code != 200:
+            poll_body = ""
+            try:
+                poll_body = poll_resp.text or ""
+            except Exception:
+                poll_body = ""
+            logger.warning(
+                "firefly video poll failed status=%s body=%s",
+                poll_resp.status_code,
+                redact_auth_diagnostic(poll_body)[:300],
+            )
+            _raise_for_http(
+                poll_resp.status_code,
+                poll_resp.headers,
+                poll_body,
+                "video poll failed",
+            )
+
+        try:
+            parsed = poll_resp.json()
+            latest = parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            latest = {}
+
+        status_header = _header_get(poll_resp.headers, "x-task-status").upper()
+        status_val = str(latest.get("status") or "").upper() or status_header
+
+        outputs = latest.get("outputs") or []
+        if isinstance(outputs, list) and outputs:
+            first = outputs[0] if isinstance(outputs[0], dict) else {}
+            video = first.get("video") if isinstance(first, dict) else None
+            video_url = ""
+            video_ctype = ""
+            if isinstance(video, dict):
+                video_url = str(video.get("presignedUrl") or "").strip()
+                video_ctype = str(
+                    video.get("contentType") or video.get("content_type") or ""
+                ).strip()
+            if not video_url:
+                raise FireflyRequestError("video job finished without video url")
+            # 视频下载超时放宽
+            content, resp_ctype = _download_bytes_with_type(
+                video_url,
+                proxy=proxy,
+                timeout=min(180.0, max(60.0, float(timeout) / 2)),
+            )
+            ext = _video_ext_from_content_type(video_ctype or resp_ctype)
+            return content, ext
+
+        if status_val in {"FAILED", "CANCELLED", "ERROR"}:
+            detail = redact_auth_diagnostic(str(latest)[:300])
+            raise FireflyRequestError(f"video job failed: {detail}")
+
+        if time.time() >= deadline:
+            raise FireflyUpstreamTemporary(
+                "video generation timed out",
+                error_type="timeout",
+            )
+        time.sleep(interval)
 
 
 def _normalize_upload_mime(mime: str) -> str:
