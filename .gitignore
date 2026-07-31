@@ -73,6 +73,10 @@ tests/
 !/test/test_firefly_upload.py
 !/test/test_firefly_payloads_edit.py
 !/test/test_firefly_fetch_image.py
+!/test/test_firefly_video_catalog.py
+!/test/test_firefly_video_payloads.py
+!/test/test_firefly_video_poll_url.py
+!/test/test_firefly_entities.py
 docs/*.md
 scripts/test_*.py
 web/
