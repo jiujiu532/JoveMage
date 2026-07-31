@@ -184,6 +184,26 @@ FIREFLY_VIDEO_FAMILIES: dict[str, dict[str, Any]] = {
 FIREFLY_VIDEO_MODEL_CATALOG: dict[str, dict[str, Any]] = {}
 
 
+def _default_full_id_for_spec(spec: dict[str, Any]) -> str:
+    """族规格 → 默认完整 id：最短 duration + 16x9 + 族默认 resolution。"""
+    duration = int(spec["durations"][0])
+    ratios = list(spec["ratios"])
+    ratio_sfx = "16x9" if "16x9" in ratios else ratios[0]
+    resolution = str(spec["resolutions"][0])
+    if spec.get("resolution_in_id"):
+        return f"{spec['prefix']}-{duration}s-{ratio_sfx}-{resolution}"
+    return f"{spec['prefix']}-{duration}s-{ratio_sfx}"
+
+
+# 族级 id（firefly-sora2 / sora2）→ 默认完整 id
+# 对齐图像 resolve 的族级语义，供 /v1/models 放出的族级 id 选型
+FAMILY_DEFAULT_FULL_ID: dict[str, str] = {}
+for _spec in _VIDEO_FAMILY_SPECS:
+    _default_id = _default_full_id_for_spec(_spec)
+    FAMILY_DEFAULT_FULL_ID[str(_spec["prefix"]).lower()] = _default_id
+    FAMILY_DEFAULT_FULL_ID[str(_spec["family"]).lower()] = _default_id
+
+
 def _register_video_catalog() -> None:
     """按族规格展开全部合法 model id。"""
     for spec in _VIDEO_FAMILY_SPECS:
@@ -289,12 +309,16 @@ def resolve_firefly_video_model(
     model_id: str | None,
     size: str | None = None,
 ) -> dict[str, Any] | None:
-    """解析完整视频 model id → 模型信息；未知返回 None。
+    """解析完整或族级视频 model id → 模型信息；未知返回 None。
 
     返回字段：
       family, engine, duration, ratio, resolution, width, height,
       modelId, modelVersion, upstreamModel, max_input_images
       （以及 aspect_ratio / generate_audio / reference_mode / full_id 等）
+
+    族级 id（如 firefly-sora2 / sora2）先映射到该族默认完整 id
+    （最短 duration + 16x9 + 族默认 resolution），再走完整 id 逻辑；
+    对齐图像 resolve_firefly_image_model 的族级语义。
 
     size 可选：形如 "1280x720" / "720p"，仅在完整 id 已命中时
     用于覆盖分辨率（veo 系列）；非法则忽略。
@@ -302,6 +326,13 @@ def resolve_firefly_video_model(
     raw = str(model_id or "").strip().lower()
     if not raw:
         return None
+
+    # 族级 id → 默认完整 id（/v1/models 放出的是族级）
+    if raw not in FIREFLY_VIDEO_MODEL_CATALOG:
+        mapped = FAMILY_DEFAULT_FULL_ID.get(raw)
+        if mapped is None:
+            return None
+        raw = mapped
 
     entry = FIREFLY_VIDEO_MODEL_CATALOG.get(raw)
     if entry is None:
