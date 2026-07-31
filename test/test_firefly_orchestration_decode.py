@@ -145,7 +145,11 @@ class DecodeFireflyImageEntryTests(unittest.TestCase):
         if isinstance(data, (bytes, bytearray)):
             # URL 文本被 b64decode 后几乎必含非图片魔数；
             # 关键：解码结果不得等于对 URL 本身做 b64decode 的产物
-            garbage = base64.b64decode(url, validate=False)
+            try:
+                garbage = base64.b64decode(url, validate=False)
+            except Exception:
+                # 该 URL 根本无法 b64decode —— 恰好证明实现没有走这条路
+                return
             self.assertNotEqual(
                 bytes(data),
                 garbage,
@@ -188,9 +192,13 @@ class DecodeFireflyImageEntryTests(unittest.TestCase):
         data, _mime = _unpack_decoded(result)
         if isinstance(data, (bytes, bytearray)):
             # 不应等于对 str(dict) 或 url 的 b64decode 垃圾
-            garbage = base64.b64decode(
-                "https://cdn.example.com/a.png", validate=False
-            )
+            try:
+                garbage = base64.b64decode(
+                    "https://cdn.example.com/a.png", validate=False
+                )
+            except Exception:
+                # URL 无法 b64decode —— 证明实现未误走此路
+                return
             self.assertNotEqual(bytes(data), garbage)
             return
         # 有些实现把 dict 当无法解码 → None 更合理；到这里说明返回了不可识别形态
