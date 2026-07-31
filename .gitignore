@@ -81,6 +81,7 @@ tests/
 !/test/test_firefly_video_family_resolve.py
 !/test/test_firefly_helper_video_route.py
 !/test/test_firefly_account_id.py
+!/test/test_firefly_http.py
 !/test/_firefly_helpers.py
 docs/*.md
 scripts/test_*.py

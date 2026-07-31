@@ -20,15 +20,11 @@ try:
 except Exception:  # pragma: no cover
     Image = None  # type: ignore
 
-# ---------------------------------------------------------------------------
-# 比例：payload 用 "16:9"，完整 model id 后缀用 "16x9"
-# ---------------------------------------------------------------------------
+from services.backends.firefly_ratio import ratio_to_colon, ratio_to_suffix
 
-_RATIO_COLON_TO_X: dict[str, str] = {
-    "16:9": "16x9",
-    "9:16": "9x16",
-}
-_RATIO_X_TO_COLON: dict[str, str] = {v: k for k, v in _RATIO_COLON_TO_X.items()}
+# ---------------------------------------------------------------------------
+# 比例：payload 用 "16:9"，完整 model id 后缀用 "16x9"（实现见 firefly_ratio）
+# ---------------------------------------------------------------------------
 
 _VIDEO_RATIOS = ("16x9", "9x16")
 _VIDEO_RESOLUTIONS = ("720p", "1080p")
@@ -50,22 +46,6 @@ VIDEO_SIZE_MAP: dict[str, dict[str, tuple[int, int]]] = {
         "9x16": (1080, 1920),
     },
 }
-
-
-def ratio_to_colon(ratio: str) -> str:
-    """'16x9' / '16:9' → '16:9'。"""
-    text = str(ratio or "").strip().lower().replace("×", "x")
-    if ":" in text:
-        return text
-    return _RATIO_X_TO_COLON.get(text, text.replace("x", ":") if text else "16:9")
-
-
-def ratio_to_suffix(ratio: str) -> str:
-    """'16:9' / '16x9' → '16x9'。"""
-    text = str(ratio or "").strip().lower().replace("×", "x")
-    if "x" in text and ":" not in text:
-        return text
-    return _RATIO_COLON_TO_X.get(text, text.replace(":", "x") if text else "16x9")
 
 
 # ---------------------------------------------------------------------------

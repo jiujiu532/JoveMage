@@ -21,13 +21,18 @@ from urllib.parse import quote
 
 from curl_cffi import requests as curl_requests
 
-from services.backends.firefly_auth import GENERATE_API_KEY
+from services.backends.firefly_constants import (
+    DEFAULT_USER_AGENT,
+    GENERATE_API_KEY,
+    IMPERSONATE,
+    auth_headers,
+    proxy_mapping,
+)
 from services.backends.firefly_errors import (
-    FireflyAuthError,
     FireflyRequestError,
     FireflyUpstreamTemporary,
-    is_retryable_status,
 )
+from services.backends.firefly_http import header_get, raise_for_firefly_http
 from services.config import DATA_DIR
 from services.json_file import read_json_object, write_json_file
 from utils.diagnostics import redact_auth_diagnostic
@@ -40,11 +45,6 @@ PLATFORM_CS_BASE = "https://platform-cs-va6.adobe.io/composite/component/path"
 ENTITIES_FILE = DATA_DIR / "firefly_entities.json"
 ENTITIES_LOCK = threading.RLock()
 
-_DEFAULT_UA = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
-)
-_IMPERSONATE = "chrome124"
 _API_KEY = GENERATE_API_KEY  # projectx_webapp
 
 # prompt 中 @entity:Name（Name 不含空白与 @）
@@ -60,76 +60,40 @@ _STORE: dict[str, dict[str, Any]] | None = None
 
 
 def _proxy_kwargs(proxy: str | None) -> dict[str, Any]:
-    text = str(proxy or "").strip()
-    if not text:
-        return {}
-    return {"proxies": {"http": text, "https": text}}
+    mapping = proxy_mapping(proxy)
+    return {"proxies": mapping} if mapping else {}
 
 
 def _entity_headers(access_token: str) -> dict[str, str]:
-    return {
-        "Authorization": f"Bearer {str(access_token or '').strip()}",
-        "x-api-key": _API_KEY,
-        "content-type": "application/json",
-        "accept": "application/json",
-        "user-agent": _DEFAULT_UA,
-    }
+    return auth_headers(
+        access_token,
+        api_key=_API_KEY,
+        content_type="application/json",
+        extra={"accept": "application/json"},
+    )
 
 
 def _cs_index_headers(access_token: str) -> dict[str, str]:
-    return {
-        "Authorization": f"Bearer {str(access_token or '').strip()}",
-        "x-api-key": _API_KEY,
-        "accept": "*/*",
-        "origin": "https://new.express.adobe.com",
-        "referer": "https://new.express.adobe.com/",
-        "user-agent": _DEFAULT_UA,
-        "content-type": "application/json",
-    }
+    return auth_headers(
+        access_token,
+        api_key=_API_KEY,
+        content_type="application/json",
+    )
 
 
 def _header_get(headers: Any, *names: str) -> str:
-    """兼容 curl_cffi / 普通 dict 响应头大小写。"""
-    if headers is None:
-        return ""
-    for name in names:
-        try:
-            value = (
-                headers.get(name)
-                or headers.get(name.lower())
-                or headers.get(name.title())
-            )
-        except Exception:
-            value = None
-        if value is None and hasattr(headers, "items"):
-            target = name.lower()
-            for key, val in headers.items():
-                if str(key).lower() == target:
-                    value = val
-                    break
-        text = str(value or "").strip()
-        if text:
-            return text
-    return ""
+    return header_get(headers, *names)
 
 
-def _raise_for_http(status_code: int, body: str, context: str) -> None:
-    safe = redact_auth_diagnostic((body or "")[:300])
-    if status_code in (401, 403):
-        raise FireflyAuthError(
-            f"{context}: token invalid or expired",
-            status_code=status_code,
-        )
-    if is_retryable_status(status_code):
-        raise FireflyUpstreamTemporary(
-            f"{context}: {status_code} {safe}",
-            status_code=status_code,
-            error_type="status",
-        )
-    raise FireflyRequestError(
-        f"{context}: {status_code} {safe}",
-        status_code=status_code,
-    )
+def _raise_for_http(
+    status_code: int,
+    body: str,
+    context: str,
+    *,
+    headers: Any = None,
+) -> None:
+    # 与 client 统一：401 + taste_exhausted → Quota，不再误标 Auth
+    raise_for_firefly_http(status_code, headers, body, context)
 
 
 def _json_or_empty(resp: Any) -> Any:
@@ -337,7 +301,7 @@ def resolve_cc_repository(access_token: str, *, proxy: str | None = None) -> str
             CS_INDEX_URL,
             headers=_cs_index_headers(token),
             timeout=30,
-            impersonate=_IMPERSONATE,
+            impersonate=IMPERSONATE,
             **_proxy_kwargs(proxy),
         )
     except Exception as exc:
@@ -355,6 +319,7 @@ def resolve_cc_repository(access_token: str, *, proxy: str | None = None) -> str
             resp.status_code,
             getattr(resp, "text", "") or "",
             "resolve repository failed",
+            headers=getattr(resp, "headers", None),
         )
 
     data = _json_or_empty(resp)
@@ -425,7 +390,7 @@ def create_entity(
             headers=_entity_headers(token),
             json=payload,
             timeout=60,
-            impersonate=_IMPERSONATE,
+            impersonate=IMPERSONATE,
             **_proxy_kwargs(proxy),
         )
     except Exception as exc:
@@ -443,6 +408,7 @@ def create_entity(
             resp.status_code,
             getattr(resp, "text", "") or "",
             "create entity failed",
+            headers=getattr(resp, "headers", None),
         )
 
     data = _json_or_empty(resp)
@@ -519,7 +485,7 @@ def upload_entity_image(
         "x-api-key": _API_KEY,
         "content-type": mime_type,
         "accept": "application/json",
-        "user-agent": _DEFAULT_UA,
+        "user-agent": DEFAULT_USER_AGENT,
     }
     try:
         resp = curl_requests.put(
@@ -527,7 +493,7 @@ def upload_entity_image(
             headers=headers,
             data=image_bytes,
             timeout=120,
-            impersonate=_IMPERSONATE,
+            impersonate=IMPERSONATE,
             **_proxy_kwargs(proxy),
         )
     except Exception as exc:
@@ -545,6 +511,7 @@ def upload_entity_image(
             resp.status_code,
             getattr(resp, "text", "") or "",
             "upload entity image failed",
+            headers=getattr(resp, "headers", None),
         )
 
     length_raw = _header_get(resp.headers, "resource-length", "content-length")
@@ -613,7 +580,7 @@ def register_entity_resource(
             headers=_entity_headers(token),
             json=body,
             timeout=60,
-            impersonate=_IMPERSONATE,
+            impersonate=IMPERSONATE,
             **_proxy_kwargs(proxy),
         )
     except Exception as exc:
@@ -631,6 +598,7 @@ def register_entity_resource(
             resp.status_code,
             getattr(resp, "text", "") or "",
             "register entity resources failed",
+            headers=getattr(resp, "headers", None),
         )
     return _json_or_empty(resp)
 

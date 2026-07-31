@@ -7,18 +7,27 @@ Phase 1 文生图；Phase 2 upload_image；Phase 3 generate_video + epo→bks �
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from typing import Any
 from urllib.parse import urlparse
 
 from curl_cffi import requests as curl_requests
 
+from services.backends.firefly_constants import (
+    DEFAULT_SEC_CH_UA,
+    DEFAULT_USER_AGENT,
+    GENERATE_API_KEY,
+    IMPERSONATE,
+    auth_headers,
+    browser_headers,
+    proxy_mapping,
+)
 from services.backends.firefly_errors import (
     FireflyAuthError,
-    FireflyQuotaExhausted,
     FireflyRequestError,
     FireflyUpstreamTemporary,
-    is_retryable_status,
 )
+from services.backends.firefly_http import header_get, raise_for_firefly_http
 from utils.diagnostics import redact_auth_diagnostic
 from utils.log import logger
 
@@ -26,15 +35,9 @@ GENERATE_URL = "https://firefly-3p.ff.adobe.io/v2/3p-images/generate-async"
 VIDEO_GENERATE_URL = "https://firefly-3p.ff.adobe.io/v2/3p-videos/generate-async"
 UPLOAD_URL = "https://firefly-3p.ff.adobe.io/v2/storage/image"
 
-DEFAULT_API_KEY = "projectx_webapp"
-DEFAULT_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
-)
-DEFAULT_SEC_CH_UA = (
-    '"Not:A-Brand";v="99", "Google Chrome";v="145", "Chromium";v="145"'
-)
-_IMPERSONATE = "chrome124"
+# 兼容旧常量名
+DEFAULT_API_KEY = GENERATE_API_KEY
+_IMPERSONATE = IMPERSONATE
 
 # 上传参考图允许的 Content-Type
 ALLOWED_UPLOAD_MIMES = frozenset({"image/png", "image/jpeg", "image/webp"})
@@ -49,73 +52,33 @@ except Exception:  # pragma: no cover
 
 
 def _proxy_dict(proxy: str | None) -> dict[str, str] | None:
-    text = str(proxy or "").strip()
-    if not text:
-        return None
-    return {"http": text, "https": text}
-
-
-def browser_headers() -> dict[str, str]:
-    return {
-        "user-agent": DEFAULT_USER_AGENT,
-        "origin": "https://new.express.adobe.com",
-        "referer": "https://new.express.adobe.com/",
-        "accept-language": "en-US,en;q=0.9",
-        "sec-ch-ua": DEFAULT_SEC_CH_UA,
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": '"Windows"',
-        "sec-fetch-site": "cross-site",
-        "sec-fetch-mode": "cors",
-        "sec-fetch-dest": "empty",
-    }
+    return proxy_mapping(proxy)
 
 
 def submit_headers(access_token: str) -> dict[str, str]:
-    headers = browser_headers()
-    headers.update(
-        {
-            "Authorization": f"Bearer {access_token}",
-            "x-api-key": DEFAULT_API_KEY,
-            "content-type": "application/json",
-            "accept": "*/*",
-        }
+    return auth_headers(
+        access_token,
+        api_key=GENERATE_API_KEY,
+        content_type="application/json",
     )
-    return headers
 
 
 def poll_headers(access_token: str) -> dict[str, str]:
-    return {
-        "Authorization": f"Bearer {access_token}",
-        "accept": "*/*",
-        "referer": "https://new.express.adobe.com/",
-        "origin": "https://new.express.adobe.com",
-        "user-agent": DEFAULT_USER_AGENT,
-        "x-api-key": DEFAULT_API_KEY,
-        "content-type": "application/json",
-    }
+    # 复用 browser_headers 骨架，避免手写子集漂移
+    return auth_headers(
+        access_token,
+        api_key=GENERATE_API_KEY,
+        content_type="application/json",
+    )
 
 
-def _header_get(headers: Any, name: str) -> str:
-    """兼容 curl_cffi / requests 响应头大小写。"""
-    if headers is None:
-        return ""
-    # CaseInsensitiveDict 或普通 dict
-    try:
-        value = headers.get(name) or headers.get(name.lower()) or headers.get(name.title())
-    except Exception:
-        value = None
-    if value is None and hasattr(headers, "items"):
-        target = name.lower()
-        for key, val in headers.items():
-            if str(key).lower() == target:
-                value = val
-                break
-    return str(value or "").strip()
+def _header_get(headers: Any, *names: str) -> str:
+    return header_get(headers, *names)
 
 
 def extract_result_link(headers: Any, submit_data: Any) -> str:
     """优先 header x-override-status-link，否则 body links.result。"""
-    header_link = _header_get(headers, "x-override-status-link")
+    header_link = header_get(headers, "x-override-status-link")
     if header_link:
         return header_link
 
@@ -180,41 +143,13 @@ def _video_ext_from_content_type(content_type: str) -> str:
     return "mp4"
 
 
-def _classify_auth_or_quota(status_code: int, headers: Any, body: str, context: str):
-    """401/403 → Quota 或 Auth。"""
-    access_error = _header_get(headers, "x-access-error").lower()
-    if access_error == "taste_exhausted":
-        raise FireflyQuotaExhausted(
-            "Adobe quota exhausted for this account",
-            status_code=status_code,
-            error_type="status",
-        )
-    raise FireflyAuthError(
-        f"{context}: token invalid or expired",
-        status_code=status_code,
-    )
-
-
 def _raise_for_http(
     status_code: int,
     headers: Any,
     body: str,
     context: str,
 ) -> None:
-    """非 200 时按状态分类抛异常。"""
-    if status_code in (401, 403):
-        _classify_auth_or_quota(status_code, headers, body, context)
-    safe_body = redact_auth_diagnostic((body or "")[:300])
-    if is_retryable_status(status_code):
-        raise FireflyUpstreamTemporary(
-            f"{context}: {status_code} {safe_body}",
-            status_code=status_code,
-            error_type="status",
-        )
-    raise FireflyRequestError(
-        f"{context}: {status_code} {safe_body}",
-        status_code=status_code,
-    )
+    raise_for_firefly_http(status_code, headers, body, context)
 
 
 def _post_json(
@@ -226,14 +161,14 @@ def _post_json(
     timeout: float,
 ):
     """curl_cffi POST；遇 451 回落标准 requests（对齐 adobe2api）。"""
-    proxies = _proxy_dict(proxy)
+    proxies = proxy_mapping(proxy)
     try:
         resp = curl_requests.post(
             url,
             headers=headers,
             json=payload,
             timeout=timeout,
-            impersonate=_IMPERSONATE,
+            impersonate=IMPERSONATE,
             proxies=proxies,
         )
     except Exception as exc:
@@ -272,7 +207,7 @@ def _get(
     timeout: float,
     impersonate: bool = True,
 ):
-    proxies = _proxy_dict(proxy)
+    proxies = proxy_mapping(proxy)
     try:
         kwargs: dict[str, Any] = {
             "headers": headers,
@@ -280,7 +215,7 @@ def _get(
             "proxies": proxies,
         }
         if impersonate:
-            kwargs["impersonate"] = _IMPERSONATE
+            kwargs["impersonate"] = IMPERSONATE
         return curl_requests.get(url, **kwargs)
     except Exception as exc:
         logger.warning(
@@ -291,6 +226,143 @@ def _get(
             f"get network error: {exc}",
             error_type="network",
         ) from exc
+
+
+def _run_generate_async(
+    url: str,
+    token: str,
+    payload: dict[str, Any],
+    *,
+    media_key: str,
+    poll_url_hook: Callable[[str], str] | None = None,
+    download_fn: Callable[..., Any] | None = None,
+    timeout: float,
+    poll_interval: float,
+    proxy: str | None,
+    context_prefix: str = "",
+    timeout_message: str = "generation timed out",
+) -> Any:
+    """提交 generate-async → 抽 poll url → 轮询 → 解析 outputs → 下载。
+
+    media_key: outputs[0] 下媒体字段名（image / video）。
+    poll_url_hook: 视频 epo→bks 归一化。
+    download_fn: (presigned_url, media_dict, *, proxy) → 返回值；默认下图片 bytes。
+    """
+    # 1. 提交
+    resp = _post_json(
+        url,
+        headers=submit_headers(token),
+        payload=payload,
+        proxy=proxy,
+        timeout=min(60.0, float(timeout)),
+    )
+    body_text = ""
+    try:
+        body_text = resp.text or ""
+    except Exception:
+        body_text = ""
+
+    submit_ctx = f"{context_prefix}submit failed"
+    if resp.status_code != 200:
+        logger.warning(
+            "firefly %s status=%s body=%s",
+            submit_ctx,
+            resp.status_code,
+            redact_auth_diagnostic(body_text)[:300],
+        )
+        raise_for_firefly_http(
+            resp.status_code, resp.headers, body_text, submit_ctx
+        )
+
+    try:
+        submit_data = resp.json()
+    except Exception:
+        submit_data = {}
+
+    raw_poll_url = extract_result_link(resp.headers, submit_data)
+    if not raw_poll_url:
+        raise FireflyRequestError(
+            f"{context_prefix}submit succeeded but no poll url returned"
+        )
+    poll_url = (
+        poll_url_hook(str(raw_poll_url)) if poll_url_hook else str(raw_poll_url)
+    )
+
+    # 2. 轮询
+    deadline = time.time() + float(timeout)
+    interval = max(0.5, float(poll_interval))
+    latest: dict[str, Any] = {}
+    poll_ctx = f"{context_prefix}poll failed"
+
+    while True:
+        poll_resp = _get(
+            poll_url,
+            headers=poll_headers(token),
+            proxy=proxy,
+            timeout=60,
+            impersonate=True,
+        )
+        if poll_resp.status_code != 200:
+            poll_body = ""
+            try:
+                poll_body = poll_resp.text or ""
+            except Exception:
+                poll_body = ""
+            logger.warning(
+                "firefly %s status=%s body=%s",
+                poll_ctx,
+                poll_resp.status_code,
+                redact_auth_diagnostic(poll_body)[:300],
+            )
+            raise_for_firefly_http(
+                poll_resp.status_code,
+                poll_resp.headers,
+                poll_body,
+                poll_ctx,
+            )
+
+        try:
+            parsed = poll_resp.json()
+            latest = parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            latest = {}
+
+        status_header = header_get(poll_resp.headers, "x-task-status").upper()
+        status_val = str(latest.get("status") or "").upper() or status_header
+
+        outputs = latest.get("outputs") or []
+        if isinstance(outputs, list) and outputs:
+            first = outputs[0] if isinstance(outputs[0], dict) else {}
+            media = first.get(media_key) if isinstance(first, dict) else None
+            media_url = ""
+            media_obj: dict[str, Any] = {}
+            if isinstance(media, dict):
+                media_obj = media
+                media_url = str(media.get("presignedUrl") or "").strip()
+            if not media_url:
+                # 保持原对外文案：image 为 "job finished without image url"
+                # 视频为 "video job finished without video url"
+                if media_key == "image":
+                    raise FireflyRequestError("job finished without image url")
+                raise FireflyRequestError(
+                    f"{media_key} job finished without {media_key} url"
+                )
+            if download_fn is not None:
+                return download_fn(media_url, media_obj, proxy=proxy)
+            return _download_bytes(media_url, proxy=proxy)
+
+        if status_val in {"FAILED", "CANCELLED", "ERROR"}:
+            detail = redact_auth_diagnostic(str(latest)[:300])
+            # 原: "image job failed" / "video job failed"
+            raise FireflyRequestError(f"{media_key} job failed: {detail}")
+
+        if time.time() >= deadline:
+            # 超时视为上游临时问题，允许换号重试
+            raise FireflyUpstreamTemporary(
+                timeout_message,
+                error_type="timeout",
+            )
+        time.sleep(interval)
 
 
 def generate_image(
@@ -315,99 +387,17 @@ def generate_image(
     if not isinstance(payload, dict) or not payload:
         raise FireflyRequestError("empty payload")
 
-    # 1. 提交
-    resp = _post_json(
+    return _run_generate_async(
         GENERATE_URL,
-        headers=submit_headers(token),
-        payload=payload,
+        token,
+        payload,
+        media_key="image",
+        timeout=timeout,
+        poll_interval=poll_interval,
         proxy=proxy,
-        timeout=min(60.0, float(timeout)),
+        context_prefix="",
+        timeout_message="generation timed out",
     )
-    body_text = ""
-    try:
-        body_text = resp.text or ""
-    except Exception:
-        body_text = ""
-
-    if resp.status_code != 200:
-        logger.warning(
-            "firefly submit failed status=%s body=%s",
-            resp.status_code,
-            redact_auth_diagnostic(body_text)[:300],
-        )
-        _raise_for_http(resp.status_code, resp.headers, body_text, "submit failed")
-
-    try:
-        submit_data = resp.json()
-    except Exception:
-        submit_data = {}
-
-    poll_url = extract_result_link(resp.headers, submit_data)
-    if not poll_url:
-        raise FireflyRequestError("submit succeeded but no poll url returned")
-
-    # 2. 轮询
-    deadline = time.time() + float(timeout)
-    interval = max(0.5, float(poll_interval))
-    latest: dict[str, Any] = {}
-
-    while True:
-        poll_resp = _get(
-            poll_url,
-            headers=poll_headers(token),
-            proxy=proxy,
-            timeout=60,
-            impersonate=True,
-        )
-        if poll_resp.status_code != 200:
-            poll_body = ""
-            try:
-                poll_body = poll_resp.text or ""
-            except Exception:
-                poll_body = ""
-            logger.warning(
-                "firefly poll failed status=%s body=%s",
-                poll_resp.status_code,
-                redact_auth_diagnostic(poll_body)[:300],
-            )
-            _raise_for_http(
-                poll_resp.status_code,
-                poll_resp.headers,
-                poll_body,
-                "poll failed",
-            )
-
-        try:
-            parsed = poll_resp.json()
-            latest = parsed if isinstance(parsed, dict) else {}
-        except Exception:
-            latest = {}
-
-        status_header = _header_get(poll_resp.headers, "x-task-status").upper()
-        status_val = str(latest.get("status") or "").upper() or status_header
-
-        outputs = latest.get("outputs") or []
-        if isinstance(outputs, list) and outputs:
-            first = outputs[0] if isinstance(outputs[0], dict) else {}
-            image = first.get("image") if isinstance(first, dict) else None
-            image_url = ""
-            if isinstance(image, dict):
-                image_url = str(image.get("presignedUrl") or "").strip()
-            if not image_url:
-                raise FireflyRequestError("job finished without image url")
-            return _download_bytes(image_url, proxy=proxy)
-
-        if status_val in {"FAILED", "CANCELLED", "ERROR"}:
-            detail = redact_auth_diagnostic(str(latest)[:300])
-            raise FireflyRequestError(f"image job failed: {detail}")
-
-        if time.time() >= deadline:
-            # 超时视为上游临时问题，允许换号重试
-            raise FireflyUpstreamTemporary(
-                "generation timed out",
-                error_type="timeout",
-            )
-        time.sleep(interval)
 
 
 def _download_bytes(url: str, *, proxy: str | None = None) -> bytes:
@@ -429,7 +419,7 @@ def _download_bytes_with_type(
             url,
             headers={"accept": "*/*"},
             timeout=timeout,
-            proxies=_proxy_dict(proxy),
+            proxies=proxy_mapping(proxy),
         )
     except Exception as exc:
         if std_requests is None:
@@ -442,7 +432,7 @@ def _download_bytes_with_type(
                 url,
                 headers={"accept": "*/*"},
                 timeout=timeout,
-                proxies=_proxy_dict(proxy),
+                proxies=proxy_mapping(proxy),
             )
         except Exception as exc2:
             raise FireflyUpstreamTemporary(
@@ -458,7 +448,7 @@ def _download_bytes_with_type(
     content = resp.content or b""
     if not content:
         raise FireflyRequestError("media download returned empty body")
-    content_type = _header_get(getattr(resp, "headers", None), "content-type")
+    content_type = header_get(getattr(resp, "headers", None), "content-type")
     return content, content_type
 
 
@@ -487,112 +477,38 @@ def generate_video(
     if not isinstance(payload, dict) or not payload:
         raise FireflyRequestError("empty payload")
 
-    # 1. 提交
-    resp = _post_json(
-        VIDEO_GENERATE_URL,
-        headers=submit_headers(token),
-        payload=payload,
-        proxy=proxy,
-        timeout=min(60.0, float(timeout)),
-    )
-    body_text = ""
-    try:
-        body_text = resp.text or ""
-    except Exception:
-        body_text = ""
+    download_timeout = min(180.0, max(60.0, float(timeout) / 2))
 
-    if resp.status_code != 200:
-        logger.warning(
-            "firefly video submit failed status=%s body=%s",
-            resp.status_code,
-            redact_auth_diagnostic(body_text)[:300],
-        )
-        _raise_for_http(
-            resp.status_code, resp.headers, body_text, "video submit failed"
-        )
-
-    try:
-        submit_data = resp.json()
-    except Exception:
-        submit_data = {}
-
-    raw_poll_url = extract_result_link(resp.headers, submit_data)
-    if not raw_poll_url:
-        raise FireflyRequestError("video submit succeeded but no poll url returned")
-    poll_url = normalize_video_poll_url(str(raw_poll_url))
-
-    # 2. 轮询（视频更久，默认 600s / 3s）
-    deadline = time.time() + float(timeout)
-    interval = max(0.5, float(poll_interval))
-    latest: dict[str, Any] = {}
-
-    while True:
-        poll_resp = _get(
-            poll_url,
-            headers=poll_headers(token),
+    def _download_video(
+        media_url: str,
+        media: dict[str, Any],
+        *,
+        proxy: str | None,
+    ) -> tuple[bytes, str]:
+        video_ctype = str(
+            media.get("contentType") or media.get("content_type") or ""
+        ).strip()
+        content, resp_ctype = _download_bytes_with_type(
+            media_url,
             proxy=proxy,
-            timeout=60,
-            impersonate=True,
+            timeout=download_timeout,
         )
-        if poll_resp.status_code != 200:
-            poll_body = ""
-            try:
-                poll_body = poll_resp.text or ""
-            except Exception:
-                poll_body = ""
-            logger.warning(
-                "firefly video poll failed status=%s body=%s",
-                poll_resp.status_code,
-                redact_auth_diagnostic(poll_body)[:300],
-            )
-            _raise_for_http(
-                poll_resp.status_code,
-                poll_resp.headers,
-                poll_body,
-                "video poll failed",
-            )
+        ext = _video_ext_from_content_type(video_ctype or resp_ctype)
+        return content, ext
 
-        try:
-            parsed = poll_resp.json()
-            latest = parsed if isinstance(parsed, dict) else {}
-        except Exception:
-            latest = {}
-
-        status_header = _header_get(poll_resp.headers, "x-task-status").upper()
-        status_val = str(latest.get("status") or "").upper() or status_header
-
-        outputs = latest.get("outputs") or []
-        if isinstance(outputs, list) and outputs:
-            first = outputs[0] if isinstance(outputs[0], dict) else {}
-            video = first.get("video") if isinstance(first, dict) else None
-            video_url = ""
-            video_ctype = ""
-            if isinstance(video, dict):
-                video_url = str(video.get("presignedUrl") or "").strip()
-                video_ctype = str(
-                    video.get("contentType") or video.get("content_type") or ""
-                ).strip()
-            if not video_url:
-                raise FireflyRequestError("video job finished without video url")
-            # 视频下载超时放宽
-            content, resp_ctype = _download_bytes_with_type(
-                video_url,
-                proxy=proxy,
-                timeout=min(180.0, max(60.0, float(timeout) / 2)),
-            )
-            ext = _video_ext_from_content_type(video_ctype or resp_ctype)
-            return content, ext
-
-        if status_val in {"FAILED", "CANCELLED", "ERROR"}:
-            detail = redact_auth_diagnostic(str(latest)[:300])
-            raise FireflyRequestError(f"video job failed: {detail}")
-
-        if time.time() >= deadline:
-            raise FireflyUpstreamTemporary(
-                "video generation timed out",
-                error_type="timeout",
-            )
-        time.sleep(interval)
+    return _run_generate_async(
+        VIDEO_GENERATE_URL,
+        token,
+        payload,
+        media_key="video",
+        poll_url_hook=normalize_video_poll_url,
+        download_fn=_download_video,
+        timeout=timeout,
+        poll_interval=poll_interval,
+        proxy=proxy,
+        context_prefix="video ",
+        timeout_message="video generation timed out",
+    )
 
 
 def _normalize_upload_mime(mime: str) -> str:
@@ -644,24 +560,20 @@ def upload_image(
         mime_type if mime_type is not None else mime
     )
 
-    # headers 与 generate 一致：Bearer + x-api-key + 浏览器伪装
-    headers = browser_headers()
-    headers.update(
-        {
-            "Authorization": f"Bearer {token}",
-            "x-api-key": DEFAULT_API_KEY,
-            "content-type": content_type,
-            "accept": "application/json",
-        }
+    headers = auth_headers(
+        token,
+        api_key=GENERATE_API_KEY,
+        content_type=content_type,
+        extra={"accept": "application/json"},
     )
-    proxies = _proxy_dict(proxy)
+    proxies = proxy_mapping(proxy)
     try:
         resp = curl_requests.post(
             UPLOAD_URL,
             headers=headers,
             data=image_bytes,
             timeout=60,
-            impersonate=_IMPERSONATE,
+            impersonate=IMPERSONATE,
             proxies=proxies,
         )
     except Exception as exc:
@@ -685,7 +597,9 @@ def upload_image(
             resp.status_code,
             redact_auth_diagnostic(body)[:300],
         )
-        _raise_for_http(resp.status_code, resp.headers, body, "upload image failed")
+        raise_for_firefly_http(
+            resp.status_code, resp.headers, body, "upload image failed"
+        )
 
     try:
         data = resp.json()

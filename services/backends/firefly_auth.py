@@ -14,6 +14,15 @@ from typing import Any
 
 from curl_cffi import requests as curl_requests
 
+from services.backends.firefly_constants import (
+    CREDITS_API_KEY,
+    DEFAULT_USER_AGENT,
+    EXPRESS_ORIGIN,
+    EXPRESS_REFERER,
+    GENERATE_API_KEY,
+    IMPERSONATE,
+    proxy_mapping,
+)
 from utils.diagnostics import redact_auth_diagnostic
 from utils.log import logger
 
@@ -29,22 +38,13 @@ IMS_PROFILE_URLS = (
 )
 CREDITS_URL = "https://firefly.adobe.io/v1/credits/balance"
 
-# 生成接口用 projectx_webapp；余额专用 SunbreakWebUI1
-GENERATE_API_KEY = "projectx_webapp"
-CREDITS_API_KEY = "SunbreakWebUI1"
-
-_DEFAULT_UA = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
-)
-_IMPERSONATE = "chrome124"
+# 再导出：生成用 projectx_webapp；余额专用 SunbreakWebUI1，勿混用
+# GENERATE_API_KEY / CREDITS_API_KEY 定义见 firefly_constants
 
 
 def _proxy_kwargs(proxy: str | None) -> dict[str, Any]:
-    text = str(proxy or "").strip()
-    if not text:
-        return {}
-    return {"proxies": {"http": text, "https": text}}
+    mapping = proxy_mapping(proxy)
+    return {"proxies": mapping} if mapping else {}
 
 
 def normalize_cookie(cookie: Any) -> str:
@@ -166,9 +166,9 @@ def refresh_access_token(cookie: str, *, proxy: str | None = None, **_kwargs: An
         "Accept-Language": "en-US,en;q=0.9",
         "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
         "Cookie": cookie_str,
-        "Origin": "https://new.express.adobe.com",
-        "Referer": "https://new.express.adobe.com/",
-        "User-Agent": _DEFAULT_UA,
+        "Origin": EXPRESS_ORIGIN,
+        "Referer": EXPRESS_REFERER,
+        "User-Agent": DEFAULT_USER_AGENT,
     }
     form = {
         "client_id": IMS_CLIENT_ID,
@@ -182,7 +182,7 @@ def refresh_access_token(cookie: str, *, proxy: str | None = None, **_kwargs: An
             headers=headers,
             data=form,
             timeout=30,
-            impersonate=_IMPERSONATE,
+            impersonate=IMPERSONATE,
             **_proxy_kwargs(proxy),
         )
     except Exception as exc:
@@ -231,7 +231,7 @@ def fetch_profile(
     headers = {
         "Authorization": f"Bearer {token}",
         "Accept": "application/json",
-        "User-Agent": _DEFAULT_UA,
+        "User-Agent": DEFAULT_USER_AGENT,
     }
     for url in IMS_PROFILE_URLS:
         try:
@@ -239,7 +239,7 @@ def fetch_profile(
                 url,
                 headers=headers,
                 timeout=15,
-                impersonate=_IMPERSONATE,
+                impersonate=IMPERSONATE,
                 **_proxy_kwargs(proxy),
             )
         except Exception:
@@ -287,18 +287,18 @@ def fetch_credits(
         "Authorization": f"Bearer {token}",
         "x-api-key": CREDITS_API_KEY,
         "x-account-id": aid,
-        "Origin": "https://new.express.adobe.com",
-        "Referer": "https://new.express.adobe.com/",
+        "Origin": EXPRESS_ORIGIN,
+        "Referer": EXPRESS_REFERER,
         "Accept": "application/json",
         "Content-Type": "application/json",
-        "User-Agent": _DEFAULT_UA,
+        "User-Agent": DEFAULT_USER_AGENT,
     }
     try:
         resp = curl_requests.get(
             CREDITS_URL,
             headers=headers,
             timeout=20,
-            impersonate=_IMPERSONATE,
+            impersonate=IMPERSONATE,
             **_proxy_kwargs(proxy),
         )
     except Exception as exc:

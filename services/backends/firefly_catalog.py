@@ -13,27 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-# ---------------------------------------------------------------------------
-# 比例后缀：payload 用 "16:9"，完整 model id 后缀用 "16x9"
-# ---------------------------------------------------------------------------
-
-_RATIO_COLON_TO_X: dict[str, str] = {
-    "1:1": "1x1",
-    "1:8": "1x8",
-    "1:4": "1x4",
-    "5:4": "5x4",
-    "9:16": "9x16",
-    "21:9": "21x9",
-    "4:1": "4x1",
-    "16:9": "16x9",
-    "4:3": "4x3",
-    "3:2": "3x2",
-    "4:5": "4x5",
-    "3:4": "3x4",
-    "8:1": "8x1",
-    "2:3": "2x3",
-}
-_RATIO_X_TO_COLON: dict[str, str] = {v: k for k, v in _RATIO_COLON_TO_X.items()}
+from services.backends.firefly_ratio import ratio_to_colon, ratio_to_suffix
 
 # 通用 / gpt / nano-banana2 支持的比例（id 后缀形式）
 _COMMON_RATIOS = ("1x1", "16x9", "9x16", "4x3", "3x4")
@@ -59,22 +39,6 @@ DEFAULT_RESOLUTION = "2k"
 DEFAULT_RATIO = "16x9"
 # 兼容完整默认 id（参考项目 DEFAULT_MODEL_ID）
 DEFAULT_FULL_MODEL_ID = f"{DEFAULT_MODEL}-{DEFAULT_RESOLUTION}-{DEFAULT_RATIO}"
-
-
-def ratio_to_colon(ratio: str) -> str:
-    """'16x9' / '16:9' → '16:9'。"""
-    text = str(ratio or "").strip().lower().replace("×", "x")
-    if ":" in text:
-        return text
-    return _RATIO_X_TO_COLON.get(text, text.replace("x", ":") if text else "16:9")
-
-
-def ratio_to_suffix(ratio: str) -> str:
-    """'16:9' / '16x9' → '16x9'。"""
-    text = str(ratio or "").strip().lower().replace("×", "x")
-    if "x" in text and ":" not in text:
-        return text
-    return _RATIO_COLON_TO_X.get(text, text.replace(":", "x") if text else "16x9")
 
 
 # ---------------------------------------------------------------------------
