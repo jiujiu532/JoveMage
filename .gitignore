@@ -33,7 +33,8 @@ git_cache/
 # 调试/测试输出目录
 .codex/run-logs/
 .playwright-mcp/
-logs/
+# 仅忽略仓库根的调试日志目录；勿误伤 web-vue/src 下的 logs 源码目录
+/logs/
 *.log
 runtime/
 loginwithpassword_*/
