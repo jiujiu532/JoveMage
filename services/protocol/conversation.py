@@ -2819,7 +2819,10 @@ def _generate_single_image_firefly(
                 channel="firefly",
                 attempt=attempt,
             )
-            token = account_service.get_available_access_token(source_type="firefly")
+            token = account_service.get_available_access_token(
+                source_type="firefly",
+                excluded_tokens=attempted_tokens,
+            )
         except ImageAccountSelectionError as exc:
             _monitor_image_stage(
                 request,
@@ -2844,17 +2847,18 @@ def _generate_single_image_firefly(
             ) from exc
 
         if token in attempted_tokens:
-            # 同 token 已试过仍被分到：释放槽位后按 unavailable 处理
+            # 同 token 已试过仍被分到：释放槽位；保留既有 last_error，勿用 503 覆盖真实 401/429
             try:
                 account_service.release_image_slot(token)
             except Exception:
                 pass
-            last_error = ImageGenerationError(
-                "firefly account pool exhausted after retries",
-                status_code=503,
-                error_type="server_error",
-                code="no_available_account",
-            )
+            if last_error is None:
+                last_error = ImageGenerationError(
+                    "firefly account pool exhausted after retries",
+                    status_code=503,
+                    error_type="server_error",
+                    code="no_available_account",
+                )
             break
         attempted_tokens.add(token)
 
@@ -3005,17 +3009,22 @@ def _generate_single_image_firefly(
                 "error": diagnostic_excerpt(exc, 500),
             })
             continue
-        except (FireflyAuthError, FireflyUpstreamTemporary) as exc:
-            failure_code = "auth_invalid" if isinstance(exc, FireflyAuthError) else "upstream_unavailable"
-            finalize_image_slot(
-                False,
-                failure=image_failure(failure_code, raw_detail=str(exc)),
-            )
+        except FireflyAuthError as exc:
+            # 本地标异常，不带 auth_invalid failure（verify_account=True 会触发 OpenAI fetch_remote_info）
+            try:
+                account_service.update_account(token, {"status": "异常"}, quiet=True)
+            except Exception as mark_exc:
+                logger.warning({
+                    "event": "firefly_auth_mark_abnormal_failed",
+                    "account_email": account_email,
+                    "error": diagnostic_excerpt(mark_exc, 500),
+                })
+            finalize_image_slot(False)  # 不带 failure，避免 verify_account
             last_error = ImageGenerationError(
-                str(exc) or "firefly upstream temporary failure",
-                status_code=503 if isinstance(exc, FireflyUpstreamTemporary) else 401,
-                error_type="server_error" if isinstance(exc, FireflyUpstreamTemporary) else "authentication_error",
-                code=failure_code,
+                str(exc) or "firefly authentication failed",
+                status_code=401,
+                error_type="authentication_error",
+                code="auth_invalid",
                 account_email=account_email,
                 raw_error=str(exc),
                 upstream_error=str(exc),
@@ -3028,7 +3037,30 @@ def _generate_single_image_firefly(
                 "error_type": type(exc).__name__,
                 "error": diagnostic_excerpt(exc, 500),
             })
-            # Auth / 上游临时错误：换号重试
+            continue
+        except FireflyUpstreamTemporary as exc:
+            finalize_image_slot(
+                False,
+                failure=image_failure("upstream_unavailable", raw_detail=str(exc)),
+            )
+            last_error = ImageGenerationError(
+                str(exc) or "firefly upstream temporary failure",
+                status_code=503,
+                error_type="server_error",
+                code="upstream_unavailable",
+                account_email=account_email,
+                raw_error=str(exc),
+                upstream_error=str(exc),
+            )
+            logger.warning({
+                "event": "firefly_rotatable_error",
+                "account_email": account_email,
+                "index": index,
+                "attempt": attempt,
+                "error_type": type(exc).__name__,
+                "error": diagnostic_excerpt(exc, 500),
+            })
+            # 上游临时错误：换号重试
             continue
         except FireflyRequestError as exc:
             finalize_image_slot(
@@ -3216,7 +3248,10 @@ def _generate_single_image_firefly_edit(
                 attempt=attempt,
                 mode="edit",
             )
-            token = account_service.get_available_access_token(source_type="firefly")
+            token = account_service.get_available_access_token(
+                source_type="firefly",
+                excluded_tokens=attempted_tokens,
+            )
         except ImageAccountSelectionError as exc:
             _monitor_image_stage(
                 request,
@@ -3242,16 +3277,18 @@ def _generate_single_image_firefly_edit(
             ) from exc
 
         if token in attempted_tokens:
+            # 同 token 已试过仍被分到：释放槽位；保留既有 last_error，勿用 503 覆盖真实 401/429
             try:
                 account_service.release_image_slot(token)
             except Exception:
                 pass
-            last_error = ImageGenerationError(
-                "firefly account pool exhausted after retries",
-                status_code=503,
-                error_type="server_error",
-                code="no_available_account",
-            )
+            if last_error is None:
+                last_error = ImageGenerationError(
+                    "firefly account pool exhausted after retries",
+                    status_code=503,
+                    error_type="server_error",
+                    code="no_available_account",
+                )
             break
         attempted_tokens.add(token)
 
@@ -3445,17 +3482,47 @@ def _generate_single_image_firefly_edit(
                 "mode": "edit",
             })
             continue
-        except (FireflyAuthError, FireflyUpstreamTemporary) as exc:
-            failure_code = "auth_invalid" if isinstance(exc, FireflyAuthError) else "upstream_unavailable"
+        except FireflyAuthError as exc:
+            # 本地标异常，不带 auth_invalid failure（verify_account=True 会触发 OpenAI fetch_remote_info）
+            try:
+                account_service.update_account(token, {"status": "异常"}, quiet=True)
+            except Exception as mark_exc:
+                logger.warning({
+                    "event": "firefly_auth_mark_abnormal_failed",
+                    "account_email": account_email,
+                    "error": diagnostic_excerpt(mark_exc, 500),
+                    "mode": "edit",
+                })
+            finalize_image_slot(False)  # 不带 failure，避免 verify_account
+            last_error = ImageGenerationError(
+                str(exc) or "firefly authentication failed",
+                status_code=401,
+                error_type="authentication_error",
+                code="auth_invalid",
+                account_email=account_email,
+                raw_error=str(exc),
+                upstream_error=str(exc),
+            )
+            logger.warning({
+                "event": "firefly_rotatable_error",
+                "account_email": account_email,
+                "index": index,
+                "attempt": attempt,
+                "error_type": type(exc).__name__,
+                "error": diagnostic_excerpt(exc, 500),
+                "mode": "edit",
+            })
+            continue
+        except FireflyUpstreamTemporary as exc:
             finalize_image_slot(
                 False,
-                failure=image_failure(failure_code, raw_detail=str(exc)),
+                failure=image_failure("upstream_unavailable", raw_detail=str(exc)),
             )
             last_error = ImageGenerationError(
                 str(exc) or "firefly upstream temporary failure",
-                status_code=503 if isinstance(exc, FireflyUpstreamTemporary) else 401,
-                error_type="server_error" if isinstance(exc, FireflyUpstreamTemporary) else "authentication_error",
-                code=failure_code,
+                status_code=503,
+                error_type="server_error",
+                code="upstream_unavailable",
                 account_email=account_email,
                 raw_error=str(exc),
                 upstream_error=str(exc),

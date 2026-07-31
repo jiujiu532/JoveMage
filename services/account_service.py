@@ -212,14 +212,19 @@ class AccountService:
     def _is_image_account_available(account: dict) -> bool:
         if not isinstance(account, dict):
             return False
-        if account.get("status") in {"禁用", "限流", "异常"}:
+        status = str(account.get("status") or "").strip()
+        # 中文号池状态 + Firefly refresh 写的 active/invalid 英文态
+        if status in {"禁用", "限流", "异常", "invalid", "disabled", "deleted"}:
             return False
+        # Firefly 续期成功写 status="active"；与中文“正常”等价
+        if AccountService._normalize_source_type(account.get("source_type")) == "firefly":
+            return status in {"正常", "active", ""} or int(account.get("quota") or 0) > 0
         if bool(account.get("image_quota_unknown")):
             return True
         # quota 是展示/预估值，不能作为持久调度开关。
         # 只有远程确认后写入的“限流”状态才代表图片额度耗尽；否则 quota=0 也要允许进入预检，
         # 避免本地扣减或额度重置不同步时把账号锁死在候选池外。
-        return account.get("status") == "正常" or int(account.get("quota") or 0) > 0
+        return status == "正常" or int(account.get("quota") or 0) > 0
 
     @classmethod
     def _is_unlimited_image_quota_account(cls, account: dict) -> bool:
@@ -241,7 +246,8 @@ class AccountService:
     @classmethod
     def _account_matches_source_type(cls, account: dict, source_type: str | None = None) -> bool:
         if not source_type:
-            return True
+            # 默认选号排除 firefly，避免混池误伤（OpenAI 预检会打残 Firefly 号）
+            return cls._normalize_source_type(account.get("source_type")) != "firefly"
         return cls._normalize_source_type(account.get("source_type")) == cls._normalize_source_type(source_type)
 
     @classmethod
@@ -1043,6 +1049,7 @@ class AccountService:
             plan_type: str | None = None,
             source_type: str | None = None,
             plan_types: set[str] | tuple[str, ...] | None = None,
+            excluded_tokens: set[str] | None = None,
     ) -> str:
         """从候选池中获取一个可用的图片生图 token。
 
@@ -1054,13 +1061,14 @@ class AccountService:
         # Firefly 无 ChatGPT limits_progress；额度靠 taste_exhausted → report_exhausted
         if self._normalize_source_type(source_type) == "firefly":
             return self._acquire_next_candidate_token(
+                excluded_tokens=excluded_tokens,
                 plan_type=plan_type,
                 source_type=source_type,
                 plan_types=plan_types,
             )
 
         max_attempts = 20  # 防止无限循环
-        attempted_tokens: set[str] = set()
+        attempted_tokens: set[str] = set(excluded_tokens or set())
         # 控制流只保留两个出口，但最终是否能说“额度耗尽”必须谨慎：
         # 只要出现过非额度类失败，就说明不能断言全部账号都耗尽，应返回可重试的 unavailable。
         saw_remote_quota_exhausted = False
@@ -1119,7 +1127,8 @@ class AccountService:
             candidates = [
                 token
                 for account in self._accounts.values()
-                if account.get("status") not in {"禁用", "异常"}
+                if account.get("status") not in {"禁用", "异常", "invalid", "disabled", "deleted"}
+                   and self._normalize_source_type(account.get("source_type")) != "firefly"
                    and (token := account.get("access_token") or "")
                    and token not in excluded
             ]
