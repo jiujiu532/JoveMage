@@ -291,6 +291,7 @@ defineEmits<{
   gap: 8px;
 }
 
+/* 局部布局断点：分组摘要栅格改排；取 720 为「小平板」改排，区别于全局 sm(640)/md(768) */
 @media (max-width: 720px) {
   .proxy-group__summary {
     grid-template-columns: auto minmax(0, 1fr);

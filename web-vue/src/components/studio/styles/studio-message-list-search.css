@@ -317,6 +317,7 @@ html[data-theme='dark'] .studio-search-source-card.is-highlighted {
   transform: translateX(1rem);
 }
 
+/* 局部布局断点：搜索抽屉左右贴边；取 720 为「小平板」改排，区别于全局 sm(640)/md(768) */
 @media (max-width: 720px) {
   .studio-search-drawer {
     right: 0.5rem;

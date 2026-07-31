@@ -1313,7 +1313,8 @@ html[data-theme='dark'] .monitor-slow-card__chip--normal {
   overflow-y: auto;
 }
 
-@media (max-width: 768px) {
+/* 与 md 断点对齐：<768（原 max-width:768 含边界 1px 差，统一为 767） */
+@media (max-width: 767px) {
   .monitor-paired-header {
     min-height: auto;
     flex-direction: column;

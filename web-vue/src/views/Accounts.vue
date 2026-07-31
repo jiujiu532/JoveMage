@@ -1229,6 +1229,7 @@ function handleRemoteImportDone() {
   justify-content: flex-end;
 }
 
+/* 与 md 断点对齐：<768（max-width:767 = mqDown(md)） */
 @media (max-width: 767px) {
   .accounts-toolbar {
     gap: 10px;

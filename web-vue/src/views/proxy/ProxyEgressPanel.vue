@@ -220,6 +220,7 @@ defineEmits<{
   grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
   align-items: end;
 }
+/* 局部布局断点：出口行双列→单列；取 720 为「小平板」改排，区别于全局 sm(640)/md(768) */
 @media (max-width: 720px) {
   .proxy-egress__row {
     grid-template-columns: 1fr;

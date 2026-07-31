@@ -387,6 +387,7 @@ html[data-theme='dark'] .studio-compare-divider span {
   background: hsl(var(--foreground));
 }
 
+/* 局部布局断点：对比弹层模式文案隐藏、并排改单列；取 760（介于 sm/md），区别于全局 token */
 @media (max-width: 760px) {
   .studio-compare-modal {
     min-height: 24rem;

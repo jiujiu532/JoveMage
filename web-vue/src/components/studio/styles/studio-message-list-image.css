@@ -163,6 +163,7 @@ html[data-theme='dark'] .studio-scroll-latest {
   }
 }
 
+/* 局部布局断点：消息区 padding/头像/气泡宽度在小平板提前收拢；取 720，区别于全局 sm/md */
 @media (max-width: 720px) {
   .studio-chat-scroll {
     padding: 0.65rem 0.65rem calc(var(--studio-composer-height, 9rem) + 0.65rem);
