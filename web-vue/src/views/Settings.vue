@@ -518,51 +518,10 @@
         </div>
       </div>
 
-      <div v-else-if="activeSettingsTab === 'image-errors'" class="space-y-4">
-        <FormSection collapsible title="图片错误提示" subtitle="先决定是否友好化，再按场景改文案。">
-          <div class="settings-block-stack">
-            <section class="settings-block">
-              <header class="settings-block__header">
-                <p class="settings-block__title">开关</p>
-                <p class="settings-block__desc">关闭时继续返回上游原始错误。</p>
-              </header>
-              <div class="settings-check-grid settings-check-grid--single">
-                <div class="settings-check-item">
-                  <div class="settings-check-control">
-                    <Checkbox v-model="localSettings.image_error_friendly_enabled">启用图片错误提示友好化</Checkbox>
-                    <HelpTip text="关闭时保持原始错误返回；开启后按下方文案转换上游断流、轮询超时、额度耗尽等图片错误。" />
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section class="settings-block">
-              <header class="settings-block__header">
-                <p class="settings-block__title">自定义错误文案</p>
-                <p class="settings-block__desc">按错误类型覆盖默认提示。</p>
-              </header>
-              <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <FormField
-                  v-for="item in imageErrorMessageFields"
-                  :key="item.key"
-                  :label="item.label"
-                >
-                  <template v-if="item.help" #label-extra>
-                    <HelpTip :text="item.help" />
-                  </template>
-                  <textarea
-                    v-model="localSettings.image_error_messages[item.key]"
-                    rows="3"
-                    class="ui-textarea-sm"
-                    :placeholder="item.placeholder"
-                    :disabled="!localSettings.image_error_friendly_enabled"
-                  ></textarea>
-                </FormField>
-              </div>
-            </section>
-          </div>
-        </FormSection>
-      </div>
+      <SettingsImageErrorsPanel
+        v-else-if="activeSettingsTab === 'image-errors'"
+        :settings="localSettings"
+      />
 
       <SettingsPromptSourcesPanel
         v-else-if="activeSettingsTab === 'prompts'"
@@ -574,129 +533,12 @@
         @update:rules="onDomainBanRulesUpdate"
       />
 
-      <div v-else-if="activeSettingsTab === 'storage'" class="grid gap-4 xl:grid-cols-3">
-        <div class="xl:col-span-2">
-          <FormSection collapsible title="图片存储" subtitle="WebDAV 远端存储与公开访问前缀。">
-          <div class="settings-block-stack">
-            <section class="settings-block">
-              <header class="settings-block__header">
-                <p class="settings-block__title">开关与模式</p>
-                <p class="settings-block__desc">是否启用远端存储，以及写入策略。</p>
-              </header>
-              <div class="settings-check-grid settings-check-grid--single">
-                <div class="settings-check-item">
-                  <div class="settings-check-control">
-                    <Checkbox v-model="localSettings.image_storage.enabled">启用 WebDAV 图片存储</Checkbox>
-                  </div>
-                </div>
-              </div>
-              <div class="mt-3">
-                <FormField label="存储模式">
-                  <div class="w-full">
-                    <GroupedSelectMenu
-                      v-model="localSettings.image_storage.mode"
-                      :options="imageStorageModeOptions"
-                      selected-indicator="none"
-                      aria-label="图片存储模式"
-                      block
-                    />
-                  </div>
-                </FormField>
-              </div>
-            </section>
-
-            <section class="settings-block">
-              <header class="settings-block__header">
-                <p class="settings-block__title">连接信息</p>
-                <p class="settings-block__desc">WebDAV 地址、账号与路径。</p>
-              </header>
-              <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <FormField label="WebDAV URL" class="md:col-span-2">
-                  <Input v-model.trim="localSettings.image_storage.webdav_url" block placeholder="https://example.com/dav" />
-                </FormField>
-                <FormField label="用户名">
-                  <Input v-model.trim="localSettings.image_storage.webdav_username" block />
-                </FormField>
-                <FormField label="密码">
-                  <Input v-model="localSettings.image_storage.webdav_password" type="password" block />
-                </FormField>
-                <FormField label="根路径">
-                  <Input v-model.trim="localSettings.image_storage.webdav_root_path" block placeholder="jovemage/images" />
-                </FormField>
-                <FormField label="公开访问前缀">
-                  <Input v-model.trim="localSettings.image_storage.public_base_url" block placeholder="https://cdn.example.com/images" />
-                </FormField>
-              </div>
-            </section>
-
-            <section class="settings-block">
-              <header class="settings-block__header">
-                <p class="settings-block__title">连通性</p>
-                <p class="settings-block__desc">测试连接或触发全量同步。</p>
-              </header>
-              <div class="flex flex-wrap items-center gap-2">
-                <Button size="xs" variant="outline" :disabled="imageStorageBusy === 'test'" @click="testImageStorageConnection">
-                  {{ imageStorageBusy === 'test' ? '测试中...' : '测试 WebDAV' }}
-                </Button>
-                <Button size="xs" variant="outline" :disabled="imageStorageBusy === 'sync'" @click="syncImageStorageFiles">
-                  {{ imageStorageBusy === 'sync' ? '同步中...' : '全量同步' }}
-                </Button>
-              </div>
-              <div v-if="imageStorageTestResult" class="settings-result-box">
-                <p :class="imageStorageTestResult.ok ? 'settings-tone-ok' : 'settings-tone-bad'">
-                  {{ imageStorageTestResult.ok ? 'WebDAV 可用' : 'WebDAV 不可用' }}
-                  <span v-if="imageStorageTestResult.status"> · HTTP {{ imageStorageTestResult.status }}</span>
-                </p>
-                <p v-if="imageStorageTestResult.error" class="mt-1 break-all settings-tone-bad">{{ imageStorageTestResult.error }}</p>
-              </div>
-            </section>
-          </div>
-          </FormSection>
-        </div>
-
-        <FormSection collapsible title="AI 审核" subtitle="请求前的内容审核接入。">
-          <div class="settings-block-stack">
-            <section class="settings-block">
-              <header class="settings-block__header">
-                <p class="settings-block__title">开关</p>
-                <p class="settings-block__desc">关闭时跳过请求前内容审核。</p>
-              </header>
-              <div class="settings-check-grid settings-check-grid--single">
-                <div class="settings-check-item">
-                  <div class="settings-check-control">
-                    <Checkbox v-model="localSettings.ai_review.enabled">启用 AI 审核</Checkbox>
-                  </div>
-                </div>
-              </div>
-            </section>
-            <section class="settings-block">
-              <header class="settings-block__header">
-                <p class="settings-block__title">模型接入</p>
-                <p class="settings-block__desc">兼容 OpenAI Chat Completions 的审核模型。</p>
-              </header>
-              <div class="grid grid-cols-1 gap-3">
-                <FormField label="Base URL">
-                  <Input v-model.trim="localSettings.ai_review.base_url" block placeholder="https://api.openai.com" />
-                </FormField>
-                <FormField label="API Key">
-                  <Input v-model="localSettings.ai_review.api_key" type="password" block placeholder="sk-..." />
-                </FormField>
-                <FormField label="Model">
-                  <Input v-model.trim="localSettings.ai_review.model" block placeholder="gpt-5.4-mini" />
-                </FormField>
-                <FormField label="审核提示词">
-                  <textarea
-                    v-model="localSettings.ai_review.prompt"
-                    rows="5"
-                    class="ui-textarea-sm"
-                    placeholder="判断用户请求是否允许。只回答 ALLOW 或 REJECT。"
-                  ></textarea>
-                </FormField>
-              </div>
-            </section>
-          </div>
-        </FormSection>
-      </div>
+      <SettingsStoragePanel
+        v-else-if="activeSettingsTab === 'storage' && localSettings.image_storage"
+        :image-storage="localSettings.image_storage"
+        :ai-review="localSettings.ai_review"
+        :require-saved-settings="requireSavedSettings"
+      />
 
       <div v-else-if="activeSettingsTab === 'backup' && localSettings.backup" class="space-y-4">
         <SettingsBackupPanel
@@ -705,84 +547,14 @@
         />
       </div>
 
-      <div v-else-if="activeSettingsTab === 'canvas'" class="max-w-3xl">
-        <FormSection collapsible title="画布入口" subtitle="开启后顶部导航会显示无限画布入口，并自动带上当前接口地址和密钥。">
-          <div class="settings-block-stack">
-            <section class="settings-block">
-              <header class="settings-block__header">
-                <p class="settings-block__title">开关</p>
-                <p class="settings-block__desc">关闭后隐藏导航入口。</p>
-              </header>
-              <div class="settings-check-grid settings-check-grid--single">
-                <div class="settings-check-item">
-                  <div class="settings-check-control">
-                    <Checkbox v-model="localSettings.third_party_apps.infinite_canvas.enabled">启用无限画布入口</Checkbox>
-                  </div>
-                </div>
-              </div>
-            </section>
-            <section class="settings-block">
-              <header class="settings-block__header">
-                <p class="settings-block__title">地址</p>
-                <p class="settings-block__desc">入口会附带当前服务地址与密钥参数。</p>
-              </header>
-              <FormField label="无限画布地址">
-                <Input
-                  v-model.trim="localSettings.third_party_apps.infinite_canvas.url"
-                  block
-                  root-class="font-mono"
-                  placeholder="https://canvas.best"
-                />
-              </FormField>
-            </section>
-          </div>
-        </FormSection>
-      </div>
+      <SettingsCanvasPanel
+        v-else-if="activeSettingsTab === 'canvas'"
+        :canvas="localSettings.third_party_apps.infinite_canvas"
+      />
 
-      <div v-else-if="activeSettingsTab === 'api-docs'" class="space-y-4">
-        <FormSection collapsible title="接口接入" subtitle="第三方应用按 OpenAI 兼容接口接入，使用同一套 Bearer 鉴权。">
-          <div class="settings-kv-grid">
-            <div class="settings-kv-item">
-              <p class="settings-kv-label">服务地址</p>
-              <p class="settings-kv-value">{{ serviceBaseUrl }}</p>
-            </div>
-            <div class="settings-kv-item">
-              <p class="settings-kv-label">Base URL（OpenAI）</p>
-              <p class="settings-kv-value">{{ openAIBaseUrl }}</p>
-            </div>
-            <div class="settings-kv-item">
-              <p class="settings-kv-label">API Key</p>
-              <p class="settings-kv-value">{{ currentApiKey }}</p>
-            </div>
-            <div class="settings-kv-item">
-              <p class="settings-kv-label">请求头</p>
-              <p class="settings-kv-value">Authorization: Bearer {{ currentApiKey }}</p>
-            </div>
-          </div>
-        </FormSection>
-
-        <FormSection collapsible title="常用接口" subtitle="点击展开查看说明与示例请求。">
-          <div class="settings-doc-list">
-            <details
-              v-for="item in apiDocItems"
-              :key="item.path"
-              class="settings-doc-item"
-            >
-              <summary class="settings-doc-summary">
-                <span class="min-w-0">
-                  <span class="block text-sm font-medium text-foreground">{{ item.title }}</span>
-                  <span class="mt-1 block truncate font-mono text-xs text-muted-foreground">{{ item.method }} {{ item.path }}</span>
-                </span>
-                <span class="settings-doc-hint">展开</span>
-              </summary>
-              <div class="settings-doc-body">
-                <p class="text-xs leading-5 text-muted-foreground">{{ item.description }}</p>
-                <pre class="settings-doc-code">{{ item.example }}</pre>
-              </div>
-            </details>
-          </div>
-        </FormSection>
-      </div>
+      <SettingsApiDocsPanel
+        v-else-if="activeSettingsTab === 'api-docs'"
+      />
     </PagePanel>
 
     <SettingsUserKeysPanel v-if="localSettings && activeSettingsTab === 'keys'" />
@@ -820,11 +592,8 @@ import {
   prepareSettingsForEdit,
   prepareSettingsForSave,
   prepareSettingsPatch,
-  settingsApi,
-  type ImageStorageTestResult,
 } from '@/api/settings'
 import { parseProxyReference, proxyApi, type ClearanceTestResult, type ProxyRuntimeStatus, type ProxyTestResult } from '@/api/proxy'
-import { getAuthToken } from '@/api/client'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useSettingsStore } from '@/stores/settings'
 import { useToast } from '@/composables/useToast'
@@ -841,6 +610,10 @@ import type { DomainBanRule, Settings } from '@/types/api'
 
 const SettingsPromptSourcesPanel = defineAsyncComponent(() => import('@/views/settings/SettingsPromptSourcesPanel.vue'))
 const SettingsDomainBlacklistPanel = defineAsyncComponent(() => import('@/views/settings/SettingsDomainBlacklistPanel.vue'))
+const SettingsImageErrorsPanel = defineAsyncComponent(() => import('@/views/settings/SettingsImageErrorsPanel.vue'))
+const SettingsStoragePanel = defineAsyncComponent(() => import('@/views/settings/SettingsStoragePanel.vue'))
+const SettingsCanvasPanel = defineAsyncComponent(() => import('@/views/settings/SettingsCanvasPanel.vue'))
+const SettingsApiDocsPanel = defineAsyncComponent(() => import('@/views/settings/SettingsApiDocsPanel.vue'))
 
 type NumberFieldBinding = {
   input: ReturnType<typeof ref<string>>
@@ -857,8 +630,6 @@ const savedSettingsBaseline = ref<Settings | null>(null)
 const activeSettingsTab = ref('basic')
 const isSaving = ref(false)
 const settingsLoadError = ref('')
-const imageStorageBusy = ref('')
-const imageStorageTestResult = ref<ImageStorageTestResult | null>(null)
 const proxyBusy = ref('')
 const proxyTestResult = ref<ProxyTestResult | null>(null)
 const proxyRuntimeLoading = ref(false)
@@ -882,169 +653,7 @@ const settingsTabs = [
   { value: 'sub2api', label: 'Sub2API' },
 ]
 
-type ImageErrorMessageKey = keyof Settings['image_error_messages']
-
-const imageErrorMessageFields: Array<{
-  key: ImageErrorMessageKey
-  label: string
-  placeholder: string
-  help?: string
-}> = [
-  {
-    key: 'fallback',
-    label: '兜底错误',
-    placeholder: '图片生成请求失败，请稍后重试。',
-  },
-  {
-    key: 'quota',
-    label: '额度耗尽',
-    placeholder: '图片账号额度已用完，请稍后再试或联系管理员。',
-  },
-  {
-    key: 'no_account',
-    label: '账号暂不可用',
-    placeholder: '当前图片账号暂不可用，可能是账号池、并发或上游波动，请稍后重试。',
-  },
-  {
-    key: 'local_busy',
-    label: '本地繁忙 / 无可用账号',
-    placeholder: '当前没有可用的图片账号或账号并发已满，请稍后重试。',
-  },
-  {
-    key: 'unsupported_model',
-    label: '模型不支持',
-    placeholder: '当前模型不支持图片生成，请检查 model 参数。',
-  },
-  {
-    key: 'poll_timeout',
-    label: '轮询超时',
-    placeholder: '图片任务暂未返回结果，可能仍在排队或上游处理较慢，请重试。',
-  },
-  {
-    key: 'stream_interrupted',
-    label: '上游断流',
-    placeholder: '图片生成连接中断，可能是上游服务繁忙或网络波动，请重试。',
-  },
-  {
-    key: 'connection_failed',
-    label: '连接失败',
-    placeholder: '连接上游图片服务失败，可能是网络或代理波动，请重试。',
-  },
-  {
-    key: 'connection_timeout',
-    label: '连接超时',
-    placeholder: '连接上游图片服务超时，请稍后重试。',
-  },
-  {
-    key: 'token_invalid',
-    label: '账号状态异常',
-    placeholder: '图片生成账号状态异常，请稍后重试。',
-  },
-  {
-    key: 'text_reply',
-    label: '返回文本但无图',
-    placeholder: '上游返回了文本说明，未生成图片。请调整提示词或重试。',
-    help: '可使用 {text} 指定上游文本插入位置；不写占位符时会自动追加到下一行。',
-  },
-]
-
 const logLevelOptions = ['debug', 'info', 'warning', 'error']
-
-const serviceBaseUrl = computed(() => window.location.origin)
-const openAIBaseUrl = computed(() => `${serviceBaseUrl.value.replace(/\/$/, '')}/v1`)
-const currentApiKey = computed(() => getAuthToken() || '<当前密钥>')
-const apiDocItems = computed(() => [
-  {
-    title: '模型列表',
-    method: 'GET',
-    path: '/v1/models',
-    description: '返回 OpenAI 兼容模型列表。',
-    example: `curl ${openAIBaseUrl.value}/models \\\n  -H "Authorization: Bearer ${currentApiKey.value}"`,
-  },
-  {
-    title: '聊天补全',
-    method: 'POST',
-    path: '/v1/chat/completions',
-    description: 'OpenAI 兼容聊天补全接口，图片兼容场景也会解析 n 等参数。',
-    example: `curl ${openAIBaseUrl.value}/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${currentApiKey.value}" \\\n  -d '{"model":"gpt-5-mini","messages":[{"role":"user","content":"你好"}]}'`,
-  },
-  {
-    title: 'Responses',
-    method: 'POST',
-    path: '/v1/responses',
-    description: '兼容 Responses 输入结构，支持文本与工具调用场景。',
-    example: `curl ${openAIBaseUrl.value}/responses \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${currentApiKey.value}" \\\n  -d '{"model":"gpt-5-mini","input":"生成一张未来城市图片"}'`,
-  },
-  {
-    title: 'Messages',
-    method: 'POST',
-    path: '/v1/messages',
-    description: 'Anthropic Messages 兼容入口，支持 Authorization Bearer 或 x-api-key 鉴权。',
-    example: `curl ${openAIBaseUrl.value}/messages \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${currentApiKey.value}" \\\n  -d '{"model":"gpt-5-mini","max_tokens":1024,"messages":[{"role":"user","content":"你好"}]}'`,
-  },
-  {
-    title: '联网搜索',
-    method: 'POST',
-    path: '/v1/search',
-    description: '本地搜索兼容入口，返回 answer 与 sources。',
-    example: `curl ${openAIBaseUrl.value}/search \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${currentApiKey.value}" \\\n  -d '{"prompt":"今天的 OpenAI 新闻"}'`,
-  },
-  {
-    title: '图片生成',
-    method: 'POST',
-    path: '/v1/images/generations',
-    description: '图片生成接口，支持 prompt、model、n、size、quality 等参数。',
-    example: `curl ${openAIBaseUrl.value}/images/generations \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${currentApiKey.value}" \\\n  -d '{"model":"gpt-image-2","prompt":"一张极简产品海报","n":1}'`,
-  },
-  {
-    title: '图片编辑',
-    method: 'POST',
-    path: '/v1/images/edits',
-    description: '图片编辑接口，支持 multipart 上传参考图。',
-    example: `curl ${openAIBaseUrl.value}/images/edits \\\n  -H "Authorization: Bearer ${currentApiKey.value}" \\\n  -F "model=gpt-image-2" \\\n  -F "prompt=改成赛博朋克夜景" \\\n  -F "image=@./input.png"`,
-  },
-  {
-    title: '创建可编辑文件任务',
-    method: 'POST',
-    path: '/v1/editable-file-tasks',
-    description: '统一创建 PPT/PSD 文件任务，kind 可填 ppt 或 psd。',
-    example: `curl ${openAIBaseUrl.value}/editable-file-tasks \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${currentApiKey.value}" \\\n  -d '{"kind":"ppt","prompt":"做一份产品发布会 PPT"}'`,
-  },
-  {
-    title: '查询可编辑文件任务',
-    method: 'GET',
-    path: '/v1/editable-file-tasks?ids={taskId1,taskId2}',
-    description: '按任务 ID 查询 PPT/PSD 文件生成状态。',
-    example: `curl "${openAIBaseUrl.value}/editable-file-tasks?ids=task_1,task_2" \\\n  -H "Authorization: Bearer ${currentApiKey.value}"`,
-  },
-  {
-    title: 'PPT 生成任务',
-    method: 'POST',
-    path: '/v1/ppt/generations',
-    description: '直接创建 PPT 生成任务，返回任务 ID 后再查询状态。',
-    example: `curl ${openAIBaseUrl.value}/ppt/generations \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${currentApiKey.value}" \\\n  -d '{"prompt":"生成一份市场分析 PPT"}'`,
-  },
-  {
-    title: 'PSD 生成任务',
-    method: 'POST',
-    path: '/v1/psd/generations',
-    description: '直接创建 PSD 生成任务，返回任务 ID 后再查询状态。',
-    example: `curl ${openAIBaseUrl.value}/psd/generations \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${currentApiKey.value}" \\\n  -d '{"prompt":"生成一张电商海报 PSD"}'`,
-  },
-  {
-    title: '文件下载',
-    method: 'GET',
-    path: '/files/{file_path}',
-    description: '下载 PPT/PSD 任务生成的公开文件。',
-    example: `curl ${serviceBaseUrl.value}/files/{file_path}`,
-  },
-])
-
-const imageStorageModeOptions = [
-  { label: '仅本地', value: 'local' },
-  { label: '仅 WebDAV', value: 'webdav' },
-  { label: '本地 + WebDAV', value: 'both' },
-]
 
 const proxyRuntimeEgressOptions = [
   { label: '直连', value: 'direct' },
@@ -1394,52 +1003,6 @@ async function persistSettings(showToast = false) {
   return result
 }
 
-async function testImageStorageConnection() {
-  if (!requireSavedSettings('测试 WebDAV')) return
-  const confirmed = await confirmDialog.ask({
-    title: '确认测试 WebDAV',
-    message: '即将使用已保存的图片存储配置发起 WebDAV 连接测试，可能访问外部存储服务。是否继续？',
-    confirmText: '开始测试',
-    cancelText: '取消',
-  })
-  if (!confirmed) return
-
-  imageStorageBusy.value = 'test'
-  imageStorageTestResult.value = null
-  try {
-    const response = await settingsApi.testImageStorage()
-    imageStorageTestResult.value = response.result
-    if (response.result.ok) toast.success('WebDAV 测试通过')
-    else toast.warning(response.result.error || 'WebDAV 测试失败')
-  } catch (error: any) {
-    imageStorageTestResult.value = { ok: false, error: error.message || 'WebDAV 测试失败' }
-    toast.error(error.message || 'WebDAV 测试失败')
-  } finally {
-    imageStorageBusy.value = ''
-  }
-}
-
-async function syncImageStorageFiles() {
-  if (!requireSavedSettings('同步本地图片')) return
-  const confirmed = await confirmDialog.ask({
-    title: '确认同步图片存储',
-    message: '即将扫描本地图片并同步到已配置的 WebDAV 存储，可能产生外部上传流量。是否继续？',
-    confirmText: '开始同步',
-    cancelText: '取消',
-  })
-  if (!confirmed) return
-
-  imageStorageBusy.value = 'sync'
-  try {
-    const response = await settingsApi.syncImageStorage()
-    toast.success(`同步完成：上传 ${response.result.uploaded}，跳过 ${response.result.skipped}，失败 ${response.result.failed}`)
-  } catch (error: any) {
-    toast.error(error.message || '同步图片失败')
-  } finally {
-    imageStorageBusy.value = ''
-  }
-}
-
 watch(settings, (value) => {
   if (!value) return
   const next = prepareSettingsForEdit(value)
@@ -1466,7 +1029,6 @@ function shouldSkipActivatedReload() {
     hasUnsavedSettings.value ||
     isSaving.value ||
     settingsStore.isLoading ||
-    imageStorageBusy.value ||
     proxyBusy.value ||
     proxyRuntimeTesting.value,
   )
