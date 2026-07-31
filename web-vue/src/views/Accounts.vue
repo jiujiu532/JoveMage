@@ -439,7 +439,6 @@
                           rows="4"
                           class="ui-textarea-sm font-mono"
                           placeholder="粘贴 new.express.adobe.com 登录后的完整 Cookie"
-                          :disabled="!!editingId && !!form.access_token && !form.cookie"
                         ></textarea>
                       </label>
                       <label class="block text-xs">

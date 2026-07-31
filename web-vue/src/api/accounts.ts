@@ -456,7 +456,7 @@ export type AccountListParams = {
   keyword?: string
   status?: 'all' | 'normal' | 'limited' | 'abnormal' | 'disabled'
   group_id?: string
-  /** 渠道筛选：all | chatgpt | firefly；后端未识别时前端会再过滤一次 */
+  /** 渠道筛选：all | chatgpt | firefly；由后端过滤，避免分页失真 */
   source_type?: 'all' | 'chatgpt' | 'firefly' | string
 }
 
@@ -744,11 +744,19 @@ export const accountsApi = {
     }
 
     const response = await apiClient.post<
-      { tokens: string[]; accounts: Array<Record<string, unknown>> },
+      {
+        tokens: string[]
+        accounts: Array<Record<string, unknown>>
+        refresh?: boolean
+        return_items?: boolean
+      },
       { items?: BackendAccount[] }
     >('/api/accounts', {
       tokens: [],
       accounts: [account],
+      // Firefly 走 IMS，禁止默认 ChatGPT refresh
+      refresh: isFirefly ? false : true,
+      return_items: true,
     })
     const mapped = mapAccountsResponse({ items: response.items || [] })
     const matched = mapped.accounts.find((item) => (

@@ -24,6 +24,7 @@ from api.support import (
     sanitize_sub2api_servers,
 )
 from services.account_service import account_service
+from services.backends.firefly_auth import decode_jwt_account_id, refresh_access_token
 from services.config import config
 from services.cpa_service import cpa_config, cpa_import_service, list_remote_files
 from services.task_manager import task_manager
@@ -90,6 +91,7 @@ class AccountUpdateRequest(BaseModel):
     quota: int | None = None
     proxy: str | None = None
     group_id: str | None = None
+    cookie: str | None = None
 
 
 class AccountBatchUpdateRequest(BaseModel):
@@ -175,6 +177,60 @@ def _account_payload_token(item: dict[str, Any]) -> str:
 
 def _unique_tokens(tokens: list[str]) -> list[str]:
     return list(dict.fromkeys(str(token or "").strip() for token in tokens if str(token or "").strip()))
+
+
+def _normalize_create_account_payload(item: dict[str, Any]) -> dict[str, Any]:
+    """规范化创建账号 payload；Firefly cookie-only 时先走 IMS 刷出 access_token。"""
+    payload = dict(item)
+    source_type = _clean_text(payload.get("source_type")).lower()
+    cookie = _clean_text(payload.get("cookie"))
+    access_token = _account_payload_token(payload)
+
+    if source_type != "firefly":
+        return payload
+
+    payload["source_type"] = "firefly"
+    if not _clean_text(payload.get("type")):
+        payload["type"] = "firefly"
+    if cookie:
+        payload["cookie"] = cookie
+
+    if access_token:
+        payload["access_token"] = access_token
+        return payload
+
+    if not cookie:
+        raise ValueError("Firefly 账号需要 cookie 或 access_token")
+
+    try:
+        refreshed = refresh_access_token(
+            cookie,
+            proxy=_clean_text(payload.get("proxy")) or None,
+        )
+    except Exception as exc:
+        raise RuntimeError(f"Firefly cookie 换取 access_token 失败: {exc}") from exc
+
+    access_token = _clean_text(refreshed.get("access_token") if isinstance(refreshed, dict) else "")
+    if not access_token:
+        raise RuntimeError("Firefly cookie 换取 access_token 失败: 响应缺少 access_token")
+
+    payload["access_token"] = access_token
+    account_id = decode_jwt_account_id(access_token)
+    if account_id and not _clean_text(payload.get("user_id")):
+        payload["user_id"] = account_id
+    return payload
+
+
+def _account_matches_source_type(account: dict[str, Any], source_type: str) -> bool:
+    needle = _clean_text(source_type).lower()
+    if not needle or needle == "all":
+        return True
+    current = _clean_text(account.get("source_type")).lower()
+    if needle == "firefly":
+        return current == "firefly"
+    if needle == "chatgpt":
+        return current != "firefly"
+    return current == needle
 
 
 def _download_timestamp() -> str:
@@ -331,6 +387,7 @@ def _accounts_page(
         keyword: str,
         status: str,
         group_id: str,
+        source_type: str = "all",
 ) -> dict[str, Any]:
     items = account_service.list_accounts()
     filtered = [
@@ -338,6 +395,7 @@ def _accounts_page(
         if _account_matches_keyword(item, keyword)
         and _status_matches_filter(item, status)
         and _account_matches_group(item, group_id)
+        and _account_matches_source_type(item, source_type)
     ]
     safe_page = max(1, page)
     safe_page_size = max(1, min(page_size, 500))
@@ -444,6 +502,7 @@ def create_router() -> APIRouter:
             keyword: str = "",
             status: str = "all",
             group_id: str = "all",
+            source_type: str | None = Query(default=None),
             authorization: str | None = Header(default=None),
     ):
         require_admin(authorization)
@@ -453,6 +512,7 @@ def create_router() -> APIRouter:
             keyword=keyword,
             status=status,
             group_id=group_id,
+            source_type=source_type or "all",
         )
 
     @router.get("/api/account-groups")
@@ -489,7 +549,19 @@ def create_router() -> APIRouter:
     @router.post("/api/accounts")
     async def create_accounts(body: AccountCreateRequest, authorization: str | None = Header(default=None)):
         require_admin(authorization)
-        account_payloads = [item for item in body.accounts if isinstance(item, dict)]
+        account_payloads: list[dict[str, Any]] = []
+        for item in body.accounts:
+            if not isinstance(item, dict):
+                continue
+            try:
+                account_payloads.append(_normalize_create_account_payload(item))
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail={"error": str(exc)}) from exc
+            except RuntimeError as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail={"error": redact_auth_diagnostic(str(exc))},
+                ) from exc
         payload_tokens = [_account_payload_token(item) for item in account_payloads]
         tokens = _unique_tokens([*body.tokens, *payload_tokens])
         if not tokens:
@@ -504,7 +576,15 @@ def create_router() -> APIRouter:
                 result["skipped"] = int(result.get("skipped") or 0) + int(extra_result.get("skipped") or 0)
         else:
             result = account_service.add_accounts(tokens, return_items=body.return_items)
-        if not body.refresh:
+
+        # Firefly 走 IMS，不能用 ChatGPT OAuth 续期；创建后跳过这些 token 的 refresh
+        firefly_tokens = {
+            token
+            for item, token in zip(account_payloads, payload_tokens)
+            if token and _clean_text(item.get("source_type")).lower() == "firefly"
+        }
+        refresh_tokens = [token for token in tokens if token not in firefly_tokens]
+        if not body.refresh or not refresh_tokens:
             return {
                 **result,
                 "refreshed": 0,
@@ -512,7 +592,7 @@ def create_router() -> APIRouter:
                 "items": result.get("items", []) if body.return_items else [],
             }
         refresh_result = account_service.refresh_accounts(
-            tokens,
+            refresh_tokens,
             remove_invalid=False,
         )
         return {
@@ -620,6 +700,7 @@ def create_router() -> APIRouter:
                 "quota": body.quota,
                 "proxy": body.proxy,
                 "group_id": body.group_id,
+                "cookie": body.cookie,
             }.items()
             if value is not None
         }
