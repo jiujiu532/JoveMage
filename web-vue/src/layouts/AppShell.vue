@@ -382,264 +382,28 @@
       @confirm="confirmDialog.confirm"
       @cancel="confirmDialog.cancel"
     />
-    <ModalShell
+    <ApiInfoModal
       :open="isApiInfoOpen"
-      max-width="32rem"
-      :z-index="100"
-      panel-class="p-6"
-      close-on-backdrop
+      :api-base-url="apiBaseUrl"
+      :api-sdk-url="apiSdkUrl"
+      :api-full-url="apiFullUrl"
+      :api-key-display="apiKeyDisplay"
+      :current-auth-token="currentAuthToken"
+      :supported-chat-models="supportedChatModels"
+      :supported-image-models="supportedImageModels"
       @close="isApiInfoOpen = false"
-    >
-          <ModalHeader
-            title="API 接口"
-            subtitle="根据客户端选择对应接口"
-            title-class="ui-subsection-title"
-            :bordered="false"
-            flush
-            @close="isApiInfoOpen = false"
-          />
-
-          <div class="mt-4 space-y-3 text-sm">
-            <div>
-              <p class="text-xs text-muted-foreground">基础端点</p>
-              <div class="mt-1 flex items-start gap-2">
-                <ValueSurface
-                  tag="p"
-                  mono
-                  break-mode="all"
-                  root-class="min-w-0 flex-1"
-                >
-                  {{ apiBaseUrl }}
-                </ValueSurface>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  root-class="shrink-0 text-[11px] text-muted-foreground"
-                  @click="copyText(apiBaseUrl)"
-                >
-                  复制
-                </Button>
-              </div>
-            </div>
-            <div>
-              <p class="text-xs text-muted-foreground">SDK 接口</p>
-              <div class="mt-1 flex items-start gap-2">
-                <ValueSurface
-                  tag="p"
-                  mono
-                  break-mode="all"
-                  root-class="min-w-0 flex-1"
-                >
-                  {{ apiSdkUrl }}
-                </ValueSurface>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  root-class="shrink-0 text-[11px] text-muted-foreground"
-                  @click="copyText(apiSdkUrl)"
-                >
-                  复制
-                </Button>
-              </div>
-            </div>
-            <div>
-              <p class="text-xs text-muted-foreground">完整接口</p>
-              <div class="mt-1 flex items-start gap-2">
-                <ValueSurface
-                  tag="p"
-                  mono
-                  break-mode="all"
-                  root-class="min-w-0 flex-1"
-                >
-                  {{ apiFullUrl }}
-                </ValueSurface>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  root-class="shrink-0 text-[11px] text-muted-foreground"
-                  @click="copyText(apiFullUrl)"
-                >
-                  复制
-                </Button>
-              </div>
-            </div>
-            <div>
-              <p class="text-xs text-muted-foreground">支持模型</p>
-              <div class="mt-1 space-y-3 rounded-sm border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
-                <div>
-                  <p class="mb-1 text-[11px] text-muted-foreground">聊天模型</p>
-                  <div class="flex flex-wrap gap-2 text-foreground">
-                    <MetaChip
-                      v-for="model in supportedChatModels"
-                      :key="`chat-${model}`"
-                      size="xs"
-                    >
-                      {{ model }}
-                    </MetaChip>
-                  </div>
-                </div>
-                <div>
-                  <p class="mb-1 text-[11px] text-muted-foreground">图片模型</p>
-                <div class="flex flex-wrap gap-2 text-foreground">
-                  <MetaChip
-                    v-for="model in supportedImageModels"
-                    :key="`image-${model}`"
-                    size="xs"
-                  >
-                    {{ model }}
-                  </MetaChip>
-                </div>
-                </div>
-              </div>
-            </div>
-            <div>
-              <p class="text-xs text-muted-foreground">当前调用密钥</p>
-              <div class="mt-1 flex items-start gap-2">
-                <ValueSurface
-                  tag="p"
-                  mono
-                  break-mode="all"
-                  root-class="min-w-0 flex-1"
-                >
-                  {{ apiKeyDisplay }}
-                </ValueSurface>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  root-class="shrink-0 text-[11px] text-muted-foreground"
-                  :disabled="!currentAuthToken"
-                  @click="copyText(apiKeyDisplay)"
-                >
-                  复制
-                </Button>
-              </div>
-              <p class="mt-1 text-[11px] text-muted-foreground">
-                请求头使用 Authorization: Bearer &lt;当前调用密钥&gt;。
-              </p>
-            </div>
-          </div>
-
-          <ModalFooter class="mt-6" :bordered="false" flush>
-            <Button
-              size="xs"
-              variant="primary"
-              root-class="min-w-14 justify-center"
-              @click="isApiInfoOpen = false"
-            >
-              知道了
-            </Button>
-          </ModalFooter>
-    </ModalShell>
-    <ModalShell
+    />
+    <ReleaseNotesModal
       :open="isUpdateDialogOpen"
-      max-width="42rem"
-      :z-index="100"
-      panel-class="p-6"
-      close-on-backdrop
+      :current-version-label="currentVersionLabel"
+      :latest-version-label="latestVersionLabel"
+      :is-checking-update="isCheckingUpdate"
+      :update-check-message="updateCheckMessage"
+      :release-entries="releaseEntries"
       @close="isUpdateDialogOpen = false"
-    >
-      <ModalHeader
-        title="版本更新"
-        subtitle="查看当前版本和更新日志"
-        title-class="ui-subsection-title"
-        :bordered="false"
-        flush
-        @close="isUpdateDialogOpen = false"
-      />
-
-      <div class="mt-4 grid gap-3 sm:grid-cols-2">
-        <div class="rounded-sm border border-border bg-background px-4 py-3">
-          <p class="text-xs text-muted-foreground">当前版本</p>
-          <p class="mt-1 text-base font-semibold text-foreground">{{ currentVersionLabel }}</p>
-        </div>
-        <div class="rounded-sm border border-border bg-background px-4 py-3">
-          <div class="flex items-center justify-between gap-3">
-            <p class="text-xs text-muted-foreground">最新版本</p>
-            <button
-              type="button"
-              class="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:cursor-not-allowed disabled:opacity-60"
-              :disabled="isCheckingUpdate"
-              @click="checkForUpdates(true)"
-            >
-              {{ isCheckingUpdate ? '检查中...' : '检查更新' }}
-            </button>
-          </div>
-          <p class="mt-1 text-base font-semibold text-foreground">{{ latestVersionLabel }}</p>
-        </div>
-      </div>
-
-      <div v-if="updateCheckMessage" class="mt-3 rounded-sm border border-border bg-muted/40 px-4 py-2 text-xs text-muted-foreground">
-        {{ updateCheckMessage }}
-      </div>
-
-      <div class="mt-5 max-h-[56vh] space-y-5 overflow-y-auto pr-1">
-        <div
-          v-for="release in releaseEntries"
-          :key="`${release.version}-${release.date}`"
-          class="border-l border-border pl-4"
-        >
-          <div class="flex flex-wrap items-center gap-2">
-            <span class="text-sm font-semibold text-foreground">
-              {{ release.version === 'Unreleased' ? '未发布' : release.version }}
-            </span>
-            <span v-if="release.date" class="text-xs text-muted-foreground">{{ release.date }}</span>
-            <MetaChip
-              v-if="normalizeVersionTag(release.version) === latestVersionLabel"
-              size="xs"
-              tone="success"
-              strong
-            >
-              最新
-            </MetaChip>
-            <MetaChip
-              v-if="normalizeVersionTag(release.version) === currentVersionLabel"
-              size="xs"
-              tone="muted"
-            >
-              当前
-            </MetaChip>
-          </div>
-          <div class="mt-2 space-y-1.5">
-            <div
-              v-for="(item, index) in release.items"
-              :key="`${release.version}-${index}`"
-              class="flex items-start gap-2 text-sm leading-6 text-muted-foreground"
-            >
-              <MetaChip
-                size="xs"
-                :tone="releaseItemTone(item.type)"
-                strong
-                chip-class="mt-0.5 shrink-0"
-              >
-                {{ item.type }}
-              </MetaChip>
-              <span class="min-w-0 flex-1 text-foreground/85">{{ item.content }}</span>
-            </div>
-          </div>
-        </div>
-        <div v-if="!releaseEntries.length" class="rounded-sm border border-dashed border-border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
-          暂无更新日志。
-        </div>
-      </div>
-
-      <ModalFooter class="mt-6" :bordered="false" flush>
-        <Button
-          size="xs"
-          variant="outline"
-          @click="openReleasePage"
-        >
-          打开发布页
-        </Button>
-        <Button
-          size="xs"
-          variant="primary"
-          root-class="min-w-14 justify-center"
-          @click="isUpdateDialogOpen = false"
-        >
-          知道了
-        </Button>
-      </ModalFooter>
-    </ModalShell>
+      @check-updates="checkForUpdates(true)"
+      @open-release-page="openReleasePage"
+    />
   </div>
 </template>
 
@@ -647,52 +411,45 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { settingsApi } from '@/api/settings'
-import { versionApi } from '@/api/version'
 import { getAuthToken } from '@/api/client'
 import { useSettingsStore } from '@/stores/settings'
 import { useAuthStore } from '@/stores/auth'
 import { useModelCatalog } from '@/composables/useModelCatalog'
-import { Button, ValueSurface } from 'nanocat-ui'
+import { Button } from 'nanocat-ui'
 import ConfirmDialog from '@/components/ui/AppConfirmDialog.vue'
 import BauhausBrandMark from '@/components/ui/BauhausBrandMark.vue'
-import MetaChip from '@/components/ai/MetaChip.vue'
-import ModalFooter from '@/components/ai/ModalFooter.vue'
-import ModalHeader from '@/components/ai/ModalHeader.vue'
-import ModalShell from '@/components/ai/ModalShell.vue'
 import PageLoadingState from '@/components/ai/PageLoadingState.vue'
+import ApiInfoModal from '@/components/shell/ApiInfoModal.vue'
+import ReleaseNotesModal from '@/components/shell/ReleaseNotesModal.vue'
+import { useAppVersion } from '@/composables/useAppVersion'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useMediaQuery } from '@/composables/useMediaQuery'
 import { MQ } from '@/lib/breakpoints'
-import { useClipboard } from '@/composables/useClipboard'
-import { useToast } from '@/composables/useToast'
 import { getBooleanPreference, preferenceKeys, setBooleanPreference } from '@/lib/preferences'
 import { applyThemeMode, getStoredThemeMode, setStoredThemeMode, type ThemeMode } from '@/lib/theme'
-import {
-  FALLBACK_RELEASES,
-  isNewerVersion,
-  normalizeVersionTag,
-  parseGithubReleases,
-  type ReleaseInfo,
-} from '@/lib/release'
 import type { Settings } from '@/types/api'
-import localVersion from '../../../VERSION?raw'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const settingsStore = useSettingsStore()
-const toast = useToast()
-const { copy } = useClipboard()
 const isSidebarOpen = ref(false)
 const isSidebarCollapsed = ref(false)
 const confirmDialog = useConfirmDialog()
 const isApiInfoOpen = ref(false)
-const isUpdateDialogOpen = ref(false)
-const isCheckingUpdate = ref(false)
-const currentVersionTag = ref(normalizeVersionTag(localVersion))
-const latestVersionTag = ref('')
-const releaseEntries = ref<ReleaseInfo[]>([])
-const updateCheckMessage = ref('')
+const {
+  isUpdateDialogOpen,
+  isCheckingUpdate,
+  releaseEntries,
+  updateCheckMessage,
+  currentVersionLabel,
+  latestVersionLabel,
+  versionButtonText,
+  loadCurrentVersion,
+  checkForUpdates,
+  openUpdateDialog,
+  openReleasePage,
+} = useAppVersion()
 const currentAuthToken = ref('')
 const thirdPartyApps = ref<Settings['third_party_apps'] | null>(null)
 const themeMode = ref<ThemeMode>(getStoredThemeMode())
@@ -868,17 +625,6 @@ const apiBaseUrl = computed(() => {
 const apiSdkUrl = computed(() => `${apiBaseUrl.value}/v1`)
 const apiFullUrl = computed(() => `${apiBaseUrl.value}/v1/chat/completions`)
 const apiKeyDisplay = computed(() => currentAuthToken.value || '未登录')
-const currentVersionLabel = computed(() => normalizeVersionTag(currentVersionTag.value || ''))
-const latestVersionLabel = computed(() => normalizeVersionTag(latestVersionTag.value || releaseEntries.value[0]?.version || currentVersionTag.value || ''))
-const versionButtonText = computed(() => currentVersionLabel.value || '版本')
-function releaseItemTone(type: string): 'default' | 'muted' | 'success' | 'warning' | 'danger' | 'info' {
-  const value = String(type || '').trim()
-  if (['新增', '添加', 'Added'].includes(value)) return 'success'
-  if (['优化', '改进', 'Changed', 'Improved'].includes(value)) return 'info'
-  if (['修复', '修正', 'Fixed'].includes(value)) return 'warning'
-  if (['移除', '删除', '废弃', 'Removed', 'Deprecated'].includes(value)) return 'danger'
-  return 'muted'
-}
 const activeThirdPartyApps = computed(() => settingsStore.settings?.third_party_apps || thirdPartyApps.value)
 const canvasHref = computed(() => {
   const canvas = activeThirdPartyApps.value?.infinite_canvas
@@ -895,10 +641,6 @@ let stopRoutePendingBeforeEach: (() => void) | null = null
 let stopRoutePendingAfterEach: (() => void) | null = null
 let stopRoutePendingError: (() => void) | null = null
 const prefetchedRoutePaths = new Set<string>()
-const releasePageUrl = 'https://github.com/jiujiu532/JoveMage/releases'
-const latestVersionUrl = 'https://raw.githubusercontent.com/jiujiu532/JoveMage/main/VERSION'
-const latestReleasesApiUrl = 'https://api.github.com/repos/jiujiu532/JoveMage/releases?per_page=20'
-const updateCheckingMessage = '正在检查云端版本...'
 const routeViewLoaders: Record<string, () => Promise<unknown>> = {
   '/': () => import('@/views/Dashboard.vue'),
   '/accounts': () => import('@/views/Accounts.vue'),
@@ -966,12 +708,6 @@ async function openApiInfo() {
   await loadModelCatalog()
 }
 
-async function copyText(value: string) {
-  const text = String(value || '').trim()
-  if (!text) return
-  await copy(text, { error: '复制失败，请手动复制' })
-}
-
 async function openInfiniteCanvas() {
   if (!canvasHref.value) return
   const ok = await confirmDialog.ask({
@@ -994,103 +730,6 @@ function cycleThemeMode() {
   const index = themeOptions.findIndex(option => option.value === themeMode.value)
   const next = themeOptions[(index + 1) % themeOptions.length]
   setThemeMode(next.value)
-}
-
-function openUpdateDialog() {
-  isUpdateDialogOpen.value = true
-  updateCheckMessage.value = updateCheckingMessage
-  void loadLocalReleaseEntries()
-  void checkForUpdates(false)
-}
-
-function openReleasePage() {
-  window.open(releasePageUrl, '_blank', 'noopener,noreferrer')
-}
-
-async function checkForUpdates(showMessage = true) {
-  if (isCheckingUpdate.value) return
-  isCheckingUpdate.value = true
-  updateCheckMessage.value = updateCheckingMessage
-  try {
-    const [version, releasesPayload] = await Promise.all([
-      fetchRemoteText(latestVersionUrl),
-      fetchRemoteJson(latestReleasesApiUrl),
-    ])
-    latestVersionTag.value = normalizeVersionTag(version)
-    const remoteReleases = parseGithubReleases(releasesPayload)
-    if (remoteReleases.length) {
-      releaseEntries.value = remoteReleases
-    } else if (!releaseEntries.value.length) {
-      releaseEntries.value = FALLBACK_RELEASES
-    }
-    const message = isNewerVersion(latestVersionLabel.value, currentVersionLabel.value)
-      ? `发现新版本：${latestVersionLabel.value}`
-      : `当前已是最新版本：${currentVersionLabel.value || latestVersionLabel.value}`
-    updateCheckMessage.value = message
-    if (showMessage) {
-      if (isNewerVersion(latestVersionLabel.value, currentVersionLabel.value)) toast.info(message)
-      else toast.success(message)
-    }
-  } catch (error: any) {
-    if (!releaseEntries.value.length) {
-      releaseEntries.value = FALLBACK_RELEASES
-    }
-    updateCheckMessage.value = '云端版本检查失败，当前展示本地更新日志。'
-    if (showMessage) {
-      const detail = error?.name === 'AbortError' ? '云端版本检查超时' : error?.message
-      toast.warning(detail || '云端版本检查失败')
-    }
-  } finally {
-    isCheckingUpdate.value = false
-  }
-}
-
-async function fetchRemoteText(url: string) {
-  const controller = new AbortController()
-  const timeoutId = window.setTimeout(() => controller.abort(), 8000)
-  try {
-    const response = await fetch(url, { cache: 'no-store', signal: controller.signal })
-    if (!response.ok) throw new Error(`云端返回 ${response.status}`)
-    return response.text()
-  } finally {
-    window.clearTimeout(timeoutId)
-  }
-}
-
-async function fetchRemoteJson(url: string) {
-  const controller = new AbortController()
-  const timeoutId = window.setTimeout(() => controller.abort(), 8000)
-  try {
-    const response = await fetch(url, {
-      cache: 'no-store',
-      signal: controller.signal,
-      headers: { Accept: 'application/vnd.github+json' },
-    })
-    if (!response.ok) throw new Error(`云端返回 ${response.status}`)
-    return response.json()
-  } finally {
-    window.clearTimeout(timeoutId)
-  }
-}
-
-async function loadLocalReleaseEntries() {
-  if (releaseEntries.value.length) return
-  releaseEntries.value = FALLBACK_RELEASES
-}
-
-async function loadCurrentVersion() {
-  try {
-    const result = await versionApi.current()
-    currentVersionTag.value = String(result.tag || '').trim()
-    if (!latestVersionTag.value) {
-      latestVersionTag.value = normalizeVersionTag(releaseEntries.value[0]?.version || currentVersionTag.value)
-    }
-  } catch {
-    currentVersionTag.value = ''
-    if (!latestVersionTag.value) {
-      latestVersionTag.value = normalizeVersionTag(releaseEntries.value[0]?.version || '')
-    }
-  }
 }
 
 function handleSystemThemeChange() {
