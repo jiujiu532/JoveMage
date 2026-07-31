@@ -3,36 +3,37 @@ from __future__ import annotations
 from typing import Any
 
 from services.account_service import account_service
+from services.config import config
 from services.model_catalog_service import get_model_catalog
 from services.openai_backend_api import OpenAIBackendAPI
 from utils.helper import CODEX_IMAGE_MODEL
 
 
-def _model_item(model: str) -> dict[str, Any]:
+def _model_item(model: str, *, owned_by: str = "chatgpt2api") -> dict[str, Any]:
     return {
         "id": model,
         "object": "model",
         "created": 0,
-        "owned_by": "chatgpt2api",
+        "owned_by": owned_by,
         "permission": [],
         "root": model,
         "parent": None,
     }
 
 
-def _append_model(data: list[Any], seen: set[str], model: object) -> None:
+def _append_model(data: list[Any], seen: set[str], model: object, *, owned_by: str = "chatgpt2api") -> None:
     model_id = str(model or "").strip()
     if not model_id or model_id in seen:
         return
     seen.add(model_id)
-    data.append(_model_item(model_id))
+    data.append(_model_item(model_id, owned_by=owned_by))
 
 
-def _append_models(data: list[Any], seen: set[str], models: object) -> None:
+def _append_models(data: list[Any], seen: set[str], models: object, *, owned_by: str = "chatgpt2api") -> None:
     if not isinstance(models, list):
         return
     for model in models:
-        _append_model(data, seen, model)
+        _append_model(data, seen, model, owned_by=owned_by)
 
 
 def _append_upstream_models(data: list[Any], seen: set[str]) -> None:
@@ -58,6 +59,7 @@ def _dynamic_image_models() -> list[str]:
         for account in accounts
         if isinstance(account, dict)
            and account_service._is_image_account_available(account)
+           and account_service._normalize_source_type(account.get("source_type")) != "firefly"
     ]
     codex_types = {
         normalized
@@ -79,6 +81,32 @@ def _dynamic_image_models() -> list[str]:
     return models
 
 
+def _dynamic_firefly_image_models() -> list[str]:
+    """Firefly 族级 id；模块未就绪或渠道关闭时返回空。"""
+    if not config.firefly_enabled:
+        return []
+    try:
+        from services.backends.firefly_catalog import list_firefly_image_families
+    except ImportError:
+        return []
+    accounts = account_service.list_accounts()
+    has_firefly = any(
+        isinstance(account, dict)
+        and account_service._normalize_source_type(account.get("source_type")) == "firefly"
+        and account_service._is_image_account_available(account)
+        for account in accounts
+    )
+    if not has_firefly:
+        return []
+    try:
+        families = list_firefly_image_families()
+    except Exception:
+        return []
+    if not isinstance(families, list):
+        return []
+    return [str(item).strip() for item in families if str(item or "").strip()]
+
+
 def list_models() -> dict[str, Any]:
     catalog = get_model_catalog()
     data: list[Any] = []
@@ -88,5 +116,6 @@ def list_models() -> dict[str, Any]:
     _append_upstream_models(data, seen)
     _append_models(data, seen, catalog.get("image_models"))
     _append_models(data, seen, _dynamic_image_models())
+    _append_models(data, seen, _dynamic_firefly_image_models(), owned_by="adobe-firefly")
 
     return {"object": "list", "data": data}

@@ -991,6 +991,53 @@ class AccountService:
             "no image account is ready for current model/status filters",
         )
 
+    def report_exhausted(self, access_token: str, *, reason: str = "taste_exhausted") -> dict | None:
+        """Firefly taste_exhausted 等：标限流、quota=0，并释放 inflight 槽位。
+
+        与 ChatGPT 远程 limits 确认后写「限流」同语义，供后续选号走 429 耗尽出口。
+        """
+        if not access_token:
+            return None
+        now = datetime.now(timezone.utc)
+        with self._image_slot_condition:
+            access_token = self._resolve_access_token_locked(access_token)
+            self._release_image_slot_locked(access_token)
+            current = self._accounts.get(access_token)
+            if current is None:
+                return None
+            next_item = dict(current)
+            next_item["status"] = "限流"
+            next_item["quota"] = 0
+            next_item["image_quota_unknown"] = False
+            next_item["last_remote_check_result"] = "exhausted"
+            next_item["last_remote_check_event"] = str(reason or "taste_exhausted")
+            next_item["last_remote_checked_at"] = now.isoformat()
+            next_item["last_remote_check_attempt_at"] = now.isoformat()
+            account = self._normalize_account(next_item)
+            if account is None:
+                return None
+            # 对齐 update_account：自动移除额度耗尽账号时清 inflight / alias
+            if account.get("status") == "限流" and config.auto_remove_rate_limited_accounts:
+                self._accounts.pop(access_token, None)
+                self._image_inflight.pop(access_token, None)
+                self._token_aliases = {
+                    old: new
+                    for old, new in self._token_aliases.items()
+                    if old != access_token and new != access_token
+                }
+                if self._accounts:
+                    self._index %= len(self._accounts)
+                else:
+                    self._index = 0
+                self._save_accounts()
+                self._image_slot_condition.notify_all()
+                log_service.add(LOG_TYPE_ACCOUNT, "自动移除额度耗尽账号", {"token": anonymize_token(access_token)})
+                return None
+            self._accounts[access_token] = account
+            self._save_accounts()
+            self._image_slot_condition.notify_all()
+            return dict(account)
+
     def get_available_access_token(
             self,
             plan_type: str | None = None,
@@ -1001,7 +1048,17 @@ class AccountService:
 
         基于本地缓存做初筛，然后通过 fetch_remote_info 做远程验证（token 有效性、配额等）。
         限制最大尝试次数防止 token rotation 导致无限循环。
+
+        source_type=\"firefly\" 时跳过 OpenAI 远程预检，纯本地 RR + status 过滤。
         """
+        # Firefly 无 ChatGPT limits_progress；额度靠 taste_exhausted → report_exhausted
+        if self._normalize_source_type(source_type) == "firefly":
+            return self._acquire_next_candidate_token(
+                plan_type=plan_type,
+                source_type=source_type,
+                plan_types=plan_types,
+            )
+
         max_attempts = 20  # 防止无限循环
         attempted_tokens: set[str] = set()
         # 控制流只保留两个出口，但最终是否能说“额度耗尽”必须谨慎：

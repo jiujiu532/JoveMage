@@ -25,6 +25,7 @@ from utils.helper import (
     IMAGE_MODELS,
     extract_image_from_message_content,
     is_codex_image_model,
+    is_firefly_model,
     is_supported_image_model,
     split_image_model,
 )
@@ -2536,8 +2537,507 @@ def _generate_single_image(
                 backend.close()
 
 
+def _firefly_image_result_output(
+        request: ConversationRequest,
+        image_bytes: bytes,
+        index: int,
+        total: int,
+) -> ImageOutput:
+    """将 Firefly 返回的图片字节整理为与 ChatGPT 路径一致的 ImageOutput。"""
+    if not image_bytes:
+        raise ImageGenerationError(
+            "firefly upstream returned empty image bytes",
+            status_code=400,
+            error_type="invalid_request_error",
+            code="no_image_generated",
+        )
+    image_items = [{"b64_json": base64.b64encode(image_bytes).decode("ascii")}]
+    data = format_image_result(
+        image_items,
+        request.prompt,
+        request.response_format,
+        request.base_url,
+        int(time.time()),
+        requested_size=request.size,
+    )["data"]
+    if not data:
+        raise ImageGenerationError(
+            "firefly image format produced empty data",
+            status_code=400,
+            error_type="invalid_request_error",
+            code="no_image_generated",
+        )
+    return ImageOutput(
+        kind="result",
+        model=request.model,
+        index=index,
+        total=total,
+        data=data,
+    )
+
+
+def _generate_single_image_firefly(
+        request: ConversationRequest,
+        index: int,
+        total: int,
+) -> list[ImageOutput]:
+    """Firefly 渠道单图：选号占槽 → generate_image → finalize/mark。
+
+    generate_image 为同步阻塞轮询，本函数本身在线程池 worker 内运行。
+    """
+    # 延迟导入：backends 由并行 agent 落地，启动期未就绪时给清晰错误
+    try:
+        from services.backends.firefly_catalog import resolve_firefly_image_model
+        from services.backends.firefly_client import generate_image as firefly_generate
+        from services.backends.firefly_errors import (
+            FireflyAuthError,
+            FireflyQuotaExhausted,
+            FireflyRequestError,
+            FireflyUpstreamTemporary,
+            is_rotatable_error,
+        )
+        from services.backends.firefly_payloads import build_text2image_payload
+    except ImportError as exc:
+        raise ImageGenerationError(
+            f"firefly backend modules are not available: {exc}",
+            status_code=503,
+            error_type="server_error",
+            code="no_available_account",
+        ) from exc
+
+    if not config.firefly_enabled:
+        raise ImageGenerationError(
+            "firefly channel is disabled",
+            status_code=503,
+            error_type="server_error",
+            code="no_available_account",
+        )
+
+    resolved = resolve_firefly_image_model(request.model)
+    if resolved is None:
+        raise ImageGenerationError(
+            f"unsupported firefly image model: {request.model}",
+            status_code=400,
+            error_type="invalid_request_error",
+            code="unsupported_model",
+        )
+
+    max_attempts = max(1, int(config.firefly_retry_max_attempts or 3))
+    account_email = ""
+    attempted_tokens: set[str] = set()
+    last_error: Exception | None = None
+    single_started = time.perf_counter()
+
+    for attempt in range(1, max_attempts + 1):
+        _raise_if_request_cancelled(request)
+        account_wait_started = time.perf_counter()
+        image_slot_finalized = False
+        token = ""
+        try:
+            if request.progress_callback:
+                request.progress_callback("getting_account")
+            _monitor_image_stage(
+                request,
+                "image_getting_account",
+                index=index,
+                total=total,
+                channel="firefly",
+                attempt=attempt,
+            )
+            token = account_service.get_available_access_token(source_type="firefly")
+        except ImageAccountSelectionError as exc:
+            _monitor_image_stage(
+                request,
+                "image_local_rejected",
+                local_reason="account_pool",
+                status="failed",
+                index=index,
+                total=total,
+                channel="firefly",
+            )
+            raise ImageGenerationError(
+                str(exc) or "image generation failed",
+                status_code=exc.status_code,
+                error_type=exc.error_type,
+                code=exc.code,
+                account_email=account_email,
+            ) from exc
+        except RuntimeError as exc:
+            raise ImageGenerationError(
+                str(exc) or "image generation failed",
+                account_email=account_email,
+            ) from exc
+
+        if token in attempted_tokens:
+            # 同 token 已试过仍被分到：释放槽位后按 unavailable 处理
+            try:
+                account_service.release_image_slot(token)
+            except Exception:
+                pass
+            last_error = ImageGenerationError(
+                "firefly account pool exhausted after retries",
+                status_code=503,
+                error_type="server_error",
+                code="no_available_account",
+            )
+            break
+        attempted_tokens.add(token)
+
+        account_wait_ms = int((time.perf_counter() - account_wait_started) * 1000)
+        account = account_service.get_account(token) or {}
+        account_email = str(account.get("email") or "").strip()
+        attempt_access_token = token
+        attempt_refresh_token = str(account.get("refresh_token") or "").strip()
+
+        def finalize_image_slot(
+            success: bool,
+            *,
+            failure: ImageFailure | None = None,
+            quota_consumed: bool | None = None,
+        ) -> None:
+            nonlocal image_slot_finalized
+            if image_slot_finalized:
+                return
+            image_slot_finalized = True
+            try:
+                account_service.mark_image_result(
+                    token,
+                    success,
+                    failure=failure,
+                    quota_consumed=quota_consumed,
+                    expected_access_token=attempt_access_token,
+                    expected_refresh_token=attempt_refresh_token or None,
+                )
+            except Exception as mark_exc:
+                logger.warning({
+                    "event": "firefly_image_account_result_update_failed",
+                    "account_email": account_email,
+                    "success": success,
+                    "failure_code": failure.code if failure is not None else "",
+                    "error": diagnostic_excerpt(mark_exc, 500),
+                })
+                try:
+                    account_service.release_image_slot(token)
+                except Exception as release_exc:
+                    logger.warning({
+                        "event": "firefly_image_account_slot_release_failed",
+                        "account_email": account_email,
+                        "error": diagnostic_excerpt(release_exc, 500),
+                    })
+
+        _monitor_image_stage(
+            request,
+            "image_account_lookup",
+            account_wait_ms=account_wait_ms,
+            account_email=account_email,
+            account_found=bool(account),
+            index=index,
+            total=total,
+            channel="firefly",
+            attempt=attempt,
+        )
+
+        try:
+            if request.progress_callback:
+                request.progress_callback("starting_generation")
+            _monitor_image_stage(
+                request,
+                "image_generation_start",
+                account_email=account_email,
+                index=index,
+                total=total,
+                channel="firefly",
+                attempt=attempt,
+            )
+            payload = build_text2image_payload(
+                resolved,
+                prompt=request.prompt,
+                size=request.size,
+                quality=request.quality,
+                n=1,
+            )
+            gen_started = time.perf_counter()
+            # 已在线程池 worker 内；generate_image 同步阻塞轮询。
+            # 签名以 (token, payload) 为准，timeout/poll 作可选 kwargs 兼容。
+            try:
+                image_bytes = firefly_generate(
+                    token,
+                    payload,
+                    timeout=config.firefly_gen_timeout_sec,
+                    poll_interval=config.firefly_poll_interval_sec,
+                )
+            except TypeError:
+                image_bytes = firefly_generate(token, payload)
+            gen_ms = int((time.perf_counter() - gen_started) * 1000)
+            if isinstance(image_bytes, dict):
+                # 兼容返回 {bytes|data|image|images: ...}
+                for key in ("bytes", "image_bytes", "data", "image", "content"):
+                    if key in image_bytes and image_bytes[key] is not None:
+                        image_bytes = image_bytes[key]
+                        break
+                else:
+                    images = image_bytes.get("images")
+                    if isinstance(images, (list, tuple)) and images:
+                        image_bytes = images[0]
+            if isinstance(image_bytes, (list, tuple)):
+                image_bytes = image_bytes[0] if image_bytes else b""
+            if isinstance(image_bytes, str):
+                # 可能是 data URL 或纯 base64
+                text = image_bytes.strip()
+                if text.startswith("data:") and "," in text:
+                    text = text.split(",", 1)[1]
+                image_bytes = base64.b64decode(text)
+            if not isinstance(image_bytes, (bytes, bytearray)):
+                raise ImageGenerationError(
+                    "firefly generate_image returned non-bytes result",
+                    status_code=502,
+                    error_type="server_error",
+                    code="upstream_error",
+                    account_email=account_email,
+                )
+            output = _firefly_image_result_output(request, bytes(image_bytes), index, total)
+            output.account_email = account_email
+            finalize_image_slot(True)
+            if request.trace_image_perf:
+                _monitor_image_stage(
+                    request,
+                    "image_single_done",
+                    total_ms=int((time.perf_counter() - single_started) * 1000),
+                    gen_ms=gen_ms,
+                    status="success",
+                    account_email=account_email,
+                    index=index,
+                    total=total,
+                    channel="firefly",
+                )
+            return [output]
+        except RequestCancelledError as exc:
+            finalize_image_slot(False)
+            raise ImageGenerationError(
+                str(exc) or "request cancelled by administrator",
+                status_code=499,
+                error_type="server_error",
+                code="request_cancelled",
+                account_email=account_email,
+            ) from exc
+        except FireflyQuotaExhausted as exc:
+            # report_exhausted 内部已 release 槽；标记 finalized 避免 finally 双释放
+            try:
+                account_service.report_exhausted(token, reason="taste_exhausted")
+                image_slot_finalized = True
+            except Exception as report_exc:
+                logger.warning({
+                    "event": "firefly_report_exhausted_failed",
+                    "account_email": account_email,
+                    "error": diagnostic_excerpt(report_exc, 500),
+                })
+                finalize_image_slot(
+                    False,
+                    failure=image_failure("image_quota_exhausted", raw_detail=str(exc)),
+                )
+            last_error = ImageGenerationError(
+                str(exc) or "firefly quota exhausted",
+                status_code=429,
+                error_type="insufficient_quota",
+                code="insufficient_quota",
+                account_email=account_email,
+                raw_error=str(exc),
+                upstream_error=str(exc),
+            )
+            logger.warning({
+                "event": "firefly_quota_exhausted",
+                "account_email": account_email,
+                "index": index,
+                "attempt": attempt,
+                "error": diagnostic_excerpt(exc, 500),
+            })
+            continue
+        except (FireflyAuthError, FireflyUpstreamTemporary) as exc:
+            failure_code = "auth_invalid" if isinstance(exc, FireflyAuthError) else "upstream_unavailable"
+            finalize_image_slot(
+                False,
+                failure=image_failure(failure_code, raw_detail=str(exc)),
+            )
+            last_error = ImageGenerationError(
+                str(exc) or "firefly upstream temporary failure",
+                status_code=503 if isinstance(exc, FireflyUpstreamTemporary) else 401,
+                error_type="server_error" if isinstance(exc, FireflyUpstreamTemporary) else "authentication_error",
+                code=failure_code,
+                account_email=account_email,
+                raw_error=str(exc),
+                upstream_error=str(exc),
+            )
+            logger.warning({
+                "event": "firefly_rotatable_error",
+                "account_email": account_email,
+                "index": index,
+                "attempt": attempt,
+                "error_type": type(exc).__name__,
+                "error": diagnostic_excerpt(exc, 500),
+            })
+            # Auth / 上游临时错误：换号重试
+            continue
+        except FireflyRequestError as exc:
+            finalize_image_slot(
+                False,
+                failure=image_failure("upstream_error", raw_detail=str(exc)),
+            )
+            raise ImageGenerationError(
+                str(exc) or "firefly request failed",
+                status_code=int(getattr(exc, "status_code", 0) or 400),
+                error_type="invalid_request_error",
+                code=str(getattr(exc, "code", "") or "upstream_error"),
+                account_email=account_email,
+                raw_error=str(exc),
+                upstream_error=str(exc),
+            ) from exc
+        except ImageGenerationError:
+            if not image_slot_finalized:
+                finalize_image_slot(False, failure=image_failure("upstream_error"))
+            raise
+        except Exception as exc:
+            finalize_image_slot(
+                False,
+                failure=classify_image_exception(exc),
+            )
+            rotatable = False
+            try:
+                rotatable = bool(is_rotatable_error(exc))
+            except Exception:
+                rotatable = False
+            last_error = ImageGenerationError(
+                image_stream_error_message(str(exc)),
+                account_email=account_email,
+                raw_error=str(exc),
+                upstream_error=str(exc),
+                code="upstream_error",
+            )
+            logger.warning({
+                "event": "firefly_image_stream_fail",
+                "account_email": account_email,
+                "index": index,
+                "attempt": attempt,
+                "error": diagnostic_excerpt(exc, 1000),
+            })
+            if rotatable and attempt < max_attempts:
+                continue
+            raise last_error from exc
+        finally:
+            # 仅兜底未 finalize 的路径（异常中途/漏释放）
+            if token and not image_slot_finalized:
+                try:
+                    account_service.release_image_slot(token)
+                    image_slot_finalized = True
+                except Exception as release_exc:
+                    logger.warning({
+                        "event": "firefly_image_slot_orphan_release_failed",
+                        "account_email": account_email,
+                        "error": diagnostic_excerpt(release_exc, 500),
+                    })
+
+    if last_error is not None:
+        raise last_error
+    raise ImageGenerationError(
+        "firefly image generation failed after retries",
+        status_code=503,
+        error_type="server_error",
+        code="no_available_account",
+        account_email=account_email,
+    )
+
+
+def _stream_firefly_image_outputs(request: ConversationRequest) -> Iterator[ImageOutput]:
+    """Firefly 渠道并行/串行编排，形状对齐 stream_image_outputs_with_pool。"""
+    if request.n <= 1:
+        outputs = _generate_single_image_firefly(request, 1, 1)
+        for output in outputs:
+            yield output
+        return
+
+    if not config.image_parallel_generation:
+        logger.info({
+            "event": "firefly_image_serial_generation_start",
+            "n": request.n,
+            "model": request.model,
+        })
+        for index in range(1, request.n + 1):
+            outputs = _generate_single_image_firefly(request, index, request.n)
+            for output in outputs:
+                yield output
+        return
+
+    logger.info({
+        "event": "firefly_image_parallel_generation_start",
+        "n": request.n,
+        "model": request.model,
+    })
+    futures = {}
+    results: dict[int, list[ImageOutput]] = {}
+    errors: dict[int, Exception] = {}
+    with ThreadPoolExecutor(max_workers=request.n) as executor:
+        for index in range(1, request.n + 1):
+            future = executor.submit(_generate_single_image_firefly, request, index, request.n)
+            futures[future] = index
+
+        emitted = False
+        last_error = ""
+        for future in as_completed(futures):
+            index = futures[future]
+            try:
+                outputs = future.result()
+                results[index] = outputs
+                for output in outputs:
+                    emitted = True
+                    yield output
+            except Exception as exc:
+                errors[index] = exc
+                last_error = str(exc)
+                logger.warning({
+                    "event": "firefly_image_parallel_generation_error",
+                    "index": index,
+                    "error": last_error[:300],
+                })
+
+    if errors:
+        failed_indexes = sorted(errors.keys())
+        success_indexes = sorted(results.keys())
+        detail = "; ".join(f"index {i}: {errors[i]}" for i in failed_indexes)
+        if not emitted:
+            if not last_error:
+                last_error = "no firefly account could generate images"
+            raise ImageGenerationError(
+                image_stream_error_message(last_error),
+                conversation_id="",
+                raw_error=last_error,
+                upstream_error=last_error,
+            )
+        raise ImageGenerationError(
+            f"partial image generation failure: {len(success_indexes)}/{request.n} succeeded; "
+            f"failed indexes {failed_indexes}: {detail[:400]}",
+            conversation_id="",
+            raw_error=detail,
+            upstream_error=detail,
+            code="partial_image_failure",
+        )
+
+    if not emitted:
+        if not last_error:
+            last_error = "no firefly account could generate images"
+        raise ImageGenerationError(
+            image_stream_error_message(last_error),
+            conversation_id="",
+            raw_error=last_error,
+            upstream_error=last_error,
+        )
+
+
 def stream_image_outputs_with_pool(request: ConversationRequest) -> Iterator[ImageOutput]:
     """并行生成多张图片，每张图片使用独立线程和账号，互不阻塞。"""
+    # 渠道分发：firefly-* 不进 ChatGPT 上游
+    if is_firefly_model(request.model):
+        yield from _stream_firefly_image_outputs(request)
+        return
+
     if not is_supported_image_model(request.model):
         _monitor_image_stage(
             request,

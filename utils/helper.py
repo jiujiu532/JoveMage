@@ -110,10 +110,23 @@ def new_uuid() -> str:
     return str(uuid.uuid4())
 
 
+def is_firefly_model(model: object) -> bool:
+    """Adobe Firefly 渠道：模型 id 以 firefly- 为前缀。"""
+    return str(model or "").strip().lower().startswith("firefly-")
+
+
+def image_model_channel(model: object) -> str:
+    """图片渠道：firefly-* → firefly，其余走 chatgpt。"""
+    return "firefly" if is_firefly_model(model) else "chatgpt"
+
+
 def split_image_model(model: object) -> tuple[str | None, str | None]:
     normalized = str(model or "").strip().lower()
     if not normalized:
         return None, None
+    # Firefly 不走 plan_type 前缀逻辑，base 原样返回以便 is_supported_image_model 放行
+    if is_firefly_model(normalized):
+        return None, normalized
     if normalized in BASE_IMAGE_MODELS:
         return None, normalized
     for plan_type in IMAGE_MODEL_PLAN_TYPES:
@@ -131,6 +144,8 @@ def is_supported_image_model(model: object) -> bool:
 
 
 def is_codex_image_model(model: object) -> bool:
+    if is_firefly_model(model):
+        return False
     _, base_model = split_image_model(model)
     return base_model == CODEX_IMAGE_MODEL
 
@@ -138,6 +153,7 @@ def is_codex_image_model(model: object) -> bool:
 def is_image_chat_request(body: dict[str, object]) -> bool:
     model = str(body.get("model") or "").strip()
     modalities = body.get("modalities")
+    # firefly-* 也算图片请求（经 is_supported_image_model 放行）
     if is_supported_image_model(model):
         return True
     return isinstance(modalities, list) and "image" in {str(item or "").strip().lower() for item in modalities}

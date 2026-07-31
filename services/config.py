@@ -652,6 +652,53 @@ class ConfigStore:
             return value.strip().lower() in {"1", "true", "yes", "on"}
         return bool(value)
 
+    # ---- Adobe Firefly 渠道（环境变量 CHATGPT2API_FIREFLY_* 覆盖 config.json）----
+
+    @property
+    def firefly_enabled(self) -> bool:
+        self.reload_if_changed()
+        env = os.getenv("CHATGPT2API_FIREFLY_ENABLED")
+        if env is not None and str(env).strip() != "":
+            return _normalize_bool(env, False)
+        return _normalize_bool(self.data.get("firefly_enabled"), False)
+
+    @property
+    def firefly_poll_interval_sec(self) -> int:
+        self.reload_if_changed()
+        env = os.getenv("CHATGPT2API_FIREFLY_POLL_INTERVAL_SEC")
+        raw = env if env is not None and str(env).strip() != "" else self.data.get("firefly_poll_interval_sec", 3)
+        return _normalize_positive_int(raw, 3, 1)
+
+    @property
+    def firefly_gen_timeout_sec(self) -> int:
+        self.reload_if_changed()
+        env = os.getenv("CHATGPT2API_FIREFLY_GEN_TIMEOUT_SEC")
+        raw = env if env is not None and str(env).strip() != "" else self.data.get("firefly_gen_timeout_sec", 180)
+        return _normalize_positive_int(raw, 180, 1)
+
+    @property
+    def firefly_retry_max_attempts(self) -> int:
+        self.reload_if_changed()
+        env = os.getenv("CHATGPT2API_FIREFLY_RETRY_MAX_ATTEMPTS")
+        raw = env if env is not None and str(env).strip() != "" else self.data.get("firefly_retry_max_attempts", 3)
+        return _normalize_positive_int(raw, 3, 1)
+
+    @property
+    def firefly_refresh_interval_hours(self) -> int:
+        self.reload_if_changed()
+        env = os.getenv("CHATGPT2API_FIREFLY_REFRESH_INTERVAL_HOURS")
+        raw = env if env is not None and str(env).strip() != "" else self.data.get("firefly_refresh_interval_hours", 15)
+        return _normalize_positive_int(raw, 15, 1)
+
+    @property
+    def firefly_default_model(self) -> str:
+        self.reload_if_changed()
+        env = os.getenv("CHATGPT2API_FIREFLY_DEFAULT_MODEL")
+        if env is not None and str(env).strip():
+            return str(env).strip()
+        value = str(self.data.get("firefly_default_model") or "firefly-nano-banana-pro").strip()
+        return value or "firefly-nano-banana-pro"
+
     @property
     def image_remove_conversation_after_result(self) -> bool:
         self.reload_if_changed()
@@ -811,6 +858,12 @@ class ConfigStore:
             data["image_poll_initial_wait_secs"] = self.image_poll_initial_wait_secs
             data["image_account_concurrency"] = self.image_account_concurrency
             data["image_parallel_generation"] = self.image_parallel_generation
+            data["firefly_enabled"] = self.firefly_enabled
+            data["firefly_poll_interval_sec"] = self.firefly_poll_interval_sec
+            data["firefly_gen_timeout_sec"] = self.firefly_gen_timeout_sec
+            data["firefly_retry_max_attempts"] = self.firefly_retry_max_attempts
+            data["firefly_refresh_interval_hours"] = self.firefly_refresh_interval_hours
+            data["firefly_default_model"] = self.firefly_default_model
             data["image_remove_conversation_after_result"] = self.image_remove_conversation_after_result
             data["image_error_friendly_enabled"] = self.image_error_friendly_enabled
             data["image_error_messages"] = self.get_image_error_messages()
