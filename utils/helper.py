@@ -115,6 +115,41 @@ def is_firefly_model(model: object) -> bool:
     return str(model or "").strip().lower().startswith("firefly-")
 
 
+# Firefly 图像族前缀（不含 firefly-）；视频识别时需排除，避免与 sora/veo/kling 混淆。
+_FIREFLY_IMAGE_FAMILY_MARKERS = (
+    "nano-banana",
+    "gpt-image",
+)
+# Firefly 视频族前缀（不含 firefly-）
+_FIREFLY_VIDEO_FAMILY_MARKERS = (
+    "sora2",
+    "veo31",
+    "kling",
+)
+
+
+def is_firefly_video_model(model: object) -> bool:
+    """是否为 Firefly 视频模型：firefly- 前缀且命中 sora2/veo31/kling 族。
+
+    与图像族（nano-banana / gpt-image）互斥；不改变 is_firefly_model 行为。
+    """
+    text = str(model or "").strip().lower()
+    if not text.startswith("firefly-"):
+        return False
+    rest = text[len("firefly-") :]
+    if not rest:
+        return False
+    # 图像族优先排除（nano-banana-pro / gpt-image-2 等）
+    for marker in _FIREFLY_IMAGE_FAMILY_MARKERS:
+        if rest == marker or rest.startswith(f"{marker}-") or rest.startswith(f"{marker}."):
+            return False
+    for marker in _FIREFLY_VIDEO_FAMILY_MARKERS:
+        # sora2 / veo31 / kling（含 kling3、kling-o3）
+        if rest == marker or rest.startswith(marker):
+            return True
+    return False
+
+
 def image_model_channel(model: object) -> str:
     """图片渠道：firefly-* → firefly，其余走 chatgpt。"""
     return "firefly" if is_firefly_model(model) else "chatgpt"

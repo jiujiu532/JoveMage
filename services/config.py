@@ -700,6 +700,46 @@ class ConfigStore:
         return value or "firefly-nano-banana-pro"
 
     @property
+    def firefly_video_enabled(self) -> bool:
+        """Firefly 视频渠道开关（默认关）。环境变量 CHATGPT2API_FIREFLY_VIDEO_ENABLED 覆盖。"""
+        self.reload_if_changed()
+        env = os.getenv("CHATGPT2API_FIREFLY_VIDEO_ENABLED")
+        if env is not None and str(env).strip() != "":
+            return _normalize_bool(env, False)
+        return _normalize_bool(self.data.get("firefly_video_enabled"), False)
+
+    @property
+    def firefly_video_poll_interval_sec(self) -> int:
+        self.reload_if_changed()
+        env = os.getenv("CHATGPT2API_FIREFLY_VIDEO_POLL_INTERVAL_SEC")
+        raw = (
+            env
+            if env is not None and str(env).strip() != ""
+            else self.data.get("firefly_video_poll_interval_sec", 3)
+        )
+        return _normalize_positive_int(raw, 3, 1)
+
+    @property
+    def firefly_video_timeout_sec(self) -> int:
+        self.reload_if_changed()
+        env = os.getenv("CHATGPT2API_FIREFLY_VIDEO_TIMEOUT_SEC")
+        raw = (
+            env
+            if env is not None and str(env).strip() != ""
+            else self.data.get("firefly_video_timeout_sec", 600)
+        )
+        return _normalize_positive_int(raw, 600, 1)
+
+    @property
+    def firefly_video_default_model(self) -> str:
+        self.reload_if_changed()
+        env = os.getenv("CHATGPT2API_FIREFLY_VIDEO_DEFAULT_MODEL")
+        if env is not None and str(env).strip():
+            return str(env).strip()
+        value = str(self.data.get("firefly_video_default_model") or "firefly-sora2-4s-16x9").strip()
+        return value or "firefly-sora2-4s-16x9"
+
+    @property
     def image_remove_conversation_after_result(self) -> bool:
         self.reload_if_changed()
         return _normalize_bool(self.data.get("image_remove_conversation_after_result"), False)
@@ -864,6 +904,10 @@ class ConfigStore:
             data["firefly_retry_max_attempts"] = self.firefly_retry_max_attempts
             data["firefly_refresh_interval_hours"] = self.firefly_refresh_interval_hours
             data["firefly_default_model"] = self.firefly_default_model
+            data["firefly_video_enabled"] = self.firefly_video_enabled
+            data["firefly_video_poll_interval_sec"] = self.firefly_video_poll_interval_sec
+            data["firefly_video_timeout_sec"] = self.firefly_video_timeout_sec
+            data["firefly_video_default_model"] = self.firefly_video_default_model
             data["image_remove_conversation_after_result"] = self.image_remove_conversation_after_result
             data["image_error_friendly_enabled"] = self.image_error_friendly_enabled
             data["image_error_messages"] = self.get_image_error_messages()

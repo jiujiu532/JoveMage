@@ -901,7 +901,7 @@ class LoggedCall:
         except Exception as exc:
             self.log("调用失败", status="failed", error=str(exc), account_email=getattr(exc, "account_email", ""),
                      extra=_exception_log_fields(exc))
-            if self.endpoint.startswith("/v1/images"):
+            if self.endpoint.startswith("/v1/images") or self.endpoint.startswith("/v1/videos"):
                 return _image_error_response(exc)
             return _protocol_error_response(exc, 502, sse)
 
@@ -953,7 +953,7 @@ class LoggedCall:
         except Exception as exc:
             self.log("调用失败", status="failed", error=str(exc), account_email=getattr(exc, "account_email", ""),
                      extra=_exception_log_fields(exc))
-            if self.endpoint.startswith("/v1/images"):
+            if self.endpoint.startswith("/v1/images") or self.endpoint.startswith("/v1/videos"):
                 return _image_error_response(exc)
             return _protocol_error_response(exc, 502, sse)
         if not has_first:

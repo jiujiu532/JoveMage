@@ -76,6 +76,16 @@ SETTINGS_UPDATE_KEYS = {
     "chat_completion_cache",
     "third_party_apps",
     "domain_ban_rules",
+    "firefly_enabled",
+    "firefly_poll_interval_sec",
+    "firefly_gen_timeout_sec",
+    "firefly_retry_max_attempts",
+    "firefly_refresh_interval_hours",
+    "firefly_default_model",
+    "firefly_video_enabled",
+    "firefly_video_poll_interval_sec",
+    "firefly_video_timeout_sec",
+    "firefly_video_default_model",
 }
 
 

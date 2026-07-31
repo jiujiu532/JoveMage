@@ -7,6 +7,7 @@ import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator
 
 import tiktoken
@@ -26,6 +27,7 @@ from utils.helper import (
     extract_image_from_message_content,
     is_codex_image_model,
     is_firefly_model,
+    is_firefly_video_model,
     is_supported_image_model,
     split_image_model,
 )
@@ -3704,8 +3706,668 @@ def _stream_firefly_image_outputs(request: ConversationRequest) -> Iterator[Imag
         )
 
 
+def _firefly_account_id(account: dict[str, Any] | None) -> str:
+    """从账号记录取 Adobe/Firefly account_id（实体钉选匹配用）。"""
+    if not isinstance(account, dict):
+        return ""
+    for key in ("account_id", "adobe_account_id", "user_id", "id"):
+        value = str(account.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _save_firefly_video_bytes(
+        video_bytes: bytes,
+        *,
+        ext: str = "mp4",
+        base_url: str | None = None,
+) -> str:
+    """视频字节落盘到 images_dir，返回本站 /images/... URL。
+
+    不走 image_storage_service（其 index 仅登记图片扩展名），直接原子写本地。
+    """
+    if not video_bytes:
+        raise ImageGenerationError(
+            "firefly upstream returned empty video bytes",
+            status_code=400,
+            error_type="invalid_request_error",
+            code="no_image_generated",
+        )
+    clean_ext = str(ext or "mp4").strip().lower().lstrip(".") or "mp4"
+    if clean_ext not in {"mp4", "webm", "ogv", "mov", "m4v"}:
+        clean_ext = "mp4"
+    file_hash = hashlib.md5(video_bytes).hexdigest()
+    now = time.localtime()
+    relative_dir = Path(
+        time.strftime("%Y", now),
+        time.strftime("%m", now),
+        time.strftime("%d", now),
+    )
+    rel = f"{relative_dir.as_posix()}/{int(time.time())}_{file_hash}.{clean_ext}"
+    root = config.images_dir.resolve()
+    path = (root / rel).resolve()
+    try:
+        path.relative_to(root)
+    except ValueError as exc:
+        raise ImageGenerationError(
+            "invalid video storage path",
+            status_code=500,
+            error_type="server_error",
+            code="upstream_error",
+        ) from exc
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_bytes(video_bytes)
+    tmp.replace(path)
+    public_base = (base_url or config.base_url or "").rstrip("/")
+    return f"{public_base}/images/{rel}" if public_base else f"/images/{rel}"
+
+
+def _coerce_firefly_video_result(result: object) -> tuple[bytes, str]:
+    """兼容 generate_video 返回 (bytes, ext) / bytes / dict。"""
+    if isinstance(result, tuple) and result:
+        data = result[0]
+        ext = str(result[1] if len(result) > 1 else "mp4") or "mp4"
+        if isinstance(data, (bytes, bytearray)):
+            return bytes(data), ext.lstrip(".")
+        raise ImageGenerationError(
+            "firefly generate_video returned non-bytes result",
+            status_code=502,
+            error_type="server_error",
+            code="upstream_error",
+        )
+    if isinstance(result, dict):
+        for key in ("bytes", "video_bytes", "data", "content", "video"):
+            if key in result and result[key] is not None:
+                data = result[key]
+                ext = str(result.get("ext") or result.get("extension") or "mp4")
+                if isinstance(data, (bytes, bytearray)):
+                    return bytes(data), ext.lstrip(".") or "mp4"
+        raise ImageGenerationError(
+            "firefly generate_video returned dict without video bytes",
+            status_code=502,
+            error_type="server_error",
+            code="upstream_error",
+        )
+    if isinstance(result, (bytes, bytearray)):
+        return bytes(result), "mp4"
+    raise ImageGenerationError(
+        "firefly generate_video returned non-bytes result",
+        status_code=502,
+        error_type="server_error",
+        code="upstream_error",
+    )
+
+
+def _generate_single_video_firefly(
+        request: ConversationRequest,
+        index: int,
+        total: int,
+) -> list[ImageOutput]:
+    """Firefly 视频单条编排：选号占槽 →（可选）上传参考图 → generate_video → 落盘。
+
+    generate_video 为同步阻塞轮询，本函数本身在线程池 worker 内运行。
+    prompt 含 @entity: 时钉选实体绑定账号（跨账号不可混用）。
+    """
+    try:
+        from services.backends.firefly_video_catalog import (
+            center_crop_to_resolution,
+            max_input_images,
+            resolve_firefly_video_model,
+        )
+        from services.backends.firefly_client import generate_video as firefly_generate_video
+        from services.backends.firefly_client import upload_image as firefly_upload
+        from services.backends.firefly_errors import (
+            FireflyAuthError,
+            FireflyQuotaExhausted,
+            FireflyRequestError,
+            FireflyUpstreamTemporary,
+            is_rotatable_error,
+        )
+        from services.backends.firefly_video_payloads import build_firefly_video_payload
+    except ImportError as exc:
+        raise ImageGenerationError(
+            f"firefly video backend modules are not available: {exc}",
+            status_code=503,
+            error_type="server_error",
+            code="no_available_account",
+        ) from exc
+
+    try:
+        from services.backends.firefly_entities import (
+            required_account_id_for_prompt,
+            resolve_entity_refs_for_prompt,
+        )
+    except ImportError:
+        required_account_id_for_prompt = None  # type: ignore[assignment]
+        resolve_entity_refs_for_prompt = None  # type: ignore[assignment]
+
+    try:
+        from services.backends.firefly_client import fetch_image_bytes as firefly_fetch
+    except ImportError:
+        firefly_fetch = None  # type: ignore[assignment]
+
+    if not config.firefly_video_enabled:
+        raise ImageGenerationError(
+            "firefly video channel is disabled",
+            status_code=503,
+            error_type="server_error",
+            code="no_available_account",
+        )
+
+    resolved = resolve_firefly_video_model(request.model, size=request.size)
+    if resolved is None:
+        raise ImageGenerationError(
+            f"unsupported firefly video model: {request.model}",
+            status_code=400,
+            error_type="invalid_request_error",
+            code="unsupported_model",
+        )
+
+    # 实体钉选：@entity:Name 绑定同一 Adobe 账号
+    pinned_account_id = ""
+    entity_mentions: list[dict[str, Any]] = []
+    video_prompt = str(request.prompt or "")
+    if callable(required_account_id_for_prompt) and "@entity:" in video_prompt:
+        try:
+            if callable(resolve_entity_refs_for_prompt):
+                video_prompt, entity_mentions, pinned = resolve_entity_refs_for_prompt(video_prompt)
+                pinned_account_id = str(pinned or "").strip()
+            else:
+                pinned_account_id = str(required_account_id_for_prompt(video_prompt) or "").strip()
+        except ValueError as exc:
+            raise ImageGenerationError(
+                str(exc),
+                status_code=400,
+                error_type="invalid_request_error",
+                code="invalid_entity",
+            ) from exc
+
+    # 规范化参考图（图生视频）
+    refs = _normalize_firefly_image_inputs(request.images, request=request)
+    if not refs and firefly_fetch is not None and request.images:
+        for item in request.images:
+            if not isinstance(item, str):
+                continue
+            text = item.strip()
+            if not (text.startswith("http://") or text.startswith("https://")):
+                continue
+            try:
+                fetched = firefly_fetch(text)
+            except Exception as fetch_exc:
+                raise ImageGenerationError(
+                    f"failed to fetch reference image: {fetch_exc}",
+                    status_code=400,
+                    error_type="invalid_request_error",
+                    code="invalid_image",
+                ) from fetch_exc
+            if isinstance(fetched, tuple) and fetched:
+                data = fetched[0]
+                mime = str(fetched[1] if len(fetched) > 1 else "") or _guess_image_mime(bytes(data))
+            else:
+                data = fetched
+                mime = _guess_image_mime(bytes(data)) if isinstance(data, (bytes, bytearray)) else "image/jpeg"
+            if isinstance(data, (bytes, bytearray)) and data:
+                refs.append((bytes(data), mime))
+            if len(refs) >= max_input_images(str(resolved.get("family") or "")):
+                break
+
+    max_refs = max_input_images(str(resolved.get("family") or ""))
+    if len(refs) > max_refs:
+        raise ImageGenerationError(
+            f"video model supports at most {max_refs} input image(s)",
+            status_code=400,
+            error_type="invalid_request_error",
+            code="invalid_image",
+        )
+
+    max_attempts = max(1, int(config.firefly_retry_max_attempts or 3))
+    account_email = ""
+    attempted_tokens: set[str] = set()
+    last_error: Exception | None = None
+    single_started = time.perf_counter()
+
+    for attempt in range(1, max_attempts + 1):
+        _raise_if_request_cancelled(request)
+        account_wait_started = time.perf_counter()
+        image_slot_finalized = False
+        token = ""
+        try:
+            if request.progress_callback:
+                request.progress_callback("getting_account")
+            _monitor_image_stage(
+                request,
+                "image_getting_account",
+                index=index,
+                total=total,
+                channel="firefly-video",
+                attempt=attempt,
+            )
+            # 实体钉选：从 firefly 池里挑匹配 account_id 的号；无匹配则明确失败。
+            # 注意：_image_slot_condition 底层是普通 Lock，持锁期间禁止再调 get_account。
+            if pinned_account_id:
+                with account_service._image_slot_condition:  # noqa: SLF001 — 与 image inflight 共用
+                    def _pinned_available() -> list[str]:
+                        return [
+                            t
+                            for t in account_service._list_available_candidate_tokens(  # noqa: SLF001
+                                attempted_tokens,
+                                plan_type=None,
+                                source_type="firefly",
+                                plan_types=None,
+                            )
+                            if _firefly_account_id(account_service._accounts.get(t)) == pinned_account_id  # noqa: SLF001
+                        ]
+
+                    candidates = _pinned_available()
+                    if not candidates:
+                        # 有 ready 但槽满或不匹配时短暂等待；完全没有 ready 则直接失败
+                        ready = account_service._list_ready_candidate_tokens(  # noqa: SLF001
+                            attempted_tokens, None, "firefly", None
+                        )
+                        if not ready:
+                            raise ImageAccountSelectionError(
+                                "unavailable",
+                                f"no firefly account for entity-bound account_id={pinned_account_id}",
+                            )
+                        account_service._image_slot_condition.wait(timeout=1.0)  # noqa: SLF001
+                        candidates = _pinned_available()
+                    if not candidates:
+                        raise ImageAccountSelectionError(
+                            "unavailable",
+                            f"no available firefly token for entity-bound account_id={pinned_account_id}",
+                        )
+                    token = candidates[0]
+                    account_service._image_inflight[token] = (  # noqa: SLF001
+                        int(account_service._image_inflight.get(token, 0)) + 1  # noqa: SLF001
+                    )
+            else:
+                token = account_service.get_available_access_token(
+                    source_type="firefly",
+                    excluded_tokens=attempted_tokens,
+                )
+        except ImageAccountSelectionError as exc:
+            _monitor_image_stage(
+                request,
+                "image_local_rejected",
+                local_reason="account_pool",
+                status="failed",
+                index=index,
+                total=total,
+                channel="firefly-video",
+            )
+            raise ImageGenerationError(
+                str(exc) or "video generation failed",
+                status_code=exc.status_code,
+                error_type=exc.error_type,
+                code=exc.code,
+                account_email=account_email,
+            ) from exc
+        except RuntimeError as exc:
+            raise ImageGenerationError(
+                str(exc) or "video generation failed",
+                account_email=account_email,
+            ) from exc
+
+        if token in attempted_tokens:
+            try:
+                account_service.release_image_slot(token)
+            except Exception:
+                pass
+            if last_error is None:
+                last_error = ImageGenerationError(
+                    "firefly video account pool exhausted after retries",
+                    status_code=503,
+                    error_type="server_error",
+                    code="no_available_account",
+                )
+            break
+        attempted_tokens.add(token)
+
+        account_wait_ms = int((time.perf_counter() - account_wait_started) * 1000)
+        account = account_service.get_account(token) or {}
+        account_email = str(account.get("email") or "").strip()
+        attempt_access_token = token
+        attempt_refresh_token = str(account.get("refresh_token") or "").strip()
+
+        def finalize_image_slot(
+            success: bool,
+            *,
+            failure: ImageFailure | None = None,
+            quota_consumed: bool | None = None,
+        ) -> None:
+            nonlocal image_slot_finalized
+            if image_slot_finalized:
+                return
+            image_slot_finalized = True
+            try:
+                account_service.mark_image_result(
+                    token,
+                    success,
+                    failure=failure,
+                    quota_consumed=quota_consumed,
+                    expected_access_token=attempt_access_token,
+                    expected_refresh_token=attempt_refresh_token or None,
+                )
+            except Exception as mark_exc:
+                logger.warning({
+                    "event": "firefly_video_account_result_update_failed",
+                    "account_email": account_email,
+                    "success": success,
+                    "failure_code": failure.code if failure is not None else "",
+                    "error": diagnostic_excerpt(mark_exc, 500),
+                })
+                try:
+                    account_service.release_image_slot(token)
+                except Exception as release_exc:
+                    logger.warning({
+                        "event": "firefly_video_account_slot_release_failed",
+                        "account_email": account_email,
+                        "error": diagnostic_excerpt(release_exc, 500),
+                    })
+
+        _monitor_image_stage(
+            request,
+            "image_account_lookup",
+            account_wait_ms=account_wait_ms,
+            account_email=account_email,
+            account_found=bool(account),
+            index=index,
+            total=total,
+            channel="firefly-video",
+            attempt=attempt,
+        )
+
+        try:
+            if request.progress_callback:
+                request.progress_callback("starting_generation")
+            _monitor_image_stage(
+                request,
+                "image_generation_start",
+                account_email=account_email,
+                index=index,
+                total=total,
+                channel="firefly-video",
+                attempt=attempt,
+            )
+
+            # 图生视频：中心裁切 + 上传（复用 Phase 2 upload_image）
+            source_image_ids: list[str] = []
+            if refs:
+                target_res = str(resolved.get("resolution") or "720p")
+                aspect = str(resolved.get("aspect_ratio") or resolved.get("ratio") or "16:9")
+                for image_bytes, mime in refs[:max_refs]:
+                    try:
+                        prepared = center_crop_to_resolution(image_bytes, target_res, aspect)
+                        upload_mime = "image/png"
+                    except Exception:
+                        prepared = image_bytes
+                        upload_mime = mime or "image/jpeg"
+                    image_id = firefly_upload(token, prepared, upload_mime)
+                    if image_id:
+                        source_image_ids.append(str(image_id))
+
+            payload = build_firefly_video_payload(
+                resolved,
+                video_prompt,
+                reference_image_ids=source_image_ids or None,
+                entity_mentions=entity_mentions or None,
+            )
+            gen_started = time.perf_counter()
+            try:
+                video_result = firefly_generate_video(
+                    token,
+                    payload,
+                    timeout=config.firefly_video_timeout_sec,
+                    poll_interval=config.firefly_video_poll_interval_sec,
+                )
+            except TypeError:
+                video_result = firefly_generate_video(token, payload)
+            gen_ms = int((time.perf_counter() - gen_started) * 1000)
+            video_bytes, video_ext = _coerce_firefly_video_result(video_result)
+            video_url = _save_firefly_video_bytes(
+                video_bytes,
+                ext=video_ext,
+                base_url=request.base_url,
+            )
+            data_item: dict[str, Any] = {"url": video_url, "revised_prompt": request.prompt}
+            if request.response_format == "b64_json":
+                data_item["b64_json"] = base64.b64encode(video_bytes).decode("ascii")
+            output = ImageOutput(
+                kind="result",
+                model=request.model,
+                index=index,
+                total=total,
+                data=[data_item],
+                account_email=account_email,
+            )
+            finalize_image_slot(True)
+            if request.trace_image_perf:
+                _monitor_image_stage(
+                    request,
+                    "image_single_done",
+                    total_ms=int((time.perf_counter() - single_started) * 1000),
+                    gen_ms=gen_ms,
+                    status="success",
+                    account_email=account_email,
+                    index=index,
+                    total=total,
+                    channel="firefly-video",
+                )
+            return [output]
+        except RequestCancelledError as exc:
+            finalize_image_slot(False)
+            raise ImageGenerationError(
+                str(exc) or "request cancelled by administrator",
+                status_code=499,
+                error_type="server_error",
+                code="request_cancelled",
+                account_email=account_email,
+            ) from exc
+        except FireflyQuotaExhausted as exc:
+            try:
+                account_service.report_exhausted(token, reason="taste_exhausted")
+                image_slot_finalized = True
+            except Exception as report_exc:
+                logger.warning({
+                    "event": "firefly_video_report_exhausted_failed",
+                    "account_email": account_email,
+                    "error": diagnostic_excerpt(report_exc, 500),
+                })
+                finalize_image_slot(
+                    False,
+                    failure=image_failure("image_quota_exhausted", raw_detail=str(exc)),
+                )
+            last_error = ImageGenerationError(
+                str(exc) or "firefly video quota exhausted",
+                status_code=429,
+                error_type="insufficient_quota",
+                code="insufficient_quota",
+                account_email=account_email,
+                raw_error=str(exc),
+                upstream_error=str(exc),
+            )
+            # 实体钉选不可换号；额度耗尽直接失败
+            if pinned_account_id:
+                raise last_error from exc
+            logger.warning({
+                "event": "firefly_video_quota_exhausted",
+                "account_email": account_email,
+                "index": index,
+                "attempt": attempt,
+                "error": diagnostic_excerpt(exc, 500),
+            })
+            continue
+        except FireflyAuthError as exc:
+            try:
+                account_service.update_account(token, {"status": "异常"}, quiet=True)
+            except Exception as mark_exc:
+                logger.warning({
+                    "event": "firefly_video_auth_mark_abnormal_failed",
+                    "account_email": account_email,
+                    "error": diagnostic_excerpt(mark_exc, 500),
+                })
+            finalize_image_slot(False)
+            last_error = ImageGenerationError(
+                str(exc) or "firefly video authentication failed",
+                status_code=401,
+                error_type="authentication_error",
+                code="auth_invalid",
+                account_email=account_email,
+                raw_error=str(exc),
+                upstream_error=str(exc),
+            )
+            if pinned_account_id:
+                raise last_error from exc
+            logger.warning({
+                "event": "firefly_video_rotatable_error",
+                "account_email": account_email,
+                "index": index,
+                "attempt": attempt,
+                "error_type": type(exc).__name__,
+                "error": diagnostic_excerpt(exc, 500),
+            })
+            continue
+        except FireflyUpstreamTemporary as exc:
+            finalize_image_slot(
+                False,
+                failure=image_failure("upstream_unavailable", raw_detail=str(exc)),
+            )
+            last_error = ImageGenerationError(
+                str(exc) or "firefly video upstream temporary failure",
+                status_code=503,
+                error_type="server_error",
+                code="upstream_unavailable",
+                account_email=account_email,
+                raw_error=str(exc),
+                upstream_error=str(exc),
+            )
+            if pinned_account_id:
+                raise last_error from exc
+            logger.warning({
+                "event": "firefly_video_rotatable_error",
+                "account_email": account_email,
+                "index": index,
+                "attempt": attempt,
+                "error_type": type(exc).__name__,
+                "error": diagnostic_excerpt(exc, 500),
+            })
+            continue
+        except FireflyRequestError as exc:
+            finalize_image_slot(
+                False,
+                failure=image_failure("upstream_error", raw_detail=str(exc)),
+            )
+            raise ImageGenerationError(
+                str(exc) or "firefly video request failed",
+                status_code=int(getattr(exc, "status_code", 0) or 400),
+                error_type="invalid_request_error",
+                code=str(getattr(exc, "code", "") or "upstream_error"),
+                account_email=account_email,
+                raw_error=str(exc),
+                upstream_error=str(exc),
+            ) from exc
+        except ImageGenerationError:
+            if not image_slot_finalized:
+                finalize_image_slot(False, failure=image_failure("upstream_error"))
+            raise
+        except Exception as exc:
+            finalize_image_slot(
+                False,
+                failure=classify_image_exception(exc),
+            )
+            rotatable = False
+            try:
+                rotatable = bool(is_rotatable_error(exc))
+            except Exception:
+                rotatable = False
+            last_error = ImageGenerationError(
+                image_stream_error_message(str(exc)),
+                account_email=account_email,
+                raw_error=str(exc),
+                upstream_error=str(exc),
+                code="upstream_error",
+            )
+            logger.warning({
+                "event": "firefly_video_stream_fail",
+                "account_email": account_email,
+                "index": index,
+                "attempt": attempt,
+                "error": diagnostic_excerpt(exc, 1000),
+            })
+            if rotatable and attempt < max_attempts and not pinned_account_id:
+                continue
+            raise last_error from exc
+        finally:
+            if token and not image_slot_finalized:
+                try:
+                    account_service.release_image_slot(token)
+                    image_slot_finalized = True
+                except Exception as release_exc:
+                    logger.warning({
+                        "event": "firefly_video_slot_orphan_release_failed",
+                        "account_email": account_email,
+                        "error": diagnostic_excerpt(release_exc, 500),
+                    })
+
+    if last_error is not None:
+        raise last_error
+    raise ImageGenerationError(
+        "firefly video generation failed after retries",
+        status_code=503,
+        error_type="server_error",
+        code="no_available_account",
+        account_email=account_email,
+    )
+
+
+def stream_video_outputs_with_pool(request: ConversationRequest) -> Iterator[ImageOutput]:
+    """Firefly 视频编排入口（不做聊天伪流式；n>1 串行，复用 image inflight）。"""
+    if not is_firefly_video_model(request.model) and not is_firefly_model(request.model):
+        raise ImageGenerationError(
+            f"unsupported video model: {request.model}",
+            status_code=400,
+            error_type="invalid_request_error",
+            code="unsupported_model",
+        )
+    if not is_firefly_video_model(request.model):
+        raise ImageGenerationError(
+            f"model is not a firefly video model: {request.model}",
+            status_code=400,
+            error_type="invalid_request_error",
+            code="unsupported_model",
+        )
+
+    n = max(1, int(request.n or 1))
+    if n <= 1:
+        outputs = _generate_single_video_firefly(request, 1, 1)
+        for output in outputs:
+            yield output
+        return
+
+    # 视频任务更重：默认串行，避免同时占满账号与线程池
+    logger.info({
+        "event": "firefly_video_serial_generation_start",
+        "n": n,
+        "model": request.model,
+    })
+    for index in range(1, n + 1):
+        outputs = _generate_single_video_firefly(request, index, n)
+        for output in outputs:
+            yield output
+
+
 def stream_image_outputs_with_pool(request: ConversationRequest) -> Iterator[ImageOutput]:
     """并行生成多张图片，每张图片使用独立线程和账号，互不阻塞。"""
+    # 视频模型请走 /v1/videos/generations，避免污染 images 语义
+    if is_firefly_video_model(request.model):
+        raise ImageGenerationError(
+            "firefly video models require POST /v1/videos/generations",
+            status_code=400,
+            error_type="invalid_request_error",
+            code="unsupported_model",
+        )
     # 渠道分发：firefly-* 不进 ChatGPT 上游
     if is_firefly_model(request.model):
         yield from _stream_firefly_image_outputs(request)

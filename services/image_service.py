@@ -63,6 +63,11 @@ def get_image_response(relative_path: str) -> FileResponse | Response:
         "Access-Control-Allow-Methods": "GET, OPTIONS",
         "Access-Control-Allow-Headers": "*",
     }
+    # 本地直出优先：视频等非 image_index 产物（.mp4/.webm）也可经 /images/ 访问
+    try:
+        return FileResponse(_safe_image_path(relative_path), headers=headers)
+    except HTTPException:
+        pass
     if image_storage_service.has_local(relative_path):
         return FileResponse(_safe_image_path(relative_path), headers=headers)
     return Response(content=image_storage_service.get_bytes(relative_path), media_type="image/png", headers=headers)

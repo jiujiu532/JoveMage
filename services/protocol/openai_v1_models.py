@@ -107,6 +107,41 @@ def _dynamic_firefly_image_models() -> list[str]:
     return [str(item).strip() for item in families if str(item or "").strip()]
 
 
+def _dynamic_firefly_video_models() -> list[str]:
+    """Firefly 视频族级 id（firefly-<family>）；需 video 开关 + 可用 firefly 账号。"""
+    if not config.firefly_video_enabled:
+        return []
+    try:
+        from services.backends.firefly_video_catalog import list_firefly_video_families
+    except ImportError:
+        return []
+    accounts = account_service.list_accounts()
+    has_firefly = any(
+        isinstance(account, dict)
+        and account_service._normalize_source_type(account.get("source_type")) == "firefly"
+        and account_service._is_image_account_available(account)
+        for account in accounts
+    )
+    if not has_firefly:
+        return []
+    try:
+        families = list_firefly_video_families()
+    except Exception:
+        return []
+    if not isinstance(families, list):
+        return []
+    models: list[str] = []
+    for item in families:
+        family = str(item or "").strip().lower()
+        if not family:
+            continue
+        if family.startswith("firefly-"):
+            models.append(family)
+        else:
+            models.append(f"firefly-{family}")
+    return models
+
+
 def list_models() -> dict[str, Any]:
     catalog = get_model_catalog()
     data: list[Any] = []
@@ -117,5 +152,6 @@ def list_models() -> dict[str, Any]:
     _append_models(data, seen, catalog.get("image_models"))
     _append_models(data, seen, _dynamic_image_models())
     _append_models(data, seen, _dynamic_firefly_image_models(), owned_by="adobe-firefly")
+    _append_models(data, seen, _dynamic_firefly_video_models(), owned_by="adobe-firefly")
 
     return {"object": "list", "data": data}
