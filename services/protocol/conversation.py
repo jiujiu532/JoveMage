@@ -13,6 +13,7 @@ from typing import Any, Callable, Iterable, Iterator
 import tiktoken
 
 from services.account_service import ImageAccountSelectionError, account_service
+from services.backends.firefly_image_utils import fetch_image_bytes as firefly_fetch
 from services.config import config
 from services.image_failure import FAILURE_CODE_ALIASES as _IMAGE_FAILURE_CODE_ALIASES
 from services.image_failure import ImageFailure, classify_image_exception, image_failure
@@ -2580,6 +2581,7 @@ def _firefly_image_result_output(
 
 # Firefly 图生图最多上传 6 张参考图（与 Adobe 3P 通道上限对齐）
 _MAX_FIREFLY_REFERENCE_IMAGES = 6
+_BASE64_CHARSET_RE = re.compile(r"^[A-Za-z0-9+/=\s]+$")
 
 
 def _guess_image_mime(data: bytes) -> str:
@@ -2597,8 +2599,24 @@ def _guess_image_mime(data: bytes) -> str:
     return "image/jpeg"
 
 
-def _decode_firefly_image_entry(entry: object) -> tuple[bytes, str] | None:
-    """把 request.images 单项解码为 (bytes, mime)；无法解码返回 None。"""
+def _looks_like_base64(text: str) -> bool:
+    """字符集 + 长度校验：避免把 URL/路径误当 base64。"""
+    cleaned = "".join(str(text or "").split())
+    if len(cleaned) < 16 or len(cleaned) % 4 != 0:
+        return False
+    return bool(_BASE64_CHARSET_RE.fullmatch(cleaned))
+
+
+def _decode_firefly_image_entry(
+        entry: object,
+        *,
+        proxy: str | None = None,
+) -> tuple[bytes, str] | None:
+    """把 request.images 单项解码为 (bytes, mime)；无法解码返回 None。
+
+    分支顺序：dict{"url"} → data: → http(s):（走 fetch）→ 形似 base64 才 decode。
+    URL 永不 b64decode。
+    """
     if isinstance(entry, (bytes, bytearray)):
         data = bytes(entry)
         return (data, _guess_image_mime(data)) if data else None
@@ -2611,6 +2629,19 @@ def _decode_firefly_image_entry(entry: object) -> tuple[bytes, str] | None:
             entry = first
         else:
             return None
+    if isinstance(entry, dict):
+        # 支持 {"url": ...} / {"image_url": {"url": ...}} / {"b64_json": ...}
+        for key in ("url", "image_url", "b64_json", "data"):
+            nested = entry.get(key)
+            if nested is None:
+                continue
+            if isinstance(nested, dict):
+                nested_url = nested.get("url")
+                if nested_url is not None:
+                    return _decode_firefly_image_entry(nested_url, proxy=proxy)
+                continue
+            return _decode_firefly_image_entry(nested, proxy=proxy)
+        return None
     if not isinstance(entry, str):
         return None
     text = entry.strip()
@@ -2631,7 +2662,18 @@ def _decode_firefly_image_entry(entry: object) -> tuple[bytes, str] | None:
         if mime == "image/jpg":
             mime = "image/jpeg"
         return data, mime or _guess_image_mime(data)
-    # 纯 base64（encode_images 产物）
+    # 裸 http(s) URL：走 fetch，禁止 b64decode
+    if text.lower().startswith(("http://", "https://")):
+        try:
+            data, mime = firefly_fetch(text, proxy=proxy)
+        except Exception:
+            return None
+        if not data:
+            return None
+        return bytes(data), str(mime or "") or _guess_image_mime(bytes(data))
+    # 纯 base64（encode_images 产物）；须形似 base64
+    if not _looks_like_base64(text):
+        return None
     try:
         data = base64.b64decode(text, validate=False)
     except Exception:
@@ -2867,6 +2909,7 @@ def _generate_single_image_firefly(
         account_wait_ms = int((time.perf_counter() - account_wait_started) * 1000)
         account = account_service.get_account(token) or {}
         account_email = str(account.get("email") or "").strip()
+        proxy = str(account.get("proxy") or "").strip() or None
         attempt_access_token = token
         attempt_refresh_token = str(account.get("refresh_token") or "").strip()
 
@@ -2943,11 +2986,12 @@ def _generate_single_image_firefly(
                 image_bytes = firefly_generate(
                     token,
                     payload,
+                    proxy=proxy,
                     timeout=config.firefly_gen_timeout_sec,
                     poll_interval=config.firefly_poll_interval_sec,
                 )
             except TypeError:
-                image_bytes = firefly_generate(token, payload)
+                image_bytes = firefly_generate(token, payload, proxy=proxy)
             gen_ms = int((time.perf_counter() - gen_started) * 1000)
             try:
                 image_bytes = _coerce_firefly_image_bytes(image_bytes)
@@ -2956,7 +3000,8 @@ def _generate_single_image_firefly(
                 raise
             output = _firefly_image_result_output(request, image_bytes, index, total)
             output.account_email = account_email
-            finalize_image_slot(True)
+            # Firefly 真实额度靠 taste_exhausted/credits，成功不扣本地 quota
+            finalize_image_slot(True, quota_consumed=False)
             if request.trace_image_perf:
                 _monitor_image_stage(
                     request,
@@ -3163,12 +3208,6 @@ def _generate_single_image_firefly_edit(
             code="no_available_account",
         ) from exc
 
-    # fetch_image_bytes 由并行 agent 可选落地；缺失时只支持本地 bytes/base64
-    try:
-        from services.backends.firefly_client import fetch_image_bytes as firefly_fetch
-    except ImportError:
-        firefly_fetch = None  # type: ignore[assignment]
-
     if not config.firefly_enabled:
         raise ImageGenerationError(
             "firefly channel is disabled",
@@ -3186,39 +3225,8 @@ def _generate_single_image_firefly_edit(
             code="unsupported_model",
         )
 
-    # 先规范化参考图；无图则不应走 edit 路径
+    # 先规范化参考图；URL/dict/base64 均由 _decode_firefly_image_entry 处理
     refs = _normalize_firefly_image_inputs(image_inputs, request=request)
-    if not refs and firefly_fetch is not None:
-        # 尝试把剩余字符串当 URL 拉取（encode_images 通常已是 base64）
-        raw_list = image_inputs if isinstance(image_inputs, list) else (
-            list(request.images or []) if image_inputs is None else [image_inputs]
-        )
-        for item in raw_list:
-            if not isinstance(item, str):
-                continue
-            text = item.strip()
-            if not (text.startswith("http://") or text.startswith("https://")):
-                continue
-            try:
-                fetched = firefly_fetch(text)
-            except Exception as fetch_exc:
-                raise ImageGenerationError(
-                    f"failed to fetch reference image: {fetch_exc}",
-                    status_code=400,
-                    error_type="invalid_request_error",
-                    code="invalid_image",
-                ) from fetch_exc
-            if isinstance(fetched, tuple) and fetched:
-                data = fetched[0]
-                mime = str(fetched[1] if len(fetched) > 1 else "") or _guess_image_mime(bytes(data))
-            else:
-                data = fetched
-                mime = _guess_image_mime(bytes(data)) if isinstance(data, (bytes, bytearray)) else "image/jpeg"
-            if isinstance(data, (bytes, bytearray)) and data:
-                refs.append((bytes(data), mime))
-            if len(refs) >= _MAX_FIREFLY_REFERENCE_IMAGES:
-                break
-
     if not refs:
         raise ImageGenerationError(
             "image is required for firefly image edit",
@@ -3297,6 +3305,7 @@ def _generate_single_image_firefly_edit(
         account_wait_ms = int((time.perf_counter() - account_wait_started) * 1000)
         account = account_service.get_account(token) or {}
         account_email = str(account.get("email") or "").strip()
+        proxy = str(account.get("proxy") or "").strip() or None
         attempt_access_token = token
         attempt_refresh_token = str(account.get("refresh_token") or "").strip()
 
@@ -3372,9 +3381,14 @@ def _generate_single_image_firefly_edit(
             for ref_index, (img_bytes, mime) in enumerate(refs, start=1):
                 _raise_if_request_cancelled(request)
                 try:
-                    image_id = firefly_upload(token, img_bytes, mime_type=mime or "image/jpeg")
+                    image_id = firefly_upload(
+                        token,
+                        img_bytes,
+                        mime_type=mime or "image/jpeg",
+                        proxy=proxy,
+                    )
                 except TypeError:
-                    image_id = firefly_upload(token, img_bytes, mime or "image/jpeg")
+                    image_id = firefly_upload(token, img_bytes, mime or "image/jpeg", proxy=proxy)
                 image_id = str(image_id or "").strip()
                 if not image_id:
                     raise ImageGenerationError(
@@ -3412,11 +3426,12 @@ def _generate_single_image_firefly_edit(
                 image_bytes = firefly_generate(
                     token,
                     payload,
+                    proxy=proxy,
                     timeout=config.firefly_gen_timeout_sec,
                     poll_interval=config.firefly_poll_interval_sec,
                 )
             except TypeError:
-                image_bytes = firefly_generate(token, payload)
+                image_bytes = firefly_generate(token, payload, proxy=proxy)
             gen_ms = int((time.perf_counter() - gen_started) * 1000)
             try:
                 image_bytes = _coerce_firefly_image_bytes(image_bytes)
@@ -3426,7 +3441,8 @@ def _generate_single_image_firefly_edit(
 
             output = _firefly_image_result_output(request, image_bytes, index, total)
             output.account_email = account_email
-            finalize_image_slot(True)
+            # Firefly 真实额度靠 taste_exhausted/credits，成功不扣本地 quota
+            finalize_image_slot(True, quota_consumed=False)
             if request.trace_image_perf:
                 _monitor_image_stage(
                     request,
@@ -3843,11 +3859,6 @@ def _generate_single_video_firefly(
         required_account_id_for_prompt = None  # type: ignore[assignment]
         resolve_entity_refs_for_prompt = None  # type: ignore[assignment]
 
-    try:
-        from services.backends.firefly_client import fetch_image_bytes as firefly_fetch
-    except ImportError:
-        firefly_fetch = None  # type: ignore[assignment]
-
     if not config.firefly_video_enabled:
         raise ImageGenerationError(
             "firefly video channel is disabled",
@@ -3884,34 +3895,16 @@ def _generate_single_video_firefly(
                 code="invalid_entity",
             ) from exc
 
-    # 规范化参考图（图生视频）
+    # 规范化参考图（图生视频）；URL/dict/base64 均由 _decode_firefly_image_entry 处理
     refs = _normalize_firefly_image_inputs(request.images, request=request)
-    if not refs and firefly_fetch is not None and request.images:
-        for item in request.images:
-            if not isinstance(item, str):
-                continue
-            text = item.strip()
-            if not (text.startswith("http://") or text.startswith("https://")):
-                continue
-            try:
-                fetched = firefly_fetch(text)
-            except Exception as fetch_exc:
-                raise ImageGenerationError(
-                    f"failed to fetch reference image: {fetch_exc}",
-                    status_code=400,
-                    error_type="invalid_request_error",
-                    code="invalid_image",
-                ) from fetch_exc
-            if isinstance(fetched, tuple) and fetched:
-                data = fetched[0]
-                mime = str(fetched[1] if len(fetched) > 1 else "") or _guess_image_mime(bytes(data))
-            else:
-                data = fetched
-                mime = _guess_image_mime(bytes(data)) if isinstance(data, (bytes, bytearray)) else "image/jpeg"
-            if isinstance(data, (bytes, bytearray)) and data:
-                refs.append((bytes(data), mime))
-            if len(refs) >= max_input_images(str(resolved.get("family") or "")):
-                break
+    # 请求带了 images 但规范化后 refs 为空 → 禁止静默退化成 t2v
+    if request.images and not refs:
+        raise ImageGenerationError(
+            "failed to decode reference image(s) for firefly video",
+            status_code=400,
+            error_type="invalid_request_error",
+            code="invalid_image",
+        )
 
     max_refs = max_input_images(str(resolved.get("family") or ""))
     if len(refs) > max_refs:
@@ -3946,6 +3939,7 @@ def _generate_single_video_firefly(
             )
             # 实体钉选：从 firefly 池里挑匹配 account_id 的号；无匹配则明确失败。
             # 注意：_image_slot_condition 底层是普通 Lock，持锁期间禁止再调 get_account。
+            # 槽满时循环 wait（对齐 _acquire_next_candidate_token），避免长视频占槽误判无号。
             if pinned_account_id:
                 with account_service._image_slot_condition:  # noqa: SLF001 — 与 image inflight 共用
                     def _pinned_available() -> list[str]:
@@ -3960,24 +3954,26 @@ def _generate_single_video_firefly(
                             if _firefly_account_id(account_service._accounts.get(t)) == pinned_account_id  # noqa: SLF001
                         ]
 
-                    candidates = _pinned_available()
-                    if not candidates:
-                        # 有 ready 但槽满或不匹配时短暂等待；完全没有 ready 则直接失败
-                        ready = account_service._list_ready_candidate_tokens(  # noqa: SLF001
-                            attempted_tokens, None, "firefly", None
-                        )
-                        if not ready:
+                    def _pinned_ready() -> list[str]:
+                        return [
+                            t
+                            for t in account_service._list_ready_candidate_tokens(  # noqa: SLF001
+                                attempted_tokens, None, "firefly", None
+                            )
+                            if _firefly_account_id(account_service._accounts.get(t)) == pinned_account_id  # noqa: SLF001
+                        ]
+
+                    while True:
+                        candidates = _pinned_available()
+                        if candidates:
+                            break
+                        # 有 ready 但槽满 → 循环 wait；完全没有 ready → 直接失败
+                        if not _pinned_ready():
                             raise ImageAccountSelectionError(
                                 "unavailable",
                                 f"no firefly account for entity-bound account_id={pinned_account_id}",
                             )
                         account_service._image_slot_condition.wait(timeout=1.0)  # noqa: SLF001
-                        candidates = _pinned_available()
-                    if not candidates:
-                        raise ImageAccountSelectionError(
-                            "unavailable",
-                            f"no available firefly token for entity-bound account_id={pinned_account_id}",
-                        )
                     token = candidates[0]
                     account_service._image_inflight[token] = (  # noqa: SLF001
                         int(account_service._image_inflight.get(token, 0)) + 1  # noqa: SLF001
@@ -4028,6 +4024,7 @@ def _generate_single_video_firefly(
         account_wait_ms = int((time.perf_counter() - account_wait_started) * 1000)
         account = account_service.get_account(token) or {}
         account_email = str(account.get("email") or "").strip()
+        proxy = str(account.get("proxy") or "").strip() or None
         attempt_access_token = token
         attempt_refresh_token = str(account.get("refresh_token") or "").strip()
 
@@ -4104,7 +4101,7 @@ def _generate_single_video_firefly(
                     except Exception:
                         prepared = image_bytes
                         upload_mime = mime or "image/jpeg"
-                    image_id = firefly_upload(token, prepared, upload_mime)
+                    image_id = firefly_upload(token, prepared, upload_mime, proxy=proxy)
                     if image_id:
                         source_image_ids.append(str(image_id))
 
@@ -4119,11 +4116,12 @@ def _generate_single_video_firefly(
                 video_result = firefly_generate_video(
                     token,
                     payload,
+                    proxy=proxy,
                     timeout=config.firefly_video_timeout_sec,
                     poll_interval=config.firefly_video_poll_interval_sec,
                 )
             except TypeError:
-                video_result = firefly_generate_video(token, payload)
+                video_result = firefly_generate_video(token, payload, proxy=proxy)
             gen_ms = int((time.perf_counter() - gen_started) * 1000)
             video_bytes, video_ext = _coerce_firefly_video_result(video_result)
             video_url = _save_firefly_video_bytes(
@@ -4142,7 +4140,8 @@ def _generate_single_video_firefly(
                 data=[data_item],
                 account_email=account_email,
             )
-            finalize_image_slot(True)
+            # Firefly 真实额度靠 taste_exhausted/credits，成功不扣本地 quota
+            finalize_image_slot(True, quota_consumed=False)
             if request.trace_image_perf:
                 _monitor_image_stage(
                     request,
