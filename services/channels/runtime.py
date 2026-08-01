@@ -10,7 +10,9 @@ from __future__ import annotations
 配置键（ConfigStore 双读：channels.firefly.* > 平铺 firefly_*）：
 - circuit_failure_threshold（默认 5）
 - circuit_cooldown_sec（默认 300）
-- rate_budget（默认 {"poll_per_sec": 5}）
+- rate_budget（默认 {"upstream_call_per_sec": 5}）
+  注：限的是「Firefly 上游调用（submit/poll 聚合）每秒速率」，不是任务启动数、也不是单任务 poll 节奏
+  （单任务 poll 间隔由 firefly_poll_interval_sec 控制）。旧键 poll_per_sec 仍兼容读取。
 """
 
 import threading
@@ -23,7 +25,7 @@ from utils.log import logger
 # ---- 默认值（与 03 §8 / 任务约定对齐）----
 DEFAULT_CIRCUIT_FAILURE_THRESHOLD = 5
 DEFAULT_CIRCUIT_COOLDOWN_SEC = 300
-DEFAULT_POLL_PER_SEC = 5.0
+DEFAULT_UPSTREAM_CALL_PER_SEC = 5.0
 FIREFLY_CHANNEL_ID = "firefly"
 
 # 模块级锁：熔断状态 + 令牌桶共用一把，状态体量小、调用不频繁
@@ -112,18 +114,20 @@ def circuit_cooldown_sec() -> int:
 def rate_budget_config(channel: str | None = FIREFLY_CHANNEL_ID) -> dict[str, Any]:
     """读取渠道 rate_budget；缺省保守值。
 
-    形状示例：{"poll_per_sec": 5}
-    本期仅消费 poll_per_sec；其它键忽略。
+    形状示例：{"upstream_call_per_sec": 5}
+    本期仅消费 upstream_call_per_sec（上游调用速率）；旧键 poll_per_sec 兼容；其它键忽略。
     """
     cid = _normalize_channel(channel) or FIREFLY_CHANNEL_ID
     raw: object = None
     if cid == FIREFLY_CHANNEL_ID:
         raw = _dual_read_firefly("rate_budget", None)
     if not isinstance(raw, dict):
-        return {"poll_per_sec": DEFAULT_POLL_PER_SEC}
+        return {"upstream_call_per_sec": DEFAULT_UPSTREAM_CALL_PER_SEC}
     out = dict(raw)
-    if "poll_per_sec" not in out:
-        out["poll_per_sec"] = DEFAULT_POLL_PER_SEC
+    # 新键优先；旧 poll_per_sec 兼容映射到新键
+    if "upstream_call_per_sec" not in out:
+        legacy = out.get("poll_per_sec")
+        out["upstream_call_per_sec"] = legacy if legacy is not None else DEFAULT_UPSTREAM_CALL_PER_SEC
     return out
 
 
@@ -315,17 +319,17 @@ def acquire_channel_rate(
     """渠道级速率预算 acquire（进程内令牌桶）。
 
     占位兑现：01 的 ChannelEntry.rate_budget 此前为空；本期只对 Firefly
-    上游入口（submit/poll 聚合）限速，阈值 channels.firefly.rate_budget.poll_per_sec。
+    上游调用（submit/poll 聚合）限速，阈值 channels.firefly.rate_budget.upstream_call_per_sec。
     不碰全局线程池。后续渠道 2 到来再按 channel/op 泛化。
 
     返回 True 表示拿到配额；超时返回 False（调用方可选择降级/报错）。
     """
     cid = _normalize_channel(channel) or FIREFLY_CHANNEL_ID
     budget = rate_budget_config(cid)
-    # 当前只实现 poll 预算；其它 op 走同一 poll_per_sec 桶（最小可用）
+    # 上游调用速率（submit/poll 聚合共用一桶）；其它 op 也走同一 upstream_call_per_sec 桶（最小可用）
     rate = _safe_positive_float(
-        budget.get("poll_per_sec"),
-        DEFAULT_POLL_PER_SEC,
+        budget.get("upstream_call_per_sec"),
+        DEFAULT_UPSTREAM_CALL_PER_SEC,
         minimum=0.1,
     )
     # 令牌桶：容量 = max(1, rate)，每秒补 rate 个
@@ -372,7 +376,7 @@ def acquire_channel_rate(
                 "event": "channel_rate_budget_timeout",
                 "channel": cid,
                 "op": op,
-                "poll_per_sec": rate,
+                "upstream_call_per_sec": rate,
             })
             return False
         time.sleep(min(wait_sec, 0.05))

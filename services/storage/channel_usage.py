@@ -23,8 +23,11 @@ import time
 from typing import Any
 from uuid import uuid4
 
-CHANNEL_USAGE_ACTIONS = frozenset({"image", "video", "edit", "chat", "refresh"})
-CHANNEL_USAGE_RESULTS = frozenset({"success", "failed", "refunded"})
+CHANNEL_USAGE_ACTIONS = frozenset({"image", "video", "edit", "chat", "refresh", "circuit"})
+CHANNEL_USAGE_RESULTS = frozenset({"success", "failed", "refunded", "open"})
+
+# 熔断事件动作：审计用，不计入 credits/quota 求和，也不计账号成功率
+CHANNEL_USAGE_CIRCUIT_ACTION = "circuit"
 
 
 def normalize_channel_usage_entry(raw: dict[str, Any] | None) -> dict[str, Any] | None:

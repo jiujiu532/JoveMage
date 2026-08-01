@@ -526,6 +526,26 @@ def migrate_firefly_flat_keys_to_namespace(
     return next_data, changed
 
 
+def _sync_firefly_flat_into_namespace(next_data: dict[str, object], payload: dict[str, object]) -> None:
+    """本次 update 的 payload 里出现的 firefly_* 平铺键，强制回写进 channels.firefly.*（就地改 next_data）。
+
+    背景（review D3）：Settings 仍写平铺键，而读取是 nested 优先；migrate 只在 nested 缺省时
+    填一次，之后 UI 改 flat 不会覆盖 nested → 改了不生效。这里让「本次提交的 flat 键」无条件
+    同步到 nested，保证 nested 总是反映最新 UI 写入；flat 仍保留作只读兼容。
+    """
+    channels = next_data.setdefault("channels", {})
+    if not isinstance(channels, dict):
+        return
+    firefly = channels.setdefault("firefly", {})
+    if not isinstance(firefly, dict):
+        return
+    for flat_key, value in (payload or {}).items():
+        if flat_key not in FIREFLY_FLAT_CONFIG_KEYS:
+            continue
+        ns_key = _FIREFLY_NS_KEY_BY_FLAT.get(flat_key, flat_key.removeprefix("firefly_"))
+        firefly[ns_key] = value
+
+
 # 设置项「********」哨兵：与 backup_service.get_settings 脱敏值一致，防止脱敏值被当真值写回
 _SECRET_SENTINEL = "********"
 
@@ -1121,6 +1141,8 @@ class ConfigStore:
                         incoming_runtime["_existing_cf_cookies"] = previous_clearance.get("cf_cookies")
                         incoming_runtime["_existing_cf_clearance"] = previous_clearance.get("cf_clearance")
                 next_data["proxy_runtime"] = _normalize_proxy_runtime_settings(incoming_runtime)
+            # 本次提交的 firefly_* 平铺键先强制同步进 nested（review D3：UI 写 flat 要生效）
+            _sync_firefly_flat_into_namespace(next_data, data if isinstance(data, dict) else {})
             # 写入后同步命名空间：新结构为主，旧键继续保留可读
             next_data, _ = migrate_firefly_flat_keys_to_namespace(next_data, drop_flat=False)
             next_data["basic"] = _legacy_basic_from_settings(next_data.get("basic"), next_data)

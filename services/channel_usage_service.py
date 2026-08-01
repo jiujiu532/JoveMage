@@ -187,7 +187,14 @@ class ChannelUsageService:
             # 找最老明细，决定从哪一天开始聚合（避免无脑扫 30 天空窗）
             oldest_ts = self._find_oldest_detail_ts(backend, before_ts=cutoff_ts)
             if oldest_ts is None:
-                # 没有可聚合的过期明细，仍执行一次 prune（幂等清理）
+                # 扫描失败（None 也可能来自异常）时按「失败不 prune」处理：
+                # 区分「真的没有过期明细」与「扫描出错」——出错则本轮不删，防误删未聚合明细。
+                if getattr(self, "_oldest_scan_failed", False):
+                    result["ok"] = False
+                    result["scan_error"] = True
+                    logger.warning({"event": "channel_usage_retention_abort", "reason": "oldest_scan_failed"})
+                    return result
+                # 真的没有可聚合的过期明细，仍执行一次 prune（幂等清理）
                 result["deleted"] = self.prune_before(cutoff_ts)
                 return result
 
@@ -362,7 +369,18 @@ class ChannelUsageService:
             hour=0, minute=0, second=0, microsecond=0
         ).timestamp()
 
-        # 多拉一些明细，覆盖今日 + 失败原因 + 最近 N
+        # 今日统计单独按 ts_from 拉全（避免今日明细被近期历史挤出窗口导致少计）；
+        # 最近 N 条仍按窗口另查，两路互不影响。
+        try:
+            today_rows = self.query(
+                account_id=account_key,
+                channel=channel,
+                ts_from=day_start,
+                limit=1000,
+            )
+        except Exception:
+            today_rows = []
+        # 最近 N：拉一个较宽窗口，覆盖失败原因统计与 recent
         limit = max(50, int(recent_limit or 20) * 5, 200)
         try:
             rows = self.query(
@@ -373,11 +391,24 @@ class ChannelUsageService:
         except Exception:
             rows = []
 
+        today_details: list[dict[str, Any]] = []
+        for row in today_rows:
+            if not isinstance(row, dict):
+                continue
+            if is_channel_usage_aggregate_row(row):
+                continue
+            if str(row.get("action") or "").strip().lower() == "circuit":
+                continue
+            today_details.append(row)
+
         details: list[dict[str, Any]] = []
         for row in rows:
             if not isinstance(row, dict):
                 continue
             if is_channel_usage_aggregate_row(row):
+                continue
+            # 熔断事件（action=circuit）是审计，不算账号真实调用，不进档案统计/明细
+            if str(row.get("action") or "").strip().lower() == "circuit":
                 continue
             details.append(row)
 
@@ -388,30 +419,27 @@ class ChannelUsageService:
         today_quota = 0.0
         reason_counter: dict[str, int] = {}
 
-        for row in details:
-            try:
-                ts = float(row.get("ts") or 0)
-            except (TypeError, ValueError):
-                ts = 0.0
+        # 今日计数走 today_details（已按 ts_from=day_start 过滤，无需再判 ts）
+        for row in today_details:
             result = str(row.get("result") or "").strip().lower()
             cost = row.get("cost") if isinstance(row.get("cost"), dict) else {}
+            today_calls += 1
+            if result == "success":
+                today_success += 1
+            elif result == "failed":
+                today_failed += 1
+            try:
+                today_credits += float(cost.get("credits") or 0)
+            except (TypeError, ValueError):
+                pass
+            try:
+                today_quota += float(cost.get("quota") or 0)
+            except (TypeError, ValueError):
+                pass
 
-            if ts >= day_start:
-                today_calls += 1
-                if result == "success":
-                    today_success += 1
-                elif result in {"failed", "refunded"}:
-                    # refunded 单独不计入 failed 次数，但仍算一次调用
-                    if result == "failed":
-                        today_failed += 1
-                try:
-                    today_credits += float(cost.get("credits") or 0)
-                except (TypeError, ValueError):
-                    pass
-                try:
-                    today_quota += float(cost.get("quota") or 0)
-                except (TypeError, ValueError):
-                    pass
+        # 失败原因统计仍走 details（窗口内历史 + 今日）
+        for row in details:
+            result = str(row.get("result") or "").strip().lower()
 
             # 失败/跳过原因：failed 行按 note 或 result 分组
             if result == "failed":
@@ -458,7 +486,8 @@ class ChannelUsageService:
         }
 
     def _find_oldest_detail_ts(self, backend: Any, *, before_ts: float) -> float | None:
-        """找 cutoff 之前最老的明细 ts；没有则 None。"""
+        """找 cutoff 之前最老的明细 ts；没有则 None。扫描异常时置 _oldest_scan_failed。"""
+        self._oldest_scan_failed = False
         try:
             export = getattr(backend, "export_channel_usage", None)
             if callable(export):
@@ -466,6 +495,7 @@ class ChannelUsageService:
             else:
                 items = list(backend.query_channel_usage(ts_to=before_ts, limit=1000))
         except Exception as exc:
+            self._oldest_scan_failed = True
             logger.warning({
                 "event": "channel_usage_oldest_scan_failed",
                 "error": redact_auth_diagnostic(exc, 500),
@@ -502,8 +532,9 @@ class ChannelUsageService:
             if found:
                 return True
         except Exception:
-            # 查询失败时宁可跳过写入也不要重复炸主流程；下次再补
-            return False
+            # 查询失败时保守返回 True（视为已存在、跳过写入），避免重复聚合行导致对账双计；
+            # 宁可本次少写（下轮 retention 再补），不可多写。
+            return True
         return False
 
 

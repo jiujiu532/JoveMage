@@ -13,6 +13,8 @@ from api import accounts, ai, channels, image_tasks, prompts, register, system, 
 from api.errors import install_exception_handlers
 from api.support import resolve_web_asset, start_limited_account_watcher
 from services.backup_service import backup_service
+from services.backends.firefly_refresh import start_refresh_daemon, stop_refresh_daemon
+from services.account_service import account_service
 from services.channel_usage_service import start_channel_usage_retention_scheduler
 from services.config import config
 from services.image_service import start_image_cleanup_scheduler
@@ -62,6 +64,28 @@ def create_app() -> FastAPI:
         cleanup_thread = start_image_cleanup_scheduler(stop_event)
         log_cleanup_thread = start_log_cleanup_scheduler(stop_event)
         channel_usage_retention_thread = start_channel_usage_retention_scheduler(stop_event)
+        # Firefly 凭证刷新 daemon：按 firefly_enabled 启停，token 旋转式回写（review C1）
+        firefly_refresh_started = False
+        if bool(getattr(config, "firefly_enabled", False)):
+            try:
+                def _ff_accounts_getter() -> list[dict]:
+                    return [a for a in account_service.list_accounts()
+                            if str(a.get("source_type") or "").strip().lower() == "firefly"]
+
+                def _ff_accounts_updater(account: dict, fields: dict) -> None:
+                    # token 旋转：以「当前账号 token」定位，新 access_token 经 alias 解析写回正确槽位
+                    token = str(account.get("access_token") or "").strip()
+                    if token:
+                        account_service.update_account(token, fields, quiet=True)
+
+                start_refresh_daemon(
+                    _ff_accounts_getter,
+                    _ff_accounts_updater,
+                    interval_hours=float(getattr(config, "firefly_refresh_interval_hours", 15) or 15),
+                )
+                firefly_refresh_started = True
+            except Exception as exc:
+                logger.warning({"event": "firefly_refresh_daemon_start_failed", "error": str(exc)})
         backup_service.start()
         config.cleanup_old_images()
         cleanup_old_logs()
@@ -73,6 +97,11 @@ def create_app() -> FastAPI:
             cleanup_thread.join(timeout=1)
             log_cleanup_thread.join(timeout=1)
             channel_usage_retention_thread.join(timeout=1)
+            if firefly_refresh_started:
+                try:
+                    stop_refresh_daemon()
+                except Exception:
+                    pass
             backup_service.stop()
 
     app = FastAPI(title="JoveMage", version=app_version, lifespan=lifespan)

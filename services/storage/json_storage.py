@@ -8,6 +8,7 @@ from services.json_file import read_json_file, write_json_file
 from services.storage.base import (
     StorageBackend,
     aggregate_channel_usage_rows,
+    cap_channel_usage_items,
     is_channel_usage_aggregate_row,
 )
 from services.storage.channel_usage import match_channel_usage, normalize_channel_usage_entry
@@ -76,9 +77,9 @@ class JSONStorageBackend(StorageBackend):
         with self._channel_usage_lock:
             items = self._load_json_list(self.channel_usage_path)
             items.append(normalized)
-            # 防止无限膨胀：保留最近 5 万条
+            # 防止无限膨胀：保留最近 5 万条；日聚合行永不被截断（明细可删、聚合永留）
             if len(items) > 50000:
-                items = items[-50000:]
+                items = cap_channel_usage_items(items, 50000)
             write_json_file(self.channel_usage_path, items)
         return dict(normalized)
 

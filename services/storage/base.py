@@ -17,6 +17,20 @@ def is_channel_usage_aggregate_row(entry: dict[str, Any] | None) -> bool:
     return isinstance(cost, dict) and bool(cost.get("aggregated"))
 
 
+def cap_channel_usage_items(items: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+    """截断 channel_usage 列表到 limit 条，但日聚合行永不被挤掉。
+
+    原则「明细可删、聚合永留」：先保留全部聚合行，再用剩余额度截断明细（保最新）。
+    聚合行数量级远小于明细，不会出现聚合行自身超限的情况。
+    """
+    if len(items) <= limit:
+        return items
+    aggregates = [it for it in items if is_channel_usage_aggregate_row(it)]
+    details = [it for it in items if not is_channel_usage_aggregate_row(it)]
+    keep_details = max(0, limit - len(aggregates))
+    return aggregates + details[-keep_details:]
+
+
 class StorageBackend(ABC):
     """抽象存储后端基类"""
 

@@ -24,7 +24,7 @@ from services.image_failure import (
 )
 from services.protocol.error_response import anthropic_error_response, openai_error_response
 from services.realtime_monitor_service import realtime_monitor_service
-from utils.diagnostics import exception_diagnostic_fields
+from utils.diagnostics import exception_diagnostic_fields, redact_auth_diagnostic
 from utils.helper import anthropic_sse_stream, image_sse_stream, sse_json_stream
 from utils.log import logger
 from utils.timezone import beijing_from_timestamp, beijing_now_str
@@ -777,6 +777,8 @@ def _request_excerpt(text: object, limit: int = REQUEST_TEXT_EXCERPT_LIMIT) -> s
     value = str(text or "").strip()
     if not value:
         return ""
+    # 落日志前先脱敏（防 request_text 带 access_token/Bearer 入 logs.jsonl）
+    value = redact_auth_diagnostic(value, REQUEST_TEXT_FULL_LIMIT)
     normalized = " ".join(value.split())
     if len(normalized) <= limit:
         return normalized
@@ -787,6 +789,7 @@ def _request_full_text(text: object, limit: int = REQUEST_TEXT_FULL_LIMIT) -> tu
     value = str(text or "").strip()
     if not value:
         return "", False
+    value = redact_auth_diagnostic(value, REQUEST_TEXT_FULL_LIMIT)
     normalized = " ".join(value.split())
     if len(normalized) <= limit:
         return normalized, False
@@ -1050,7 +1053,7 @@ class LoggedCall:
         if self.trace_metadata:
             detail["request_meta"] = dict(self.trace_metadata)
         if error:
-            detail["error"] = error
+            detail["error"] = redact_auth_diagnostic(error, 2000)
         if extra:
             for key, value in extra.items():
                 if value in (None, ""):

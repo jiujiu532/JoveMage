@@ -13,6 +13,7 @@ from services.json_file import read_json_file, write_json_file
 from services.storage.base import (
     StorageBackend,
     aggregate_channel_usage_rows,
+    cap_channel_usage_items,
     is_channel_usage_aggregate_row,
 )
 from services.storage.channel_usage import match_channel_usage, normalize_channel_usage_entry
@@ -136,7 +137,7 @@ class GitStorageBackend(StorageBackend):
                 items = self._load_json_file(self.channel_usage_file_path)
                 items.append(normalized)
                 if len(items) > 50000:
-                    items = items[-50000:]
+                    items = cap_channel_usage_items(items, 50000)
                 self._save_json_file(
                     self.channel_usage_file_path,
                     items,

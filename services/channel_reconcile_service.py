@@ -13,6 +13,7 @@ from typing import Any, Callable
 
 from services.account_service import account_service
 from services.backends.firefly_auth import fetch_credits
+from services.storage.base import is_channel_usage_aggregate_row
 from services.channel_usage_service import channel_usage_service, resolve_account_id
 from utils.diagnostics import redact_auth_diagnostic
 from utils.log import logger
@@ -47,25 +48,70 @@ def sum_ledger_credits(
     """聚合某账号在 channel_usage 中的 cost.credits（含 refunded 负数与日聚合行）。
 
     明细删除后由日聚合行承接汇总，因此聚合行必须计入，避免历史扣费丢失。
+    但若聚合行与对应明细短暂并存（retention 先写聚合再 prune 的间隙），
+    同一天的明细须跳过，避免与该天聚合行双计。
     """
     aid = str(account_id or "").strip()
     ch = str(channel or "").strip().lower()
     total = 0.0
     if not aid:
         return 0.0
-    for item in entries:
+
+    def _match(item: dict[str, Any]) -> bool:
         if not isinstance(item, dict):
-            continue
+            return False
         if str(item.get("account_id") or "").strip() != aid:
-            continue
+            return False
         if str(item.get("channel") or "").strip().lower() != ch:
+            return False
+        # 熔断事件（action=circuit）只是审计，credits=0，不计入扣费求和
+        if str(item.get("action") or "").strip().lower() == "circuit":
+            return False
+        return True
+
+    matched = [it for it in entries if _match(it)]
+
+    # 收集已有聚合行的 (day, action, result) 组合，用于剔除重叠明细
+    aggregated_keys: set[tuple[str, str, str]] = set()
+    for it in matched:
+        if not is_channel_usage_aggregate_row(it):
             continue
+        cost = it.get("cost") if isinstance(it.get("cost"), dict) else {}
+        day = str(cost.get("day") or "").strip()
+        if not day:
+            continue
+        aggregated_keys.add((
+            day,
+            str(it.get("action") or "").strip().lower(),
+            str(it.get("result") or "").strip().lower(),
+        ))
+
+    for item in matched:
+        # 明细行：若其所在 (day, action, result) 已有聚合行，跳过防双计
+        if not is_channel_usage_aggregate_row(item):
+            day = _day_key_of(item.get("ts"))
+            if day and (
+                day,
+                str(item.get("action") or "").strip().lower(),
+                str(item.get("result") or "").strip().lower(),
+            ) in aggregated_keys:
+                continue
         cost = item.get("cost") if isinstance(item.get("cost"), dict) else {}
         amount = _coerce_float(cost.get("credits"))
         if amount is None:
             continue
         total += amount
     return total
+
+
+def _day_key_of(ts: object) -> str:
+    """把 unix 秒转 YYYY-MM-DD（UTC）；非法返回空串。"""
+    try:
+        from datetime import datetime, timezone
+
+        return datetime.fromtimestamp(float(ts), tz=timezone.utc).strftime("%Y-%m-%d")
+    except (TypeError, ValueError, OSError):
+        return ""
 
 
 def estimate_local_remaining(

@@ -291,6 +291,7 @@ def _run_firefly_account_attempts(
             failure: ImageFailure | None = None,
             quota_consumed: bool | None = None,
             upstream_id: str | None = None,
+            count_circuit: bool = True,
             _token: str = token,
             _account: dict[str, Any] = account if isinstance(account, dict) else {},
             _attempt: int = attempt,
@@ -341,10 +342,11 @@ def _run_firefly_account_attempts(
                 upstream_id=upstream_id,
             )
             # 渠道熔断计数：成功清零 / 失败累计（仅 firefly 编排路径）
+            # count_circuit=False（用户取消等非上游故障）不计入，防误开整个旁路
             try:
                 if success:
                     record_channel_success(ledger_channel)
-                else:
+                elif count_circuit:
                     record_channel_failure(
                         ledger_channel,
                         trace_id=str(request.trace_id or request.call_id or ""),
@@ -382,7 +384,8 @@ def _run_firefly_account_attempts(
                 attempt=attempt,
             )
         except RequestCancelledError as exc:
-            finalize_image_slot(False)
+            # 用户/管理员主动取消：释放槽位但不计熔断失败（非上游故障）
+            finalize_image_slot(False, count_circuit=False)
             raise ImageGenerationError(
                 str(exc) or "request cancelled by administrator",
                 status_code=499,
@@ -537,9 +540,15 @@ def _run_firefly_account_attempts(
                 raw_error=str(exc),
                 upstream_error=str(exc),
             ) from exc
-        except ImageGenerationError:
+        except ImageGenerationError as exc:
             if not image_slot_finalized:
-                finalize_image_slot(False, failure=image_failure("upstream_error"))
+                # submit 已成功但 poll/下载失败抛成 ImageGenerationError 时，
+                # 透传异常上挂的 upstream_id（若有），避免溯源丢失上游任务 id
+                finalize_image_slot(
+                    False,
+                    failure=image_failure("upstream_error"),
+                    upstream_id=str(getattr(exc, "upstream_id", "") or "").strip() or None,
+                )
             raise
         except Exception as exc:
             finalize_image_slot(
