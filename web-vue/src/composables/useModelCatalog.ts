@@ -4,8 +4,10 @@ import type { ModelCatalogResponse, ModelListResponse } from '@/api/models'
 import type { Settings } from '@/types/api'
 import {
   isImageModelId,
+  isVideoModelId,
   resolveChatModels,
   resolveImageModels,
+  resolveVideoModels,
 } from '@/config/modelCatalog'
 
 type SettingsResolver = () => Settings | null | undefined
@@ -31,14 +33,22 @@ function normalizeList(raw: unknown): string[] {
 function normalizeCatalog(payload: ModelCatalogResponse | null | undefined): ModelCatalogResponse | null {
   if (!payload) return null
   const chatModels = normalizeList(payload.chat_models)
-  const imageModels = normalizeList(payload.image_models)
+  // 后端 image_models 可能混入视频族；前端拆开
+  const rawImageModels = normalizeList(payload.image_models)
+  const imageModels = rawImageModels.filter((model) => !isVideoModelId(model))
+  const videoModels = normalizeList([
+    ...normalizeList(payload.video_models),
+    ...rawImageModels.filter((model) => isVideoModelId(model)),
+    ...normalizeList(payload.all_models).filter((model) => isVideoModelId(model)),
+  ])
   return {
     ...payload,
     chat_models: chatModels,
     image_models: imageModels,
+    video_models: videoModels,
     all_models: normalizeList(payload.all_models).length
       ? normalizeList(payload.all_models)
-      : normalizeList([...chatModels, ...imageModels]),
+      : normalizeList([...chatModels, ...imageModels, ...videoModels]),
     capabilities: {
       image_upscale: Boolean(payload.capabilities?.image_upscale),
     },
@@ -48,10 +58,14 @@ function normalizeCatalog(payload: ModelCatalogResponse | null | undefined): Mod
 function catalogFromOpenAIModels(response: ModelListResponse): ModelCatalogResponse | null {
   const ids = normalizeList((Array.isArray(response.data) ? response.data : []).map(item => item?.id))
   if (ids.length === 0) return null
+  const videoModels = ids.filter((model) => isVideoModelId(model))
+  const imageModels = ids.filter((model) => isImageModelId(model) && !isVideoModelId(model))
+  const chatModels = ids.filter((model) => !isImageModelId(model) && !isVideoModelId(model))
   return {
     object: 'model_catalog',
-    chat_models: ids.filter(model => !isImageModelId(model)),
-    image_models: ids.filter(model => isImageModelId(model)),
+    chat_models: chatModels,
+    image_models: imageModels,
+    video_models: videoModels,
     all_models: ids,
     capabilities: {
       image_upscale: false,
@@ -59,6 +73,7 @@ function catalogFromOpenAIModels(response: ModelListResponse): ModelCatalogRespo
     source: {
       chat: 'openai_models_endpoint',
       image: 'openai_models_endpoint',
+      video: 'openai_models_endpoint',
     },
     openai_models_endpoint: '/v1/models',
   }
@@ -71,8 +86,23 @@ export function useModelCatalog(resolveSettings: SettingsResolver) {
   })
 
   const imageModels = computed(() => {
-    const fromCatalog = normalizeList(sharedCatalog.value?.image_models)
+    const fromCatalog = normalizeList(sharedCatalog.value?.image_models).filter(
+      (model) => !isVideoModelId(model),
+    )
     return fromCatalog.length > 0 ? fromCatalog : resolveImageModels(resolveSettings())
+  })
+
+  const videoModels = computed(() => {
+    const fromCatalog = normalizeList(sharedCatalog.value?.video_models)
+    if (fromCatalog.length > 0) return fromCatalog
+    // catalog 未拆 video_models 时，从 all_models 回落
+    const fromAll = normalizeList(sharedCatalog.value?.all_models).filter((model) => isVideoModelId(model))
+    if (fromAll.length > 0) return fromAll
+    // 后端空列表表示视频未启用/无账号：不要硬塞 FALLBACK 误导用户
+    if (sharedCatalog.value && Array.isArray(sharedCatalog.value.video_models)) {
+      return []
+    }
+    return resolveVideoModels(resolveSettings())
   })
 
   async function loadModelCatalog(force = false) {
@@ -112,6 +142,7 @@ export function useModelCatalog(resolveSettings: SettingsResolver) {
     catalog: sharedCatalog,
     chatModels,
     imageModels,
+    videoModels,
     isLoading,
     loadError,
     loadModelCatalog,

@@ -96,8 +96,10 @@
         v-model:chat-model="chatModel"
         v-model:chat-reasoning-effort="chatReasoningEffort"
         :image-form="imageForm"
+        :video-model="videoModel"
         :chat-model-options="chatModelOptions"
         :image-model-options="imageModelOptions"
+        :video-model-options="videoModelOptions"
         :image-upscale-enabled="imageUpscaleEnabled"
         :references="referencePreviews"
         :is-sending="isSending"
@@ -105,6 +107,7 @@
         :is-editing="Boolean(editingMessageId)"
         :error="composerError"
         @update:image-model="imageForm.model = $event"
+        @update:video-model="videoModel = $event"
         @update:image-size="imageForm.size = $event"
         @update:image-quality="imageForm.quality = $event"
         @update:image-count="imageForm.n = $event"
@@ -159,6 +162,7 @@ import {
   DEFAULT_IMAGE_MODEL,
   DEFAULT_IMAGE_QUALITY,
   DEFAULT_IMAGE_SIZE,
+  DEFAULT_VIDEO_MODEL,
   isImageSizeSupportedByModel,
   normalizeImageCount,
   type ImageTask,
@@ -217,7 +221,7 @@ const settingsStore = useSettingsStore()
 const toast = useToast()
 const { copy } = useClipboard()
 const confirmDialog = useConfirmDialog()
-const { catalog, chatModels, imageModels, loadModelCatalog } = useModelCatalog(() => settingsStore.settings)
+const { catalog, chatModels, imageModels, videoModels, loadModelCatalog } = useModelCatalog(() => settingsStore.settings)
 
 const defaultSidebarWidth = 244
 const composeMode = ref<StudioComposeMode>(normalizeMode(getStringPreference(preferenceKeys.studioActiveMode, 'image')))
@@ -242,6 +246,7 @@ const imageForm = reactive<StudioImageForm>({
   quality: DEFAULT_IMAGE_QUALITY,
   n: 1,
 })
+const videoModel = ref(getStringPreference(preferenceKeys.studioVideoModel, DEFAULT_VIDEO_MODEL) || DEFAULT_VIDEO_MODEL)
 
 const {
   conversations,
@@ -307,7 +312,7 @@ const activeHeaderSubtitle = computed(() => {
     if (composeMode.value === 'video') return '正在提交视频'
     return '正在请求'
   }
-  if (activeRunningTaskCount.value > 0) return `图片处理中 ${activeRunningTaskCount.value}`
+  if (activeRunningTaskCount.value > 0) return `任务处理中 ${activeRunningTaskCount.value}`
   const count = activeConversation.value?.messages.length || 0
   return count ? `${count} 条消息` : '准备就绪'
 })
@@ -334,6 +339,14 @@ const conversationBadges = computed<Record<string, StudioConversationBadge>>(() 
 })
 const chatModelOptions = computed(() => uniqueStrings(['auto', ...chatModels.value]))
 const imageModelOptions = computed(() => uniqueStrings([imageForm.model, DEFAULT_IMAGE_MODEL, ...imageModels.value]))
+const videoModelOptions = computed(() => {
+  // 有运行时视频模型时带上当前选择；完全没有时仍保留当前/默认，避免下拉空
+  const runtime = videoModels.value
+  if (runtime.length > 0) {
+    return uniqueStrings([videoModel.value, ...runtime])
+  }
+  return uniqueStrings([videoModel.value || DEFAULT_VIDEO_MODEL, DEFAULT_VIDEO_MODEL])
+})
 const imageUpscaleEnabled = computed(() => Boolean(catalog.value?.capabilities?.image_upscale))
 
 watch(composeMode, (mode) => setStringPreference(preferenceKeys.studioActiveMode, mode))
@@ -350,8 +363,18 @@ watch(() => imageForm.model, (model) => {
   setStringPreference(preferenceKeys.studioImageModel, model || DEFAULT_IMAGE_MODEL)
   if (!isImageSizeSupportedByModel(imageForm.size, model, imageUpscaleEnabled.value)) imageForm.size = DEFAULT_IMAGE_SIZE
 })
+watch(videoModel, (model) => {
+  setStringPreference(preferenceKeys.studioVideoModel, model || DEFAULT_VIDEO_MODEL)
+})
 watch(imageUpscaleEnabled, (upscaleEnabled) => {
   if (!isImageSizeSupportedByModel(imageForm.size, imageForm.model, upscaleEnabled)) imageForm.size = DEFAULT_IMAGE_SIZE
+})
+// catalog 刷新后：若当前视频模型不在列表里，落到第一个可用
+watch(videoModelOptions, (options) => {
+  if (!options.length) return
+  if (!options.includes(videoModel.value)) {
+    videoModel.value = options[0]
+  }
 })
 
 function normalizeMode(value: string): StudioComposeMode {
@@ -557,8 +580,10 @@ async function retryAssistantMessage(message: StudioMessage) {
       await sendTextMessage(conversation)
     } else if (previousUserMessage.mode === 'search') {
       await sendSearchMessage(conversation, previousUserMessage.content)
+    } else if (previousUserMessage.mode === 'video') {
+      await sendImageMessage(conversation, previousUserMessage.content, [], 'video')
     } else {
-      await sendImageMessage(conversation, previousUserMessage.content, [])
+      await sendImageMessage(conversation, previousUserMessage.content, [], 'image')
     }
   } catch (error) {
     const mode = previousUserMessage.mode
@@ -596,6 +621,11 @@ function cancelMessageEdit(clearComposer = true) {
 function fillComposerFromMessage(message: StudioMessage) {
   composerText.value = message.content
   composeMode.value = message.mode
+  if (message.mode === 'video' && message.model) {
+    videoModel.value = message.model
+  } else if (message.mode === 'image' && message.model) {
+    imageForm.model = message.model
+  }
   composerError.value = ''
 }
 
@@ -823,6 +853,7 @@ function buildChatMessages(conversation: StudioConversation, currentAssistantId:
 
 function buildChatContextContent(message: StudioMessage) {
   if (message.role === 'user' && message.mode === 'image') return `画图请求：${message.content}`
+  if (message.role === 'user' && message.mode === 'video') return `视频请求：${message.content}`
   if (message.role === 'user' && message.mode === 'search') return `搜索请求：${message.content}`
   return message.content
 }
@@ -870,6 +901,9 @@ async function sendImageMessage(
   mode: Extract<StudioComposeMode, 'image' | 'video'> = 'image',
 ) {
   const isVideo = mode === 'video'
+  const selectedModel = isVideo
+    ? (videoModel.value || DEFAULT_VIDEO_MODEL)
+    : (imageForm.model || DEFAULT_IMAGE_MODEL)
   const assistantMessage = addMessage(conversation, {
     role: 'assistant',
     mode,
@@ -877,7 +911,7 @@ async function sendImageMessage(
       ? '视频任务已提交'
       : (files.length ? '图像编辑任务已提交' : '图片任务已提交'),
     status: 'queued',
-    model: imageForm.model,
+    model: selectedModel,
     imageSize: isVideo ? undefined : imageForm.size,
     imageCount: isVideo ? undefined : normalizeImageCount(imageForm.n),
   })
@@ -885,21 +919,22 @@ async function sendImageMessage(
   let task: ImageTask
   try {
     // 视频模式不走图生图；图像模式有参考图才 createEdit
+    // 后端 image_task_service 会按 is_firefly_video_model 路由到 /v1/videos/generations
     task = (!isVideo && files.length)
       ? await imageTasksApi.createEdit({
         prompt,
         files,
-        model: imageForm.model || DEFAULT_IMAGE_MODEL,
+        model: selectedModel,
         n: normalizeImageCount(imageForm.n),
         size: imageForm.size,
         quality: imageForm.quality || DEFAULT_IMAGE_QUALITY,
       })
       : await imageTasksApi.createGeneration({
         prompt,
-        model: imageForm.model || DEFAULT_IMAGE_MODEL,
+        model: selectedModel,
         n: isVideo ? 1 : normalizeImageCount(imageForm.n),
-        size: imageForm.size,
-        quality: imageForm.quality || DEFAULT_IMAGE_QUALITY,
+        size: isVideo ? undefined : imageForm.size,
+        quality: isVideo ? undefined : (imageForm.quality || DEFAULT_IMAGE_QUALITY),
       })
   } catch (error) {
     const message = errorMessage(error, isVideo ? '视频任务提交失败' : '图片任务提交失败')

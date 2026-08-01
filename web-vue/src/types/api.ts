@@ -140,6 +140,8 @@ export interface Settings {
     }>
     chat_models?: string[]
     image_api_models?: string[]
+    video_api_models?: string[]
+    all_models?: string[]
     base_chat_models?: string[]
     specialized_chat_models?: string[]
     image_capable_chat_models?: string[]

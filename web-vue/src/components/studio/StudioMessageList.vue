@@ -134,11 +134,11 @@
                             >
                               <div class="studio-result-media studio-result-placeholder">
                                 <Icon icon="lucide:loader-circle" class="h-5 w-5 animate-spin" />
-                                <span>正在处理图片</span>
+                                <span>{{ message.mode === 'video' ? '正在处理视频' : '正在处理图片' }}</span>
                                 <small>{{ message.imagePendingStageText }}</small>
                               </div>
                               <div v-if="message.imageSlotCount > 1" class="studio-result-caption">
-                                <span>图片 {{ slot + 1 }}</span>
+                                <span>{{ message.mode === 'video' ? '视频' : '图片' }} {{ slot + 1 }}</span>
                               </div>
                             </div>
                           </div>
@@ -148,7 +148,7 @@
                       <template v-else>
                         <div v-if="message.task?.status === 'error'" class="studio-image-status is-error">
                           <Icon icon="lucide:circle-alert" class="h-4 w-4" />
-                          <span>{{ message.primaryMessage || '上游没有返回可用图片。' }}</span>
+                          <span>{{ message.primaryMessage || (message.mode === 'video' ? '上游没有返回可用视频。' : '上游没有返回可用图片。') }}</span>
                         </div>
 
                         <div v-else class="studio-result-block">
@@ -158,7 +158,20 @@
                               :key="`${message.id}-${assetIndex}`"
                               class="studio-result-item"
                             >
+                              <div
+                                v-if="isVideoAsset(asset)"
+                                class="studio-result-media has-image studio-result-media-video"
+                              >
+                                <video
+                                  :src="assetUrl(asset)"
+                                  controls
+                                  playsinline
+                                  preload="metadata"
+                                  class="studio-result-video"
+                                />
+                              </div>
                               <button
+                                v-else
                                 type="button"
                                 class="studio-result-media"
                                 :class="{ 'has-image': Boolean(assetUrl(asset)) }"
@@ -170,7 +183,7 @@
                               <div v-if="message.assets.length > 1" class="studio-result-caption">
                                 <span>结果 {{ assetIndex + 1 }}</span>
                                 <button
-                                  v-if="assetIndex > 0"
+                                  v-if="assetIndex > 0 && !isVideoAsset(asset)"
                                   type="button"
                                   class="chat-input-action studio-result-compare"
                                   title="对比结果 1"
@@ -295,6 +308,7 @@ import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, ref, shallow
 import {
   imageAssetUrl,
   imageTaskProgressLabel,
+  isVideoAsset,
   parseImageSize,
   taskPrimaryMessage,
   type ImageTask,
@@ -392,7 +406,8 @@ const activeSearchSourceMessage = computed(() => {
 function buildMessageView(message: StudioMessage): StudioMessageView {
   const task = message.taskId ? taskById.value.get(message.taskId) : undefined
   const assets = task?.data?.length ? task.data.filter((asset) => Boolean(assetUrl(asset))) : []
-  const isImageMessage = message.role === 'assistant' && message.mode === 'image'
+  // 图像/视频异步任务共用结果区骨架
+  const isImageMessage = message.role === 'assistant' && (message.mode === 'image' || message.mode === 'video')
   const imageSlotCount = computeImageSlotCount(message, task, assets.length)
   const isCollapsible = computeIsCollapsibleMessage(message)
   const isCollapsed = isCollapsible ? computeIsMessageCollapsed(message) : false
@@ -721,7 +736,11 @@ onBeforeUnmount(() => {
 })
 
 function isTextLikeMessage(message: StudioMessage) {
-  return message.role === 'user' || message.mode !== 'image' || message.status === 'error'
+  // 成功态的图像/视频结果区不走文本折叠
+  if (message.role === 'assistant' && (message.mode === 'image' || message.mode === 'video') && message.status !== 'error') {
+    return false
+  }
+  return true
 }
 
 function computeIsCollapsibleMessage(message: StudioMessage) {

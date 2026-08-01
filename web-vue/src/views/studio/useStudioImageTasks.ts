@@ -68,7 +68,8 @@ export function useStudioImageTasks(options: StudioImageTasksOptions) {
     conversations.value.forEach((conversation) => {
       let running = 0
       conversation.messages.forEach((message) => {
-        if (message.mode === 'image' && isImageMessageRunning(message)) {
+        // 图像/视频异步任务共用轮询骨架
+        if ((message.mode === 'image' || message.mode === 'video') && isImageMessageRunning(message)) {
           running += 1
           if (message.taskId) pendingIds.add(message.taskId)
         } else if (message.status === 'sending' || message.status === 'streaming') {
@@ -166,7 +167,7 @@ export function useStudioImageTasks(options: StudioImageTasksOptions) {
         if (!message.taskId || !missing.has(message.taskId)) return
         if (message.status === 'done' || message.status === 'error') return
         message.status = 'error'
-        message.error = '图片任务已过期或不存在'
+        message.error = message.mode === 'video' ? '视频任务已过期或不存在' : '图片任务已过期或不存在'
         touchConversation(conversation)
         markConversationNotice(conversation.id, 'error')
       })
@@ -186,7 +187,8 @@ export function useStudioImageTasks(options: StudioImageTasksOptions) {
           if (previousStatus !== 'done') markConversationNotice(conversation.id, 'done')
         } else if (task.status === 'error') {
           message.status = 'error'
-          message.error = taskPrimaryMessage(task) || task.error || '图片任务失败'
+          const fallback = message.mode === 'video' ? '视频任务失败' : '图片任务失败'
+          message.error = taskPrimaryMessage(task) || task.error || fallback
           if (previousStatus !== 'error') markConversationNotice(conversation.id, 'error')
         } else {
           message.status = 'running'

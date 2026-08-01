@@ -13,9 +13,14 @@ from services.content_filter import request_text
 from services.image_failure import ImageFailureError, classify_image_exception, image_failure
 from services.json_file import read_json_file, write_json_file
 from services.log_service import LOG_TYPE_CALL, log_service
-from services.protocol import openai_v1_image_edit, openai_v1_image_generations
+from services.protocol import (
+    openai_v1_image_edit,
+    openai_v1_image_generations,
+    openai_v1_video_generations,
+)
 from services.realtime_monitor_service import realtime_monitor_service
 from utils.diagnostics import exception_diagnostic_fields
+from utils.helper import is_firefly_video_model
 from utils.timezone import beijing_from_timestamp, beijing_now_str
 
 TASK_STATUS_QUEUED = "queued"
@@ -116,6 +121,24 @@ def _image_count(value: object) -> int:
     return min(4, max(1, count))
 
 
+def resolve_task_endpoint(mode: str, model: str) -> str:
+    """异步任务实际打的协议端点：edit / 视频 / 文生图。"""
+    if mode == "edit":
+        return "/v1/images/edits"
+    if is_firefly_video_model(model):
+        return "/v1/videos/generations"
+    return "/v1/images/generations"
+
+
+def resolve_task_summary_prefix(mode: str, model: str) -> str:
+    """任务摘要前缀，供监控与日志展示。"""
+    if mode == "edit":
+        return "图生图"
+    if is_firefly_video_model(model):
+        return "文生视频"
+    return "文生图"
+
+
 def _owner_id(identity: dict[str, object]) -> str:
     return _clean(identity.get("id")) or "anonymous"
 
@@ -178,11 +201,13 @@ class ImageTaskService:
         *,
         generation_handler: Callable[[dict[str, Any]], dict[str, Any]] = openai_v1_image_generations.handle,
         edit_handler: Callable[[dict[str, Any]], dict[str, Any]] = openai_v1_image_edit.handle,
+        video_handler: Callable[[dict[str, Any]], dict[str, Any]] = openai_v1_video_generations.handle,
         retention_days_getter: Callable[[], int] | None = None,
     ):
         self.path = path
         self.generation_handler = generation_handler
         self.edit_handler = edit_handler
+        self.video_handler = video_handler
         self.retention_days_getter = retention_days_getter or (lambda: config.image_retention_days)
         self._lock = threading.RLock()
         self._tasks: dict[str, dict[str, Any]] = {}
@@ -327,8 +352,8 @@ class ImageTaskService:
     ) -> None:
         started = time.time()
         call_id = uuid4().hex[:16]
-        endpoint = "/v1/images/edits" if mode == "edit" else "/v1/images/generations"
-        summary_prefix = "图生图" if mode == "edit" else "文生图"
+        endpoint = resolve_task_endpoint(mode, model)
+        summary_prefix = resolve_task_summary_prefix(mode, model)
         perf_timings: dict[str, int] = {"handler_queue_ms": 0}
         realtime_monitor_service.start(
             call_id,
@@ -360,7 +385,12 @@ class ImageTaskService:
             model=model,
         )
         try:
-            handler = self.edit_handler if mode == "edit" else self.generation_handler
+            if mode == "edit":
+                handler = self.edit_handler
+            elif is_firefly_video_model(model):
+                handler = self.video_handler
+            else:
+                handler = self.generation_handler
             result = handler(payload_with_progress)
             perf_timings["handler_exec_ms"] = int((time.perf_counter() - handler_started) * 1000)
             if not isinstance(result, dict):
@@ -445,8 +475,8 @@ class ImageTaskService:
         perf: dict[str, int] | None = None,
         extra: dict[str, Any] | None = None,
     ) -> None:
-        endpoint = "/v1/images/edits" if mode == "edit" else "/v1/images/generations"
-        summary_prefix = "图生图" if mode == "edit" else "文生图"
+        endpoint = resolve_task_endpoint(mode, model)
+        summary_prefix = resolve_task_summary_prefix(mode, model)
         detail = {
             "key_id": identity.get("id"),
             "key_name": identity.get("name"),

@@ -126,7 +126,7 @@
                   @click.stop="toggleSettings"
                 >
                   <span class="icon"><Icon icon="lucide:sliders-horizontal" class="h-3.5 w-3.5" /></span>
-                  <span class="text">{{ imageSummaryLabel }}</span>
+                  <span class="text">{{ mediaSummaryLabel }}</span>
                   <Icon icon="lucide:chevron-down" class="h-3.5 w-3.5" />
                 </button>
 
@@ -134,6 +134,16 @@
                   <div class="studio-size-section">
                     <div class="studio-size-label">模型</div>
                     <GroupedSelectMenu
+                      v-if="mode === 'video'"
+                      v-model="videoModelValue"
+                      :groups="videoModelSelectGroups"
+                      :options="videoModelSelectOptions"
+                      selected-indicator="none"
+                      show-group-labels
+                      block
+                    />
+                    <GroupedSelectMenu
+                      v-else
                       v-model="imageModelValue"
                       :groups="imageModelSelectGroups"
                       :options="imageModelSelectOptions"
@@ -273,7 +283,7 @@ import {
   type ImageSizeResolution,
 } from '@/api/imageTasks'
 import { useChannels } from '@/composables/useChannels'
-import { groupImageModelsByChannel } from '@/config/channels'
+import { groupImageModelsByChannel, groupVideoModelsByChannel } from '@/config/channels'
 import { isFireflyImageModel } from '@/config/modelCatalog'
 import type { StudioComposeMode, StudioImageForm, StudioReference } from './types'
 
@@ -283,8 +293,10 @@ const props = defineProps<{
   chatModel: string
   chatReasoningEffort: string
   imageForm: StudioImageForm
+  videoModel: string
   chatModelOptions: string[]
   imageModelOptions: string[]
+  videoModelOptions: string[]
   imageUpscaleEnabled: boolean
   references: StudioReference[]
   isSending: boolean
@@ -299,6 +311,7 @@ const emit = defineEmits<{
   'update:chatModel': [model: string]
   'update:chatReasoningEffort': [effort: string]
   'update:imageModel': [model: string]
+  'update:videoModel': [model: string]
   'update:imageSize': [size: string]
   'update:imageQuality': [quality: string]
   'update:imageCount': [count: number]
@@ -401,6 +414,11 @@ const imageModelValue = computed({
   set: (value: string | string[]) => emit('update:imageModel', String(Array.isArray(value) ? value[0] : value || '')),
 })
 
+const videoModelValue = computed({
+  get: () => props.videoModel,
+  set: (value: string | string[]) => emit('update:videoModel', String(Array.isArray(value) ? value[0] : value || '')),
+})
+
 const chatModelSelectOptions = computed(() => props.chatModelOptions.map((model) => ({
   label: model === 'auto' ? '自动模型' : model,
   value: model,
@@ -419,6 +437,11 @@ const imageModelSelectOptions = computed(() => props.imageModelOptions.map((mode
   value: model,
 })))
 
+const videoModelSelectOptions = computed(() => props.videoModelOptions.map((model) => ({
+  label: model,
+  value: model,
+})))
+
 /**
  * 图像模型分组：按启用渠道数据驱动（渠道名=组名）。
  * 仍用 isFireflyImageModel 决定旁路图像归属，避免 sora2/veo/kling 视频模型进 Firefly 图像组。
@@ -431,6 +454,18 @@ const imageModelSelectGroups = computed(() => {
   })
   if (!groups.length) {
     return [{ options: imageModelSelectOptions.value }]
+  }
+  return groups.map((group) => ({
+    label: group.label,
+    options: group.options,
+  }))
+})
+
+/** 视频模型分组：只进具备 video 能力的启用渠道 */
+const videoModelSelectGroups = computed(() => {
+  const groups = groupVideoModelsByChannel(props.videoModelOptions)
+  if (!groups.length) {
+    return [{ options: videoModelSelectOptions.value }]
   }
   return groups.map((group) => ({
     label: group.label,
@@ -458,9 +493,9 @@ const resolutionOptions = computed(() => {
   return order.filter((value) => values.has(value)).map((value) => ({ label: value === 'auto' ? '自动' : value, value }))
 })
 const selectedSizeDetailLabel = computed(() => formatImageSizeLabel(props.imageForm.size))
-const imageSummaryLabel = computed(() => {
+const mediaSummaryLabel = computed(() => {
   if (props.mode === 'video') {
-    return props.imageForm.model || '视频模型'
+    return props.videoModel || '视频模型'
   }
   const count = props.imageForm.n > 1 ? ` · ${props.imageForm.n} 张` : ''
   return `${formatImageSizeLabel(props.imageForm.size)}${count}`

@@ -18,6 +18,8 @@ export interface ModelCatalogResponse {
   object?: 'model_catalog' | string
   chat_models: string[]
   image_models: string[]
+  /** 可选：后端若拆分视频目录则直接用；否则前端从 all/image 筛 */
+  video_models?: string[]
   all_models?: string[]
   capabilities?: {
     image_upscale?: boolean
@@ -25,6 +27,7 @@ export interface ModelCatalogResponse {
   source?: {
     chat?: string
     image?: string
+    video?: string
   }
   openai_models_endpoint?: string
 }

@@ -85,6 +85,7 @@ export interface CreateEditTaskInput extends CreateGenerationTaskInput {
 }
 
 export const DEFAULT_IMAGE_MODEL = 'gpt-image-2'
+export const DEFAULT_VIDEO_MODEL = 'firefly-sora2'
 export const DEFAULT_IMAGE_QUALITY = 'auto'
 export const DEFAULT_IMAGE_SIZE = 'auto'
 
@@ -388,6 +389,13 @@ export function imageAssetUrl(asset: ImageTaskAsset) {
   if (url) return url
   const base64 = cleanString(asset.b64_json)
   return base64 ? `data:image/png;base64,${base64}` : ''
+}
+
+/** 任务结果是否是视频（按 path/url 扩展名粗判） */
+export function isVideoAsset(asset: ImageTaskAsset | null | undefined): boolean {
+  if (!asset) return false
+  const path = cleanString(asset.path) || cleanString(asset.url)
+  return /\.(mp4|webm|ogv|mov|m4v)(?:$|[?#])/i.test(path)
 }
 
 export const imageTasksApi = {

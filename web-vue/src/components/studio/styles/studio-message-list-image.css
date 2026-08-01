@@ -71,6 +71,22 @@
   object-fit: cover;
 }
 
+.studio-result-media-video {
+  cursor: default;
+  padding: 0;
+}
+
+.studio-result-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  border-radius: 0;
+  object-fit: contain;
+  background: #000;
+}
+
 html[data-theme='dark'] .studio-result-media {
   box-shadow: 3px 3px 0 0 color-mix(in srgb, var(--bauhaus-ink, #e8e4dc) 45%, transparent);
 }

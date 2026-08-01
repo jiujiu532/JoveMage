@@ -15,6 +15,13 @@ export const FALLBACK_IMAGE_MODELS = [
   'gpt-image-2',
 ]
 
+/** 无 catalog 时的视频模型兜底（Firefly 族级 id） */
+export const FALLBACK_VIDEO_MODELS = [
+  'firefly-sora2',
+  'firefly-veo31',
+  'firefly-kling3',
+]
+
 function normalizeList(raw: unknown): string[] {
   if (!Array.isArray(raw)) return []
   const result: string[] = []
@@ -89,8 +96,37 @@ export function resolveChatModels(settings: Settings | null | undefined): string
 
 export function resolveImageModels(settings: Settings | null | undefined): string[] {
   const fromImageConfig = normalizeList(settings?.image_generation?.model_options)
-  if (fromImageConfig.length > 0) return fromImageConfig
-  const fromCatalog = normalizeList(settings?.model_catalog?.image_api_models)
+  // 图像配置/目录里若混入视频模型，一律剔除，避免画图下拉里出现 sora/veo
+  const fromImageConfigImages = fromImageConfig.filter((model) => !isFireflyVideoModel(model))
+  if (fromImageConfigImages.length > 0) return fromImageConfigImages
+  const fromCatalog = normalizeList(settings?.model_catalog?.image_api_models).filter(
+    (model) => !isFireflyVideoModel(model),
+  )
   if (fromCatalog.length > 0) return fromCatalog
   return [...FALLBACK_IMAGE_MODELS]
+}
+
+/**
+ * 视频模型列表：优先 settings.model_catalog.video_api_models；
+ * 否则从 image 配置 / image_api_models / all_models 中筛 Firefly 视频族。
+ */
+export function resolveVideoModels(settings: Settings | null | undefined): string[] {
+  const catalog = settings?.model_catalog
+  const explicit = normalizeList(catalog?.video_api_models)
+  if (explicit.length > 0) return explicit
+
+  const candidates = [
+    ...normalizeList(settings?.image_generation?.model_options),
+    ...normalizeList(catalog?.image_api_models),
+    ...normalizeList(catalog?.all_models),
+    ...normalizeList(catalog?.chat_models),
+  ]
+  const videos = candidates.filter((model) => isFireflyVideoModel(model))
+  if (videos.length > 0) return videos
+  return [...FALLBACK_VIDEO_MODELS]
+}
+
+/** 是否视频模型 id（当前仅 Firefly 视频族） */
+export function isVideoModelId(model: string): boolean {
+  return isFireflyVideoModel(model)
 }

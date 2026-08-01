@@ -385,3 +385,33 @@ export function groupImageModelsByChannel(
   }
   return groups
 }
+
+/**
+ * Studio 视频模型分组：按启用渠道 + video 能力切分。
+ * 调用方应只传入视频模型列表。
+ */
+export function groupVideoModelsByChannel(
+  models: string[],
+): Array<{ channelId: string; label: string; options: Array<{ label: string; value: string }> }> {
+  const buckets = new Map<string, Array<{ label: string; value: string }>>()
+  for (const model of models) {
+    const value = String(model || '').trim()
+    if (!value) continue
+    const channelId = channelOfModel(value)
+    const list = buckets.get(channelId) || []
+    list.push({ label: value, value })
+    buckets.set(channelId, list)
+  }
+  const groups: Array<{ channelId: string; label: string; options: Array<{ label: string; value: string }> }> = []
+  for (const channel of listEnabledChannels()) {
+    if (!channel.capabilities.includes('video')) continue
+    const optionsForChannel = buckets.get(channel.id)
+    if (!optionsForChannel?.length) continue
+    groups.push({
+      channelId: channel.id,
+      label: channel.name,
+      options: optionsForChannel,
+    })
+  }
+  return groups
+}
