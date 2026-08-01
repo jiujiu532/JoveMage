@@ -24,6 +24,7 @@ from services.backends.firefly_constants import (
 )
 from services.backends.firefly_errors import (
     FireflyAuthError,
+    FireflyError,
     FireflyRequestError,
     FireflyUpstreamTemporary,
 )
@@ -93,6 +94,54 @@ def extract_result_link(headers: Any, submit_data: Any) -> str:
     if isinstance(result_link, dict):
         return str(result_link.get("href") or "").strip()
     return ""
+
+
+def extract_upstream_job_id(
+    poll_url: str = "",
+    submit_data: Any = None,
+) -> str | None:
+    """从 submit body / poll URL 抽取上游任务 id（Adobe 对账凭据）。
+
+    优先 body 的 jobId/taskId/id；否则取 poll_url 路径末段。
+    """
+    if isinstance(submit_data, dict):
+        for key in ("jobId", "job_id", "taskId", "task_id", "id"):
+            value = str(submit_data.get(key) or "").strip()
+            # 排除明显是 URL / 路径的值
+            if value and "://" not in value and "/" not in value:
+                return value
+        for nested_key in ("job", "task", "result"):
+            nested = submit_data.get(nested_key)
+            if not isinstance(nested, dict):
+                continue
+            for key in ("id", "jobId", "job_id", "taskId", "task_id"):
+                value = str(nested.get(key) or "").strip()
+                if value and "://" not in value and "/" not in value:
+                    return value
+
+    raw = str(poll_url or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = urlparse(raw)
+        parts = [p for p in parsed.path.split("/") if p]
+        if not parts:
+            return None
+        candidate = parts[-1].strip()
+        # 过滤无意义路径段
+        if not candidate or candidate.lower() in {
+            "result",
+            "results",
+            "jobs",
+            "status",
+            "v1",
+            "v2",
+            "v3",
+        }:
+            return None
+        return candidate
+    except Exception:
+        return None
 
 
 def normalize_video_poll_url(url: str) -> str:
@@ -241,12 +290,16 @@ def _run_generate_async(
     proxy: str | None,
     context_prefix: str = "",
     timeout_message: str = "generation timed out",
-) -> Any:
+) -> dict[str, Any]:
     """提交 generate-async → 抽 poll url → 轮询 → 解析 outputs → 下载。
 
     media_key: outputs[0] 下媒体字段名（image / video）。
     poll_url_hook: 视频 epo→bks 归一化。
     download_fn: (presigned_url, media_dict, *, proxy) → 返回值；默认下图片 bytes。
+
+    返回统一 dict：
+    - image 默认：{"bytes": bytes, "upstream_id": str|None}
+    - video download_fn：{"bytes": bytes, "ext": str, "upstream_id": str|None, "payload": 原返回}
     """
     # 1. 提交
     resp = _post_json(
@@ -287,6 +340,8 @@ def _run_generate_async(
     poll_url = (
         poll_url_hook(str(raw_poll_url)) if poll_url_hook else str(raw_poll_url)
     )
+    # 尽早抽上游任务 id，失败路径也可挂到异常上
+    upstream_id = extract_upstream_job_id(poll_url, submit_data)
 
     # 2. 轮询
     deadline = time.time() + float(timeout)
@@ -314,18 +369,27 @@ def _run_generate_async(
                 poll_resp.status_code,
                 redact_auth_diagnostic(poll_body)[:300],
             )
-            raise_for_firefly_http(
-                poll_resp.status_code,
-                poll_resp.headers,
-                poll_body,
-                poll_ctx,
-            )
+            try:
+                raise_for_firefly_http(
+                    poll_resp.status_code,
+                    poll_resp.headers,
+                    poll_body,
+                    poll_ctx,
+                )
+            except FireflyError as exc:
+                if upstream_id and not getattr(exc, "upstream_id", None):
+                    exc.upstream_id = upstream_id
+                raise
 
         try:
             parsed = poll_resp.json()
             latest = parsed if isinstance(parsed, dict) else {}
         except Exception:
             latest = {}
+
+        # poll 响应里可能补充 jobId
+        if not upstream_id:
+            upstream_id = extract_upstream_job_id(poll_url, latest)
 
         status_header = header_get(poll_resp.headers, "x-task-status").upper()
         status_val = str(latest.get("status") or "").upper() or status_header
@@ -343,24 +407,47 @@ def _run_generate_async(
                 # 保持原对外文案：image 为 "job finished without image url"
                 # 视频为 "video job finished without video url"
                 if media_key == "image":
-                    raise FireflyRequestError("job finished without image url")
+                    raise FireflyRequestError(
+                        "job finished without image url",
+                        upstream_id=upstream_id,
+                    )
                 raise FireflyRequestError(
-                    f"{media_key} job finished without {media_key} url"
+                    f"{media_key} job finished without {media_key} url",
+                    upstream_id=upstream_id,
                 )
             if download_fn is not None:
-                return download_fn(media_url, media_obj, proxy=proxy)
-            return _download_bytes(media_url, proxy=proxy)
+                media_payload = download_fn(media_url, media_obj, proxy=proxy)
+            else:
+                media_payload = _download_bytes(media_url, proxy=proxy)
+            # 统一包一层，便于编排层读 upstream_id；coerce 仍兼容 dict/tuple
+            if isinstance(media_payload, tuple) and media_payload:
+                data0 = media_payload[0]
+                ext = str(media_payload[1] if len(media_payload) > 1 else "mp4") or "mp4"
+                return {
+                    "bytes": data0,
+                    "ext": ext.lstrip(".") or "mp4",
+                    "upstream_id": upstream_id,
+                    "payload": media_payload,
+                }
+            return {
+                "bytes": media_payload,
+                "upstream_id": upstream_id,
+            }
 
         if status_val in {"FAILED", "CANCELLED", "ERROR"}:
             detail = redact_auth_diagnostic(str(latest)[:300])
             # 原: "image job failed" / "video job failed"
-            raise FireflyRequestError(f"{media_key} job failed: {detail}")
+            raise FireflyRequestError(
+                f"{media_key} job failed: {detail}",
+                upstream_id=upstream_id,
+            )
 
         if time.time() >= deadline:
             # 超时视为上游临时问题，允许换号重试
             raise FireflyUpstreamTemporary(
                 timeout_message,
                 error_type="timeout",
+                upstream_id=upstream_id,
             )
         time.sleep(interval)
 
@@ -372,8 +459,10 @@ def generate_image(
     proxy: str | None = None,
     timeout: float = 180,
     poll_interval: float = 3,
-) -> bytes:
-    """提交 generate-async → 轮询 → 下载 presign → 返回图片字节。
+) -> dict[str, Any]:
+    """提交 generate-async → 轮询 → 下载 presign。
+
+    返回 {"bytes": bytes, "upstream_id": str|None}；编排层 coerce 仍兼容纯 bytes。
 
     错误分类：
     - taste_exhausted → FireflyQuotaExhausted
@@ -459,11 +548,12 @@ def generate_video(
     proxy: str | None = None,
     timeout: float = 600,
     poll_interval: float = 3,
-) -> tuple[bytes, str]:
+) -> dict[str, Any]:
     """提交视频 generate-async → epo→bks 归一化 → 轮询 → 下载。
 
     Returns:
-        (video_bytes, ext) — ext 按 contentType 选 mp4/webm/ogv
+        {"bytes": video_bytes, "ext": ext, "upstream_id": str|None}
+        ext 按 contentType 选 mp4/webm/ogv；编排层 coerce 仍兼容 (bytes, ext)。
 
     错误分类同 generate_image：
     - taste_exhausted → FireflyQuotaExhausted

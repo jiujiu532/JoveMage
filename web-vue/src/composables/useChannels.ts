@@ -1,12 +1,15 @@
 import { computed, ref } from 'vue'
 import { channelsApi } from '@/api/channels'
 import {
+  enabledHasCapability,
   listBypassChannels,
   listChannels,
   listEnabledBypassChannels,
   listEnabledChannels,
   setChannelsFromApi,
+  unionEnabledCapabilities,
   useChannelRegistry,
+  type ChannelCapability,
   type ChannelDescriptor,
 } from '@/config/channels'
 
@@ -28,6 +31,30 @@ export function useChannels() {
   const enabledChannels = computed(() => listEnabledChannels())
   const bypassChannels = computed(() => listBypassChannels())
   const enabledBypassChannels = computed(() => listEnabledBypassChannels())
+
+  /** Studio 能力面 = 启用渠道 capabilities 并集；依赖 registry 响应式 */
+  const studioCapabilities = computed<ChannelCapability[]>(() => {
+    void registry.value
+    return unionEnabledCapabilities()
+  })
+
+  const canChat = computed(() => {
+    void registry.value
+    return enabledHasCapability('chat')
+  })
+  const canImage = computed(() => {
+    void registry.value
+    return enabledHasCapability('image')
+  })
+  /** 图生图 / 参考图入口 */
+  const canEdit = computed(() => {
+    void registry.value
+    return enabledHasCapability('edit')
+  })
+  const canVideo = computed(() => {
+    void registry.value
+    return enabledHasCapability('video')
+  })
 
   async function loadChannels(force = false): Promise<ChannelDescriptor[]> {
     if (!force && hasLoadedOnce.value && !inflight) {
@@ -63,6 +90,11 @@ export function useChannels() {
     enabledChannels,
     bypassChannels,
     enabledBypassChannels,
+    studioCapabilities,
+    canChat,
+    canImage,
+    canEdit,
+    canVideo,
     isLoading,
     loadError,
     hasLoadedOnce,

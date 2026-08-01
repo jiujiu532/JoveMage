@@ -160,12 +160,17 @@ def _run_firefly_account_attempts(
         quota_consumed: bool | None = None,
         attempt_seq: int | None = None,
         attempt_started: float | None = None,
+        upstream_id: str | None = None,
     ) -> None:
         """attempt 轨迹 + 用量流水；异常吞掉避免影响主链路。"""
         try:
             elapsed_ms = None
             if attempt_started is not None:
                 elapsed_ms = int((time.perf_counter() - attempt_started) * 1000)
+            # 失败路径也可从异常/failure 补 upstream_id
+            uid = str(upstream_id or "").strip() or None
+            if not uid and failure is not None:
+                uid = str(getattr(failure, "upstream_id", "") or "").strip() or None
             channel_usage_service.record_image_result(
                 trace_id=str(request.trace_id or request.call_id or ""),
                 channel=ledger_channel,
@@ -176,6 +181,7 @@ def _run_firefly_account_attempts(
                 success=success,
                 quota_consumed=quota_consumed,
                 failure=failure,
+                upstream_id=uid,
                 attempt_seq=attempt_seq,
                 elapsed_ms=elapsed_ms,
             )
@@ -284,6 +290,7 @@ def _run_firefly_account_attempts(
             *,
             failure: ImageFailure | None = None,
             quota_consumed: bool | None = None,
+            upstream_id: str | None = None,
             _token: str = token,
             _account: dict[str, Any] = account if isinstance(account, dict) else {},
             _attempt: int = attempt,
@@ -322,7 +329,7 @@ def _run_firefly_account_attempts(
                     }
                     release_payload.update(extra)
                     logger.warning(release_payload)
-            # attempt 轨迹 + 用量流水
+            # attempt 轨迹 + 用量流水（含上游任务 id）
             _record_ledger(
                 token=_token,
                 account=_account,
@@ -331,6 +338,7 @@ def _run_firefly_account_attempts(
                 quota_consumed=quota_consumed,
                 attempt_seq=_attempt,
                 attempt_started=_attempt_started,
+                upstream_id=upstream_id,
             )
             # 渠道熔断计数：成功清零 / 失败累计（仅 firefly 编排路径）
             try:
@@ -396,6 +404,7 @@ def _run_firefly_account_attempts(
                     quota_consumed=False,
                     attempt_seq=attempt,
                     attempt_started=attempt_started,
+                    upstream_id=str(getattr(exc, "upstream_id", "") or "").strip() or None,
                 )
                 # 不走 finalize，单独计熔断失败
                 try:
@@ -488,6 +497,7 @@ def _run_firefly_account_attempts(
             finalize_image_slot(
                 False,
                 failure=image_failure("upstream_unavailable", raw_detail=str(exc)),
+                upstream_id=str(getattr(exc, "upstream_id", "") or "").strip() or None,
             )
             last_error = ImageGenerationError(
                 str(exc) or f"{subject} upstream temporary failure",
@@ -516,6 +526,7 @@ def _run_firefly_account_attempts(
             finalize_image_slot(
                 False,
                 failure=image_failure("upstream_error", raw_detail=str(exc)),
+                upstream_id=str(getattr(exc, "upstream_id", "") or "").strip() or None,
             )
             raise ImageGenerationError(
                 str(exc) or f"{subject} request failed",
@@ -753,7 +764,10 @@ def _normalize_firefly_image_inputs(
 
 
 def _coerce_firefly_image_bytes(image_bytes: object) -> bytes:
-    """兼容 generate_image 返回 bytes / dict / list / base64 str。"""
+    """兼容 generate_image 返回 bytes / dict / list / base64 str。
+
+    注意：upstream_id 由 _extract_firefly_upstream_id 单独抽取，本函数只回 bytes。
+    """
     if isinstance(image_bytes, dict):
         for key in ("bytes", "image_bytes", "data", "image", "content"):
             if key in image_bytes and image_bytes[key] is not None:
@@ -778,6 +792,16 @@ def _coerce_firefly_image_bytes(image_bytes: object) -> bytes:
             code="upstream_error",
         )
     return bytes(image_bytes)
+
+
+def _extract_firefly_upstream_id(result: object) -> str | None:
+    """从 generate 返回结构或异常上抽取上游任务 id。"""
+    if isinstance(result, dict):
+        for key in ("upstream_id", "jobId", "job_id", "taskId", "task_id"):
+            value = str(result.get(key) or "").strip()
+            if value:
+                return value
+    return str(getattr(result, "upstream_id", "") or "").strip() or None
 
 
 def _build_firefly_image2image_payload(
@@ -894,7 +918,7 @@ def _generate_single_image_firefly(
         # 上游入口前 acquire 渠道速率预算（防 poll 打爆 Adobe）
         _firefly_acquire_upstream_budget(op="poll")
         try:
-            image_bytes = firefly_generate(
+            gen_result = firefly_generate(
                 token,
                 payload,
                 proxy=proxy,
@@ -902,17 +926,18 @@ def _generate_single_image_firefly(
                 poll_interval=config.firefly_poll_interval_sec,
             )
         except TypeError:
-            image_bytes = firefly_generate(token, payload, proxy=proxy)
+            gen_result = firefly_generate(token, payload, proxy=proxy)
         gen_ms = int((time.perf_counter() - gen_started) * 1000)
+        upstream_id = _extract_firefly_upstream_id(gen_result)
         try:
-            image_bytes = _coerce_firefly_image_bytes(image_bytes)
+            image_bytes = _coerce_firefly_image_bytes(gen_result)
         except ImageGenerationError as coerce_exc:
             coerce_exc.account_email = account_email
             raise
         output = _firefly_image_result_output(request, image_bytes, index, total)
         output.account_email = account_email
         # Firefly 真实额度靠 taste_exhausted/credits，成功不扣本地 quota
-        finalize_image_slot(True, quota_consumed=False)
+        finalize_image_slot(True, quota_consumed=False, upstream_id=upstream_id)
         if request.trace_image_perf:
             _monitor_image_stage(
                 request,
@@ -1055,7 +1080,7 @@ def _generate_single_image_firefly_edit(
         gen_started = time.perf_counter()
         _firefly_acquire_upstream_budget(op="poll")
         try:
-            image_bytes = firefly_generate(
+            gen_result = firefly_generate(
                 token,
                 payload,
                 proxy=proxy,
@@ -1063,10 +1088,11 @@ def _generate_single_image_firefly_edit(
                 poll_interval=config.firefly_poll_interval_sec,
             )
         except TypeError:
-            image_bytes = firefly_generate(token, payload, proxy=proxy)
+            gen_result = firefly_generate(token, payload, proxy=proxy)
         gen_ms = int((time.perf_counter() - gen_started) * 1000)
+        upstream_id = _extract_firefly_upstream_id(gen_result)
         try:
-            image_bytes = _coerce_firefly_image_bytes(image_bytes)
+            image_bytes = _coerce_firefly_image_bytes(gen_result)
         except ImageGenerationError as coerce_exc:
             coerce_exc.account_email = account_email
             raise
@@ -1074,7 +1100,7 @@ def _generate_single_image_firefly_edit(
         output = _firefly_image_result_output(request, image_bytes, index, total)
         output.account_email = account_email
         # Firefly 真实额度靠 taste_exhausted/credits，成功不扣本地 quota
-        finalize_image_slot(True, quota_consumed=False)
+        finalize_image_slot(True, quota_consumed=False, upstream_id=upstream_id)
         if request.trace_image_perf:
             _monitor_image_stage(
                 request,
@@ -1477,6 +1503,7 @@ def _generate_single_video_firefly(
         except TypeError:
             video_result = firefly_generate_video(token, payload, proxy=proxy)
         gen_ms = int((time.perf_counter() - gen_started) * 1000)
+        upstream_id = _extract_firefly_upstream_id(video_result)
         video_bytes, video_ext = _coerce_firefly_video_result(video_result)
         video_url = _save_firefly_video_bytes(
             video_bytes,
@@ -1495,7 +1522,7 @@ def _generate_single_video_firefly(
             account_email=account_email,
         )
         # Firefly 真实额度靠 taste_exhausted/credits，成功不扣本地 quota
-        finalize_image_slot(True, quota_consumed=False)
+        finalize_image_slot(True, quota_consumed=False, upstream_id=upstream_id)
         if request.trace_image_perf:
             _monitor_image_stage(
                 request,

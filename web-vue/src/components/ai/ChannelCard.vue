@@ -222,4 +222,27 @@ html[data-theme='dark'] .channel-card {
 .channel-card--colored .channel-card__secondary {
   color: color-mix(in srgb, var(--channel-soft-fg, hsl(var(--muted-foreground))) 78%, hsl(var(--muted-foreground)));
 }
+
+/* 窄屏：内部信息竖向堆叠，避免横排挤扁 */
+@media (max-width: 639px) {
+  .channel-card {
+    min-height: 0;
+    padding: 0.85rem 0.85rem 0.9rem;
+  }
+
+  .channel-card__header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.55rem;
+    margin-bottom: 0.7rem;
+  }
+
+  .channel-card__stats {
+    gap: 0.3rem;
+  }
+
+  .channel-card__primary-num {
+    font-size: 1.2rem;
+  }
+}
 </style>

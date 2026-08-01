@@ -35,7 +35,7 @@
           :class="{ 'chat-input-panel-inner-attach': references.length }"
           @click="textareaRef?.focus()"
         >
-          <div v-if="mode === 'image' && references.length" class="attach-images">
+          <div v-if="mode === 'image' && canEditImage && references.length" class="attach-images">
             <div v-for="(source, index) in references" :key="source.id" class="chat-attachment-preview">
               <button type="button" class="studio-reference-preview" :title="source.name" @click.stop="$emit('preview-reference', source)">
                 <img v-if="source.dataUrl" :src="source.dataUrl" :alt="source.name" />
@@ -94,8 +94,10 @@
               </div>
             </template>
 
-            <template v-else-if="mode === 'image'">
+            <template v-else-if="mode === 'image' || mode === 'video'">
+              <!-- 图生图 / 参考图：仅当启用渠道并集含 edit -->
               <button
+                v-if="mode === 'image' && canEditImage"
                 type="button"
                 class="chat-input-action"
                 :class="{ 'chat-input-action-active': references.length }"
@@ -106,6 +108,7 @@
                 <span class="text">{{ references.length ? '继续添加' : '参考图' }}</span>
               </button>
               <button
+                v-if="mode === 'image'"
                 type="button"
                 class="chat-input-action"
                 :disabled="isSending"
@@ -139,7 +142,7 @@
                       block
                     />
                   </div>
-                  <div class="studio-size-section">
+                  <div v-if="mode === 'image'" class="studio-size-section">
                     <div class="studio-size-label">质量</div>
                     <div class="studio-choice-grid is-quality">
                       <button
@@ -154,7 +157,7 @@
                       </button>
                     </div>
                   </div>
-                  <div class="studio-size-section">
+                  <div v-if="mode === 'image'" class="studio-size-section">
                     <div class="studio-size-label">数量</div>
                     <div class="studio-choice-grid is-count">
                       <button
@@ -169,7 +172,7 @@
                       </button>
                     </div>
                   </div>
-                  <div class="studio-size-section">
+                  <div v-if="mode === 'image'" class="studio-size-section">
                     <div class="studio-size-label">比例</div>
                     <div class="studio-choice-grid is-ratio">
                       <button
@@ -184,7 +187,7 @@
                       </button>
                     </div>
                   </div>
-                  <div class="studio-size-section">
+                  <div v-if="mode === 'image'" class="studio-size-section">
                     <div class="studio-size-label">分辨率</div>
                     <div class="studio-choice-grid is-resolution">
                       <button
@@ -200,10 +203,11 @@
                     </div>
                     <p class="studio-size-current">{{ selectedSizeDetailLabel }}</p>
                   </div>
+                  <p v-else class="studio-size-current">视频模式按渠道模型提交，质量参数由上游决定。</p>
                 </div>
               </div>
               <button
-                v-if="references.length"
+                v-if="mode === 'image' && canEditImage && references.length"
                 type="button"
                 class="chat-input-action"
                 :disabled="isSending"
@@ -216,7 +220,7 @@
           </div>
 
           <div class="chat-input-submit-row">
-            <div v-if="references.length" class="chat-input-status">
+            <div v-if="mode === 'image' && canEditImage && references.length" class="chat-input-status">
               <span class="min-w-0 truncate">{{ references.length }} 张参考图</span>
               <span class="chat-input-count">{{ imageForm.n }} 张输出</span>
             </div>
@@ -236,7 +240,7 @@
             class="chat-input-send"
             :class="text.trim() && !isSending ? 'chat-input-send-ready' : 'chat-input-send-idle'"
             :disabled="isSending || !text.trim()"
-            :aria-label="mode === 'image' ? '提交图片任务' : '发送消息'"
+            :aria-label="submitAriaLabel"
             @click.stop
           >
             <Icon :icon="isSending ? 'lucide:loader-circle' : 'lucide:send-horizontal'" class="h-4 w-4" :class="{ 'animate-spin': isSending }" />
@@ -246,7 +250,7 @@
         </div>
       </div>
 
-      <div v-if="isDragging" class="studio-drop-overlay">
+      <div v-if="isDragging && canEditImage && mode === 'image'" class="studio-drop-overlay">
         <Icon icon="lucide:image-plus" class="h-5 w-5" />
         松开以上传参考图
       </div>
@@ -268,6 +272,7 @@ import {
   resolveImageSizePresets,
   type ImageSizeResolution,
 } from '@/api/imageTasks'
+import { useChannels } from '@/composables/useChannels'
 import { groupImageModelsByChannel } from '@/config/channels'
 import { isFireflyImageModel } from '@/config/modelCatalog'
 import type { StudioComposeMode, StudioImageForm, StudioReference } from './types'
@@ -307,6 +312,12 @@ const emit = defineEmits<{
   'open-prompts': []
 }>()
 
+const { canChat, canImage, canEdit, canVideo, loadChannels } = useChannels()
+/** 图生图入口：启用渠道能力并集含 edit */
+const canEditImage = computed(() => canEdit.value)
+/** 视频模式：启用渠道能力并集含 video */
+const canVideoMode = computed(() => canVideo.value)
+
 const composerShellRef = ref<HTMLElement | null>(null)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -316,11 +327,31 @@ const settingsOpen = ref(false)
 let textareaResizeFrame = 0
 let composerResizeObserver: ResizeObserver | null = null
 
-const modeOptions: Array<{ label: string; value: StudioComposeMode }> = [
-  { label: '画图', value: 'image' },
-  { label: '对话', value: 'chat' },
-  { label: '搜索', value: 'search' },
-]
+/**
+ * 能力驱动模式列表：Studio 能力面 = 启用渠道 capabilities 并集。
+ * - chat → 对话 / 搜索（搜索依附 chat）
+ * - image → 画图
+ * - video → 视频
+ * 缺席=不出现（与渠道空状态原则一致）
+ */
+const modeOptions = computed(() => {
+  const options: Array<{ label: string; value: StudioComposeMode }> = []
+  if (canImage.value) options.push({ label: '画图', value: 'image' })
+  if (canVideoMode.value) options.push({ label: '视频', value: 'video' })
+  if (canChat.value) {
+    options.push({ label: '对话', value: 'chat' })
+    options.push({ label: '搜索', value: 'search' })
+  }
+  // 极端：所有能力都关时仍给一个对话入口，避免空工具栏
+  if (!options.length) options.push({ label: '对话', value: 'chat' })
+  return options
+})
+
+const submitAriaLabel = computed(() => {
+  if (props.mode === 'image') return '提交图片任务'
+  if (props.mode === 'video') return '提交视频任务'
+  return '发送消息'
+})
 
 const textValue = computed({
   get: () => props.text,
@@ -346,14 +377,23 @@ const chatReasoningEffortValue = computed({
 })
 
 function normalizeModeValue(value: string | number): StudioComposeMode {
-  if (value === 'chat' || value === 'search' || value === 'image') return value
+  if (value === 'chat' || value === 'search' || value === 'image' || value === 'video') return value
   return 'image'
 }
 
 function modeIcon(mode: StudioComposeMode) {
   if (mode === 'image') return 'lucide:image'
+  if (mode === 'video') return 'lucide:clapperboard'
   if (mode === 'search') return 'lucide:search'
   return 'lucide:message-circle'
+}
+
+/** 当前 mode 不在能力并集内时，落到第一个可用模式 */
+function ensureModeAllowed() {
+  const allowed = new Set(modeOptions.value.map((item) => item.value))
+  if (allowed.has(props.mode)) return
+  const fallback = modeOptions.value[0]?.value || 'chat'
+  if (fallback !== props.mode) emit('update:mode', fallback)
 }
 
 const imageModelValue = computed({
@@ -419,12 +459,20 @@ const resolutionOptions = computed(() => {
 })
 const selectedSizeDetailLabel = computed(() => formatImageSizeLabel(props.imageForm.size))
 const imageSummaryLabel = computed(() => {
+  if (props.mode === 'video') {
+    return props.imageForm.model || '视频模型'
+  }
   const count = props.imageForm.n > 1 ? ` · ${props.imageForm.n} 张` : ''
   return `${formatImageSizeLabel(props.imageForm.size)}${count}`
 })
-const imagePlaceholder = computed(() => props.references.length ? '描述你想如何修改参考图' : '输入你想生成的画面，也可以粘贴或拖入参考图')
+const imagePlaceholder = computed(() => {
+  if (canEditImage.value && props.references.length) return '描述你想如何修改参考图'
+  if (canEditImage.value) return '输入你想生成的画面，也可以粘贴或拖入参考图'
+  return '输入你想生成的画面'
+})
 const placeholderText = computed(() => {
   if (props.mode === 'image') return imagePlaceholder.value
+  if (props.mode === 'video') return '描述你想生成的视频画面，Enter 提交'
   if (props.mode === 'search') return '输入搜索问题，Enter 搜索，Shift+Enter 换行'
   return '输入消息，Enter 发送，Shift+Enter 换行'
 })
@@ -497,7 +545,7 @@ function handleFileChange(event: Event) {
 }
 
 function handlePaste(event: ClipboardEvent) {
-  if (props.mode !== 'image') return
+  if (props.mode !== 'image' || !canEditImage.value) return
   const files = Array.from(event.clipboardData?.files || []).filter(isImageFile)
   if (!files.length) return
   event.preventDefault()
@@ -506,7 +554,7 @@ function handlePaste(event: ClipboardEvent) {
 
 function handleDrop(event: DragEvent) {
   isDragging.value = false
-  if (props.mode !== 'image') return
+  if (props.mode !== 'image' || !canEditImage.value) return
   emit('add-files', Array.from(event.dataTransfer?.files || []))
 }
 
@@ -532,6 +580,8 @@ if (typeof window !== 'undefined') {
 }
 
 onMounted(() => {
+  void loadChannels()
+  ensureModeAllowed()
   scheduleTextareaResize()
   syncComposerHeight()
   if (typeof ResizeObserver !== 'undefined' && composerShellRef.value) {
@@ -544,6 +594,22 @@ watch(
   () => [props.text, props.mode, props.references.length, props.isEditing],
   scheduleTextareaResize,
   { flush: 'post' },
+)
+
+watch(
+  modeOptions,
+  () => ensureModeAllowed(),
+  { flush: 'post' },
+)
+
+watch(
+  () => [props.mode, canEditImage.value] as const,
+  ([mode, editEnabled]) => {
+    // 无 edit 能力或离开画图模式时清掉参考图，避免脏状态提交
+    if ((mode !== 'image' || !editEnabled) && props.references.length) {
+      emit('clear-references')
+    }
+  },
 )
 
 onBeforeUnmount(() => {

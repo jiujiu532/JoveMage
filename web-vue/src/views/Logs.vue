@@ -369,7 +369,26 @@
               </section>
             </div>
 
-            <LogDetailTimeline v-if="selectedLog" :log="selectedLog" />
+            <LogDetailTimeline v-if="timelineLog" :log="timelineLog" />
+
+            <section v-if="tracePayloadSummary" class="detail-field-section">
+              <div class="detail-field-section__header">
+                <span>载荷快照</span>
+                <span v-if="traceLoading" class="text-xs text-muted-foreground">加载中…</span>
+              </div>
+              <div class="detail-field-grid">
+                <DetailFieldCard
+                  v-for="field in tracePayloadSummary"
+                  :key="field.label"
+                  :class="{ 'detail-field-grid__item--wide': field.wide }"
+                  :label="field.label"
+                  :value="field.value"
+                  :copyable="field.copyable"
+                  variant="row"
+                  @copy="copyText"
+                />
+              </div>
+            </section>
 
             <DetailTextBlock
               :title="selectedLog.requestTextTruncated ? '请求文本（已截断）' : '请求文本'"
@@ -495,6 +514,7 @@ import RuntimeLogPanel from '@/components/ai/RuntimeLogPanel.vue'
 import StateBadge from '@/components/ai/StateBadge.vue'
 import TableShell from '@/components/ai/TableShell.vue'
 import { actionMenuGroups } from '@/components/ai/menuItems'
+import { channelsApi, type ChannelTraceResponse } from '@/api/channels'
 import { logsApi } from '@/api/logs'
 import { resolveGalleryFileUrl, type GalleryFile } from '@/api/gallery'
 import type { RuntimeLog, RuntimeLogsResponse, SystemLogRow, SystemLogsResponse } from '@/api/logs'
@@ -562,6 +582,10 @@ const runtimeLogs = ref<RuntimeLog[]>([])
 const runtimeFetching = ref(false)
 const runtimeLoadError = ref('')
 const selectedLog = ref<LogRow | null>(null)
+/** 当前详情对应的 trace 快照（P2 载荷/时间轴） */
+const selectedTrace = ref<ChannelTraceResponse | null>(null)
+const traceLoading = ref(false)
+let traceLoadSeq = 0
 const selectedDetailPreview = ref<DetailPreviewImage | null>(null)
 const copiedLogPreviewKey = ref('')
 const autoRefreshEnabled = ref(false)
@@ -921,8 +945,10 @@ const selectedLogCount = computed(() => selectedDeletableLogIds.value.length)
 const selectedPrimaryDetailFields = computed<DetailField[]>(() => {
   const item = selectedLog.value
   if (!item) return []
+  const traceId = rawDetailValue(item, 'trace_id') || cleanString(selectedTrace.value?.trace_id)
   return compactDetailFields([
     { label: '请求 ID', value: rawDetailValue(item, 'call_id') || item.id, copyable: true },
+    { label: 'Trace ID', value: traceId, copyable: true },
     { label: '接口', value: item.endpoint, copyable: true },
     { label: '模型', value: item.model, copyable: true },
     { label: '账号', value: item.accountEmail, copyable: true },
@@ -930,6 +956,58 @@ const selectedPrimaryDetailFields = computed<DetailField[]>(() => {
     { label: '出口', value: egressDetailValue(item) },
     { label: '会话 ID', value: item.conversationId, copyable: true },
     { label: '时间', value: timeRangeDetailValue(item), wide: true },
+  ])
+})
+
+/** 用 trace API 的 stages 补本地 perf，复用 LogDetailTimeline 瀑布 */
+const timelineLog = computed<LogRow | null>(() => {
+  const item = selectedLog.value
+  if (!item) return null
+  const stages = selectedTrace.value?.stages
+  if (!Array.isArray(stages) || !stages.length) return item
+  const detail = detailRecord(item)
+  const existingPerf = detail.perf && typeof detail.perf === 'object' ? detail.perf as Record<string, unknown> : {}
+  const hasLocalPerf = Object.values(existingPerf).some((value) => Number(value || 0) > 0)
+  if (hasLocalPerf) return item
+  const perf: Record<string, number> = {}
+  stages.forEach((stage) => {
+    const key = cleanString(stage?.stage)
+    const ms = Number(stage?.elapsed_ms || 0)
+    if (!key || !Number.isFinite(ms) || ms < 0) return
+    perf[key] = ms
+  })
+  if (!Object.keys(perf).length) return item
+  return {
+    ...item,
+    raw: {
+      ...item.raw,
+      detail: {
+        ...detail,
+        perf: { ...existingPerf, ...perf },
+      },
+    },
+  }
+})
+
+const tracePayloadSummary = computed<DetailField[]>(() => {
+  const payload = selectedTrace.value?.payload
+  if (!payload || typeof payload !== 'object') return []
+  const record = payload as Record<string, unknown>
+  return compactDetailFields([
+    { label: '渠道', value: cleanString(record.channel) },
+    { label: '模型', value: cleanString(record.model) },
+    { label: '尺寸', value: cleanString(record.size || record.resolution || record.size_tier) },
+    { label: '质量', value: cleanString(record.quality) },
+    { label: '数量 n', value: cleanString(record.n) },
+    { label: '输入图数', value: cleanString(record.input_image_count) },
+    {
+      label: '重放参数',
+      value: selectedTrace.value?.replay_params
+        ? JSON.stringify(selectedTrace.value.replay_params)
+        : '',
+      copyable: true,
+      wide: true,
+    },
   ])
 })
 
@@ -1308,11 +1386,37 @@ function handleRuntimeFilterMenuSelect(key: string) {
 
 function openDetail(item: LogRow) {
   selectedLog.value = item
+  selectedDetailPreview.value = null
+  void loadTraceForLog(item)
 }
 
 function closeDetail() {
   selectedLog.value = null
   selectedDetailPreview.value = null
+  selectedTrace.value = null
+  traceLoading.value = false
+  traceLoadSeq += 1
+}
+
+async function loadTraceForLog(item: LogRow) {
+  const traceId = rawDetailValue(item, 'trace_id')
+  if (!traceId) {
+    selectedTrace.value = null
+    return
+  }
+  const seq = ++traceLoadSeq
+  traceLoading.value = true
+  try {
+    const data = await channelsApi.getTrace(traceId)
+    if (seq !== traceLoadSeq) return
+    selectedTrace.value = data || null
+  } catch {
+    if (seq !== traceLoadSeq) return
+    // 无快照 / 非 admin 时静默：时间轴仍用本地 perf
+    selectedTrace.value = null
+  } finally {
+    if (seq === traceLoadSeq) traceLoading.value = false
+  }
 }
 
 function openDetailImagePreview(image: DetailPreviewImage) {

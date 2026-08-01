@@ -25,6 +25,7 @@ from api.support import (
 )
 from services.account_service import account_service
 from services.backends.firefly_auth import decode_jwt_account_id, refresh_access_token
+from services.channel_usage_service import channel_usage_service
 from services.config import config
 from services.cpa_service import cpa_config, cpa_import_service, list_remote_files
 from services.task_manager import task_manager
@@ -515,6 +516,29 @@ def create_router() -> APIRouter:
             group_id=group_id,
             source_type=source_type or "all",
         )
+
+    @router.get("/api/accounts/{account_id}/usage")
+    async def get_account_usage_profile(
+            account_id: str,
+            recent_limit: int = Query(default=20, ge=1, le=200),
+            channel: str | None = Query(default=None),
+            authorization: str | None = Header(default=None),
+    ):
+        """账号行为档案：今日调用/成功率/credits + 最近流水 + 失败原因分组。
+
+        account_id 与 channel_usage 账本字段对齐（email / account_id / user_id）。
+        admin 全量可见。
+        """
+        require_admin(authorization)
+        key = str(account_id or "").strip()
+        if not key:
+            raise HTTPException(status_code=400, detail={"error": "account_id is required"})
+        profile = channel_usage_service.account_profile(
+            key,
+            recent_limit=recent_limit,
+            channel=str(channel or "").strip() or None,
+        )
+        return profile
 
     @router.get("/api/account-groups")
     async def list_account_groups(authorization: str | None = Header(default=None)):

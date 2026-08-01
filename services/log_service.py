@@ -977,10 +977,16 @@ class LoggedCall:
         # 始终透传 trace_id / call_id，供协议层 ConversationRequest 与账本使用
         body["_call_id"] = self.call_id
         body["_trace_id"] = self.trace_id
-        if not self._trace_image_perf():
-            return
-        body["_trace_image_perf"] = True
-        self.trace_metadata.update(_image_trace_metadata(body))
+        if self._trace_image_perf():
+            body["_trace_image_perf"] = True
+            self.trace_metadata.update(_image_trace_metadata(body))
+        # P2：脱敏载荷快照（任何调用类型都记；失败不影响主链路）
+        try:
+            from services.trace_snapshot_service import trace_snapshot_service
+
+            trace_snapshot_service.capture_from_call(self, body)
+        except Exception:
+            pass
 
     def stream(self, items):
         urls: list[str] = []
@@ -1071,4 +1077,11 @@ class LoggedCall:
                 detail.update(image_metrics)
         if self._trace_image_perf():
             realtime_monitor_service.finish(detail)
+        # P2：合并阶段耗时到 trace 快照（瀑布时间轴数据）
+        try:
+            from services.trace_snapshot_service import trace_snapshot_service
+
+            trace_snapshot_service.finalize_from_call(self, detail)
+        except Exception:
+            pass
         log_service.add(LOG_TYPE_CALL, f"{self.summary}{suffix}", detail)

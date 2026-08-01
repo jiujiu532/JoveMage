@@ -20,6 +20,7 @@ class FireflyError(Exception):
         status_code: int | None = None,
         error_type: str = "",
         user_message: str = "",
+        upstream_id: str | None = None,
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
@@ -27,6 +28,8 @@ class FireflyError(Exception):
         self.user_message = (
             str(user_message or "").strip() or str(message or "").strip()
         )
+        # 上游任务 id（generate-async jobId），失败路径也可透传账本
+        self.upstream_id = str(upstream_id or "").strip() or None
 
 
 class FireflyQuotaExhausted(FireflyError):

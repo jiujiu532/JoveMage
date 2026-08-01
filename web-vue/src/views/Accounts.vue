@@ -1,14 +1,28 @@
 <template>
   <div class="relative space-y-8">
     <PagePanel class="space-y-5">
-      <!-- 渠道 Tab：全部 | ChatGPT · N | Firefly · N；数据来自 channels.ts（将来 /api/channels） -->
-      <ConsoleSegmentedTabs
-        :model-value="sourceFilter"
-        :options="channelTabOptions"
-        aria-label="账号渠道"
-        fit="content"
-        @update:model-value="setSourceFilter"
-      />
+      <!-- 桌面：渠道分段 Tab；窄屏：下拉（§6.1） -->
+      <div class="accounts-channel-nav">
+        <ConsoleSegmentedTabs
+          class="accounts-channel-tabs"
+          :model-value="sourceFilter"
+          :options="channelTabOptions"
+          aria-label="账号渠道"
+          fit="content"
+          @update:model-value="setSourceFilter"
+        />
+        <div class="accounts-channel-select">
+          <GroupedSelectMenu
+            :model-value="sourceFilter"
+            :options="channelTabSelectOptions"
+            placeholder="选择渠道"
+            selected-indicator="none"
+            aria-label="账号渠道"
+            block
+            @update:model-value="setSourceFilter"
+          />
+        </div>
+      </div>
 
       <div class="accounts-toolbar">
         <div class="accounts-toolbar-row accounts-toolbar-row-main">
@@ -435,10 +449,21 @@
       @clear="clearSelection"
     />
 
-    <ModalShell :open="showModal" max-width="44rem" :z-index="120">
+    <ModalShell :open="showModal" max-width="48rem" :z-index="120">
             <ModalHeader :title="editingId ? '编辑账号' : '添加账号'" :bordered="false" compact @close="closeModal" />
 
-            <ModalBody density="compact" class="space-y-3">
+            <!-- 编辑态：基础信息 | 溯源/使用（P2 行为档案） -->
+            <div v-if="editingId" class="account-modal-tabs px-4 pt-1">
+              <ConsoleSegmentedTabs
+                :model-value="accountModalTab"
+                :options="accountModalTabOptions"
+                aria-label="账号详情分区"
+                fit="content"
+                @update:model-value="setAccountModalTab"
+              />
+            </div>
+
+            <ModalBody v-if="!editingId || accountModalTab === 'edit'" density="compact" class="space-y-3">
                 <FormSection title="基础信息" surface="plain">
                   <div class="grid grid-cols-1 gap-2.5 md:grid-cols-4">
                     <label v-if="editingId" class="text-xs md:col-span-2">
@@ -629,9 +654,22 @@
                 </FormSection>
             </ModalBody>
 
-            <ModalFooter :bordered="false">
+            <ModalBody v-else density="compact" class="space-y-3">
+              <AccountUsageProfilePanel
+                :account-id="editingId || ''"
+                :source-type="form.source_type"
+                :active="showModal && accountModalTab === 'usage'"
+              />
+            </ModalBody>
+
+            <ModalFooter v-if="!editingId || accountModalTab === 'edit'" :bordered="false">
               <Button size="xs" variant="primary" root-class="min-w-14 justify-center" :disabled="saving" @click="saveAccount">
                 {{ saving ? '保存中...' : '保存' }}
+              </Button>
+            </ModalFooter>
+            <ModalFooter v-else :bordered="false">
+              <Button size="xs" variant="outline" root-class="min-w-14 justify-center" @click="closeModal">
+                关闭
               </Button>
             </ModalFooter>
     </ModalShell>
@@ -883,13 +921,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, ref } from 'vue'
+import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { Button, Checkbox, EmptyState, Input, StatusDetailPill, StatusPill } from 'nanocat-ui'
 import type { ActionMenuItem } from 'nanocat-ui'
 import AccountActionButtons from '@/components/ai/AccountActionButtons.vue'
 import AccountBulkBar from '@/components/ai/AccountBulkBar.vue'
 import AccountSelectionSummary from '@/components/ai/AccountSelectionSummary.vue'
 import AccountStreamCard from '@/components/ai/AccountStreamCard.vue'
+import AccountUsageProfilePanel from '@/components/ai/AccountUsageProfilePanel.vue'
 import ChannelBadge from '@/components/ai/ChannelBadge.vue'
 import ConsoleSegmentedTabs from '@/components/ai/ConsoleSegmentedTabs.vue'
 import FilterToolbar from '@/components/ai/FilterToolbar.vue'
@@ -935,6 +974,17 @@ import {
 
 const RemoteAccountImportPanel = defineAsyncComponent(() => import('@/components/ai/RemoteAccountImportPanel.vue'))
 const OperationProgressModal = defineAsyncComponent(() => import('@/components/ai/OperationProgressModal.vue'))
+
+/** 账号弹层：编辑 | 溯源/使用 */
+const accountModalTab = ref<'edit' | 'usage'>('edit')
+const accountModalTabOptions = [
+  { label: '编辑', value: 'edit' },
+  { label: '溯源 / 使用', value: 'usage' },
+] as const
+
+function setAccountModalTab(value: string | number) {
+  accountModalTab.value = value === 'usage' ? 'usage' : 'edit'
+}
 
 const {
   loading,
@@ -1038,9 +1088,9 @@ const {
   requestStopRefreshProgress,
   closeRefreshProgress,
   copyAccountToken,
-  openCreateModal,
-  openEditModal,
-  closeModal,
+  openCreateModal: openCreateModalBase,
+  openEditModal: openEditModalBase,
+  closeModal: closeModalBase,
   saveAccount,
   toggleEnabled,
   refreshToken,
@@ -1051,6 +1101,33 @@ const {
   bindSelectedAccountsToGroup,
   exportAccounts,
 } = useAccountsPage()
+
+function openCreateModal() {
+  accountModalTab.value = 'edit'
+  openCreateModalBase()
+}
+
+function openEditModal(item: Account) {
+  accountModalTab.value = 'edit'
+  openEditModalBase(item)
+}
+
+function closeModal() {
+  accountModalTab.value = 'edit'
+  closeModalBase()
+}
+
+watch(showModal, (open) => {
+  if (!open) accountModalTab.value = 'edit'
+})
+
+/** 窄屏渠道下拉选项（与 Tab 同源） */
+const channelTabSelectOptions = computed(() =>
+  channelTabOptions.value.map((item) => ({
+    label: item.label,
+    value: item.value,
+  })),
+)
 
 type BatchAction = 'refresh' | 'reset' | 'enable' | 'disable' | 'delete'
 type AccountActionMenuItem = ActionMenuItem & {
@@ -1566,6 +1643,39 @@ html[data-theme='dark'] .account-card-tile {
 
 html[data-theme='dark'] .account-card-tile__metrics {
   background: color-mix(in srgb, var(--bauhaus-card, #fff) 4%, transparent);
+}
+
+/* 渠道导航：桌面 Tab / 窄屏下拉（§6.1） */
+.accounts-channel-nav {
+  min-width: 0;
+  width: 100%;
+}
+
+.accounts-channel-tabs {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.accounts-channel-select {
+  display: none;
+  min-width: 0;
+  width: 100%;
+  max-width: 22rem;
+}
+
+.account-modal-tabs {
+  min-width: 0;
+}
+
+@media (max-width: 767px) {
+  .accounts-channel-tabs {
+    display: none;
+  }
+
+  .accounts-channel-select {
+    display: block;
+  }
 }
 
 @media (max-width: 1100px) {

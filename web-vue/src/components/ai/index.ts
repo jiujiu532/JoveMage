@@ -1,6 +1,8 @@
 export { default as AccountActionButtons } from './AccountActionButtons.vue'
 export { default as AccountBulkBar } from './AccountBulkBar.vue'
 export { default as AccountSelectionSummary } from './AccountSelectionSummary.vue'
+export { default as AccountStreamCard } from './AccountStreamCard.vue'
+export { default as AccountUsageProfilePanel } from './AccountUsageProfilePanel.vue'
 export { default as ActionRow } from './ActionRow.vue'
 export { ChartCard, StatCard } from 'nanocat-ui'
 export { default as ChannelBadge } from './ChannelBadge.vue'

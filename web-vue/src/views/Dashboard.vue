@@ -20,8 +20,11 @@
       />
     </section>
 
-    <!-- 渠道并列卡：从 /api/channels 描述符渲染；未启用渠道不出现 -->
-    <section v-if="channelCards.length" class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+    <!-- 渠道并列卡：从 /api/channels 描述符渲染；未启用渠道不出现；窄屏竖排堆叠 -->
+    <section
+      v-if="channelCards.length"
+      class="channel-cards-grid grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"
+    >
       <ChannelCard
         v-for="channel in channelCards"
         :key="channel.id"

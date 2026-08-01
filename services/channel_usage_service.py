@@ -327,6 +327,136 @@ class ChannelUsageService:
             })
             return []
 
+    def account_profile(
+        self,
+        account_id: str,
+        *,
+        recent_limit: int = 20,
+        channel: str | None = None,
+        now_ts: float | None = None,
+    ) -> dict[str, Any]:
+        """账号行为档案：今日次数/成功率/credits + 最近 N 条 + 失败/跳过原因分组。
+
+        数据源：channel_usage 按 account_id 查询后在内存聚合（KISS，避免各后端重写 SQL）。
+        聚合行（daily_aggregate）不计入今日明细统计，但仍可出现在 recent 之外的历史查询中——
+        本接口 recent 也跳过聚合行，只回明细。
+        """
+        account_key = str(account_id or "").strip()
+        if not account_key:
+            return {
+                "account_id": "",
+                "today": {
+                    "calls": 0,
+                    "success": 0,
+                    "failed": 0,
+                    "success_rate": 0.0,
+                    "credits": 0.0,
+                    "quota": 0.0,
+                },
+                "failure_reasons": [],
+                "recent": [],
+            }
+
+        now = float(now_ts if now_ts is not None else time.time())
+        day_start = datetime.fromtimestamp(now, tz=timezone.utc).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        ).timestamp()
+
+        # 多拉一些明细，覆盖今日 + 失败原因 + 最近 N
+        limit = max(50, int(recent_limit or 20) * 5, 200)
+        try:
+            rows = self.query(
+                account_id=account_key,
+                channel=channel,
+                limit=limit,
+            )
+        except Exception:
+            rows = []
+
+        details: list[dict[str, Any]] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            if is_channel_usage_aggregate_row(row):
+                continue
+            details.append(row)
+
+        today_calls = 0
+        today_success = 0
+        today_failed = 0
+        today_credits = 0.0
+        today_quota = 0.0
+        reason_counter: dict[str, int] = {}
+
+        for row in details:
+            try:
+                ts = float(row.get("ts") or 0)
+            except (TypeError, ValueError):
+                ts = 0.0
+            result = str(row.get("result") or "").strip().lower()
+            cost = row.get("cost") if isinstance(row.get("cost"), dict) else {}
+
+            if ts >= day_start:
+                today_calls += 1
+                if result == "success":
+                    today_success += 1
+                elif result in {"failed", "refunded"}:
+                    # refunded 单独不计入 failed 次数，但仍算一次调用
+                    if result == "failed":
+                        today_failed += 1
+                try:
+                    today_credits += float(cost.get("credits") or 0)
+                except (TypeError, ValueError):
+                    pass
+                try:
+                    today_quota += float(cost.get("quota") or 0)
+                except (TypeError, ValueError):
+                    pass
+
+            # 失败/跳过原因：failed 行按 note 或 result 分组
+            if result == "failed":
+                note = str(row.get("note") or "").strip()
+                key = note or result or "failed"
+                # 截断过长 note，避免展示爆炸
+                if len(key) > 200:
+                    key = key[:200]
+                reason_counter[key] = int(reason_counter.get(key, 0)) + 1
+
+        success_rate = (
+            float(today_success) / float(today_calls) if today_calls > 0 else 0.0
+        )
+        # 最近 N：按 ts 倒序（query 已大致新→旧，再稳妥排一次）
+        recent_sorted = sorted(
+            details,
+            key=lambda r: float(r.get("ts") or 0),
+            reverse=True,
+        )
+        recent_n = max(1, min(int(recent_limit or 20), 200))
+        recent = recent_sorted[:recent_n]
+
+        failure_reasons = [
+            {"reason": reason, "count": count}
+            for reason, count in sorted(
+                reason_counter.items(),
+                key=lambda item: (-item[1], item[0]),
+            )
+        ]
+
+        return {
+            "account_id": account_key,
+            "today": {
+                "calls": today_calls,
+                "success": today_success,
+                "failed": today_failed,
+                "success_rate": round(success_rate, 4),
+                "credits": today_credits,
+                "quota": today_quota,
+                "day_start_ts": day_start,
+            },
+            "failure_reasons": failure_reasons,
+            "recent": recent,
+        }
+
     def _find_oldest_detail_ts(self, backend: Any, *, before_ts: float) -> float | None:
         """找 cutoff 之前最老的明细 ts；没有则 None。"""
         try:

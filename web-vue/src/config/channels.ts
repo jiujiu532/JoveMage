@@ -92,7 +92,8 @@ export const DEFAULT_CHANNELS: readonly ChannelDescriptor[] = Object.freeze([
     is_default: true,
     credential_type: 'token',
     registerable: true,
-    capabilities: ['chat', 'image'],
+    // edit：ChatGPT 支持参考图/图生图；无 edit 时 Studio 会藏参考图入口
+    capabilities: ['chat', 'image', 'edit'],
     enabled: true,
     meter_kind: 'quota',
   },
@@ -156,6 +157,24 @@ export function listChannels(): ChannelDescriptor[] {
 /** 仅启用渠道 */
 export function listEnabledChannels(): ChannelDescriptor[] {
   return listChannels().filter((item) => item.enabled)
+}
+
+/**
+ * Studio 能力面 = 所有启用渠道 capabilities 的并集。
+ * 用于能力驱动 UI：edit → 图生图入口，video → 视频模式等。
+ */
+export function unionEnabledCapabilities(): ChannelCapability[] {
+  const set = new Set<ChannelCapability>()
+  for (const channel of listEnabledChannels()) {
+    for (const cap of channel.capabilities || []) {
+      if (cap) set.add(cap)
+    }
+  }
+  return Array.from(set)
+}
+
+export function enabledHasCapability(capability: ChannelCapability): boolean {
+  return unionEnabledCapabilities().includes(capability)
 }
 
 /** 旁路渠道（非默认主体；含未启用，便于设置页打开开关） */

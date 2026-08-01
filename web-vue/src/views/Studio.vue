@@ -304,6 +304,7 @@ const activeHeaderSubtitle = computed(() => {
   if (isSending.value) {
     if (composeMode.value === 'search') return '正在搜索'
     if (composeMode.value === 'image') return '正在提交图片'
+    if (composeMode.value === 'video') return '正在提交视频'
     return '正在请求'
   }
   if (activeRunningTaskCount.value > 0) return `图片处理中 ${activeRunningTaskCount.value}`
@@ -354,7 +355,7 @@ watch(imageUpscaleEnabled, (upscaleEnabled) => {
 })
 
 function normalizeMode(value: string): StudioComposeMode {
-  if (value === 'chat' || value === 'search') return value
+  if (value === 'chat' || value === 'search' || value === 'video') return value
   return 'image'
 }
 
@@ -648,8 +649,12 @@ async function sendMessage() {
       await sendTextMessage(conversation)
     } else if (mode === 'search') {
       await sendSearchMessage(conversation, content)
+    } else if (mode === 'video') {
+      // 视频模式：无参考图；任务管线复用图像任务 API（上游按模型路由 video）
+      await sendImageMessage(conversation, content, [], 'video')
+      clearReferences()
     } else {
-      await sendImageMessage(conversation, content, files)
+      await sendImageMessage(conversation, content, files, 'image')
       clearReferences()
     }
   } catch (error) {
@@ -708,8 +713,11 @@ async function sendEditedMessage(content: string) {
       await sendTextMessage(conversation)
     } else if (mode === 'search') {
       await sendSearchMessage(conversation, content)
+    } else if (mode === 'video') {
+      await sendImageMessage(conversation, content, [], 'video')
+      clearReferences()
     } else {
-      await sendImageMessage(conversation, content, files)
+      await sendImageMessage(conversation, content, files, 'image')
       clearReferences()
     }
   } catch (error) {
@@ -855,20 +863,29 @@ function formatSearchResult(result: DebugSearchResult, ownerId: string, sourceCo
 }
 
 
-async function sendImageMessage(conversation: StudioConversation, prompt: string, files: File[]) {
+async function sendImageMessage(
+  conversation: StudioConversation,
+  prompt: string,
+  files: File[],
+  mode: Extract<StudioComposeMode, 'image' | 'video'> = 'image',
+) {
+  const isVideo = mode === 'video'
   const assistantMessage = addMessage(conversation, {
     role: 'assistant',
-    mode: 'image',
-    content: files.length ? '图像编辑任务已提交' : '图片任务已提交',
+    mode,
+    content: isVideo
+      ? '视频任务已提交'
+      : (files.length ? '图像编辑任务已提交' : '图片任务已提交'),
     status: 'queued',
     model: imageForm.model,
-    imageSize: imageForm.size,
-    imageCount: normalizeImageCount(imageForm.n),
+    imageSize: isVideo ? undefined : imageForm.size,
+    imageCount: isVideo ? undefined : normalizeImageCount(imageForm.n),
   })
 
   let task: ImageTask
   try {
-    task = files.length
+    // 视频模式不走图生图；图像模式有参考图才 createEdit
+    task = (!isVideo && files.length)
       ? await imageTasksApi.createEdit({
         prompt,
         files,
@@ -880,12 +897,12 @@ async function sendImageMessage(conversation: StudioConversation, prompt: string
       : await imageTasksApi.createGeneration({
         prompt,
         model: imageForm.model || DEFAULT_IMAGE_MODEL,
-        n: normalizeImageCount(imageForm.n),
+        n: isVideo ? 1 : normalizeImageCount(imageForm.n),
         size: imageForm.size,
         quality: imageForm.quality || DEFAULT_IMAGE_QUALITY,
       })
   } catch (error) {
-    const message = errorMessage(error, '图片任务提交失败')
+    const message = errorMessage(error, isVideo ? '视频任务提交失败' : '图片任务提交失败')
     assistantMessage.status = 'error'
     assistantMessage.content = message
     assistantMessage.error = message
@@ -900,7 +917,7 @@ async function sendImageMessage(conversation: StudioConversation, prompt: string
   touchConversation(conversation)
   rememberImageTaskId(task.id)
   mergeImageTasks([task])
-  toast.success('图片任务已提交')
+  toast.success(isVideo ? '视频任务已提交' : '图片任务已提交')
   scheduleImagePoll()
 }
 
@@ -918,12 +935,14 @@ function toggleFullscreen() {
 
 function modeRequestErrorFallback(mode: StudioComposeMode) {
   if (mode === 'image') return '图片生成失败'
+  if (mode === 'video') return '视频生成失败'
   if (mode === 'search') return '搜索请求失败'
   return '对话请求失败'
 }
 
 function modeRetryErrorFallback(mode: StudioComposeMode) {
   if (mode === 'image') return '图片重新生成失败'
+  if (mode === 'video') return '视频重新生成失败'
   if (mode === 'search') return '搜索重新请求失败'
   return '对话重新生成失败'
 }
