@@ -371,12 +371,15 @@
 
             <LogDetailTimeline v-if="timelineLog" :log="timelineLog" />
 
-            <section v-if="tracePayloadSummary" class="detail-field-section">
+            <section
+              v-if="traceLoading || tracePayloadSummary.length"
+              class="detail-field-section"
+            >
               <div class="detail-field-section__header">
                 <span>载荷快照</span>
                 <span v-if="traceLoading" class="text-xs text-muted-foreground">加载中…</span>
               </div>
-              <div class="detail-field-grid">
+              <div v-if="tracePayloadSummary.length" class="detail-field-grid">
                 <DetailFieldCard
                   v-for="field in tracePayloadSummary"
                   :key="field.label"

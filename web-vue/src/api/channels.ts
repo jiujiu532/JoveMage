@@ -98,6 +98,31 @@ export type ChannelTraceResponse = {
   updated_at?: number
 }
 
+/** Firefly credits 对账单账号行（POST /api/channels/firefly/reconcile）。 */
+export type FireflyReconcileAccountRow = {
+  account_id: string
+  ledger_used?: number | null
+  local_credits?: number | null
+  remote_credits?: number | null
+  remote_total?: number | null
+  remote_used?: number | null
+  drift?: number | null
+  status: 'ok' | 'drift' | 'error' | string
+  error?: string | null
+}
+
+/** Firefly credits 对账汇总。 */
+export type FireflyReconcileResponse = {
+  channel?: string
+  tolerance?: number
+  total?: number
+  ok: number
+  drift: number
+  error: number
+  accounts: FireflyReconcileAccountRow[]
+  ts?: number
+}
+
 export const channelsApi = {
   /** 渠道描述符权威列表（鉴权：Bearer） */
   list: () => apiClient.get<never, ChannelsListResponse>('/api/channels'),
@@ -116,5 +141,18 @@ export const channelsApi = {
   getTrace: (traceId: string) =>
     apiClient.get<never, ChannelTraceResponse>(
       `/api/channels/traces/${encodeURIComponent(traceId)}`,
+    ),
+
+  /**
+   * Firefly credits 对账：本地账本 vs 远端余额。
+   * POST /api/channels/firefly/reconcile?tolerance=
+   */
+  reconcileFirefly: (tolerance?: number) =>
+    apiClient.post<never, FireflyReconcileResponse>(
+      '/api/channels/firefly/reconcile',
+      null,
+      typeof tolerance === 'number' && Number.isFinite(tolerance)
+        ? { params: { tolerance } }
+        : undefined,
     ),
 }

@@ -177,6 +177,82 @@
           </div>
         </section>
 
+        <!-- Credits 对账 -->
+        <section class="ff-card">
+          <header class="ff-card__header">
+            <span class="ff-card__icon" aria-hidden="true"><Icon icon="mdi:scale-balance" class="h-4 w-4" /></span>
+            <div class="ff-card__headtext">
+              <p class="ff-card__title">Credits 对账</p>
+              <p class="ff-card__desc">比对本地账本与 Adobe 远端余额，标出漂移账号。</p>
+            </div>
+            <button
+              type="button"
+              class="ff-reconcile-btn"
+              :disabled="reconcileLoading"
+              @click="runReconcile"
+            >
+              {{ reconcileLoading ? '对账中…' : '对账' }}
+            </button>
+          </header>
+
+          <p v-if="reconcileError" class="ff-reconcile-error">{{ reconcileError }}</p>
+
+          <template v-if="reconcileResult">
+            <div class="ff-reconcile-metrics">
+              <div class="ff-reconcile-metric">
+                <span class="ff-reconcile-metric__label">一致</span>
+                <span class="ff-reconcile-metric__value ff-reconcile-metric__value--ok">{{ reconcileResult.ok }}</span>
+              </div>
+              <div class="ff-reconcile-metric">
+                <span class="ff-reconcile-metric__label">漂移</span>
+                <span class="ff-reconcile-metric__value ff-reconcile-metric__value--drift">{{ reconcileResult.drift }}</span>
+              </div>
+              <div class="ff-reconcile-metric">
+                <span class="ff-reconcile-metric__label">错误</span>
+                <span class="ff-reconcile-metric__value ff-reconcile-metric__value--error">{{ reconcileResult.error }}</span>
+              </div>
+              <div class="ff-reconcile-metric">
+                <span class="ff-reconcile-metric__label">合计</span>
+                <span class="ff-reconcile-metric__value">{{ reconcileResult.total ?? reconcileResult.accounts.length }}</span>
+              </div>
+            </div>
+
+            <div v-if="reconcileResult.accounts.length" class="ff-reconcile-table-wrap">
+              <table class="ff-reconcile-table">
+                <thead>
+                  <tr>
+                    <th>账号</th>
+                    <th>本地</th>
+                    <th>远端</th>
+                    <th>漂移</th>
+                    <th>状态</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="row in reconcileResult.accounts"
+                    :key="row.account_id"
+                    :class="{
+                      'ff-reconcile-row--drift': row.status === 'drift' || (row.drift != null && Number(row.drift) !== 0),
+                      'ff-reconcile-row--error': row.status === 'error',
+                    }"
+                  >
+                    <td class="ff-reconcile-id" :title="row.account_id">{{ shortId(row.account_id) }}</td>
+                    <td>{{ formatCredit(row.local_credits) }}</td>
+                    <td>{{ formatCredit(row.remote_credits) }}</td>
+                    <td>{{ formatCredit(row.drift) }}</td>
+                    <td>
+                      <span class="ff-reconcile-status" :data-status="row.status">{{ statusLabel(row.status) }}</span>
+                      <span v-if="row.error" class="ff-reconcile-row-error" :title="String(row.error)">{{ row.error }}</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p v-else class="ff-reconcile-empty">暂无 Firefly 账号可对账。</p>
+          </template>
+        </section>
+
         <SurfaceBox tone="muted" density="compact" class="text-xs leading-5 text-muted-foreground">
           账号请在「账号管理」中以 source_type = firefly 录入 Express Cookie。本页配置不参与 ChatGPT 的 CF / FlareSolverr 清障链路。
         </SurfaceBox>
@@ -191,11 +267,63 @@ import { Icon } from '@iconify/vue'
 import { Checkbox, FormField, HelpTip, Input } from 'nanocat-ui'
 import FormSection from '@/components/ai/FormSection.vue'
 import SurfaceBox from '@/components/ai/SurfaceBox.vue'
+import {
+  channelsApi,
+  type FireflyReconcileResponse,
+} from '@/api/channels'
 import type { Settings } from '@/types/api'
 
 const props = defineProps<{
   settings: Settings
 }>()
+
+const reconcileLoading = ref(false)
+const reconcileError = ref('')
+const reconcileResult = ref<FireflyReconcileResponse | null>(null)
+
+function formatCredit(value: unknown): string {
+  if (value == null || value === '') return '—'
+  const num = Number(value)
+  if (!Number.isFinite(num)) return String(value)
+  return Number.isInteger(num) ? String(num) : num.toFixed(2)
+}
+
+function shortId(id: string): string {
+  const raw = String(id || '').trim()
+  if (raw.length <= 18) return raw || '—'
+  return `${raw.slice(0, 8)}…${raw.slice(-6)}`
+}
+
+function statusLabel(status: string): string {
+  const value = String(status || '').toLowerCase()
+  if (value === 'ok') return '一致'
+  if (value === 'drift') return '漂移'
+  if (value === 'error') return '错误'
+  return value || '—'
+}
+
+async function runReconcile() {
+  reconcileLoading.value = true
+  reconcileError.value = ''
+  try {
+    const data = await channelsApi.reconcileFirefly()
+    reconcileResult.value = {
+      ok: Number(data?.ok) || 0,
+      drift: Number(data?.drift) || 0,
+      error: Number(data?.error) || 0,
+      total: Number(data?.total) || 0,
+      tolerance: data?.tolerance,
+      channel: data?.channel,
+      ts: data?.ts,
+      accounts: Array.isArray(data?.accounts) ? data.accounts : [],
+    }
+  } catch (err: unknown) {
+    reconcileResult.value = null
+    reconcileError.value = err instanceof Error ? err.message : '对账失败'
+  } finally {
+    reconcileLoading.value = false
+  }
+}
 
 const defaultModelSuggestions = [
   'firefly-nano-banana-pro',
@@ -450,6 +578,168 @@ const videoDefaultModelProxy = computed({
 .ff-video-toggle--on {
   border-color: var(--bauhaus-ink);
   background: hsl(var(--accent) / 0.4);
+}
+
+/* Credits 对账 */
+.ff-reconcile-btn {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border: 2px solid var(--bauhaus-ink);
+  border-radius: var(--radius);
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  box-shadow: var(--shadow-hard-sm);
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+.ff-reconcile-btn:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+}
+.ff-reconcile-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.ff-reconcile-error {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--bauhaus-red, #ff4d4d);
+  border: 1px solid color-mix(in srgb, var(--bauhaus-red, #ff4d4d) 40%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bauhaus-red, #ff4d4d) 10%, transparent);
+}
+.ff-reconcile-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.ff-reconcile-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--bauhaus-line-soft);
+  border-radius: var(--radius);
+  background: hsl(var(--muted) / 0.35);
+}
+.ff-reconcile-metric__label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+.ff-reconcile-metric__value {
+  font-family: var(--font-display, inherit);
+  font-size: 1.15rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--foreground));
+}
+.ff-reconcile-metric__value--ok {
+  color: #5a8f2f;
+}
+.ff-reconcile-metric__value--drift {
+  color: var(--bauhaus-red, #ff4d4d);
+}
+.ff-reconcile-metric__value--error {
+  color: #c45c7a;
+}
+.ff-reconcile-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--bauhaus-line-soft);
+  border-radius: var(--radius);
+}
+.ff-reconcile-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.ff-reconcile-table th,
+.ff-reconcile-table td {
+  padding: 0.5rem 0.65rem;
+  text-align: left;
+  border-bottom: 1px solid var(--bauhaus-line-soft);
+  vertical-align: middle;
+}
+.ff-reconcile-table th {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted) / 0.35);
+  white-space: nowrap;
+}
+.ff-reconcile-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.ff-reconcile-row--drift {
+  background: color-mix(in srgb, var(--bauhaus-red, #ff4d4d) 10%, transparent);
+}
+.ff-reconcile-row--error {
+  background: color-mix(in srgb, #c45c7a 10%, transparent);
+}
+.ff-reconcile-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ff-reconcile-status {
+  display: inline-block;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border-radius: 999px;
+  border: 1px solid var(--bauhaus-line-soft);
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+}
+.ff-reconcile-status[data-status='ok'] {
+  border-color: color-mix(in srgb, #5a8f2f 40%, transparent);
+  background: color-mix(in srgb, #5a8f2f 14%, transparent);
+  color: #5a8f2f;
+}
+.ff-reconcile-status[data-status='drift'] {
+  border-color: color-mix(in srgb, var(--bauhaus-red, #ff4d4d) 40%, transparent);
+  background: color-mix(in srgb, var(--bauhaus-red, #ff4d4d) 14%, transparent);
+  color: var(--bauhaus-red, #ff4d4d);
+}
+.ff-reconcile-status[data-status='error'] {
+  border-color: color-mix(in srgb, #c45c7a 40%, transparent);
+  background: color-mix(in srgb, #c45c7a 14%, transparent);
+  color: #c45c7a;
+}
+.ff-reconcile-row-error {
+  display: block;
+  margin-top: 2px;
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  color: hsl(var(--muted-foreground));
+}
+.ff-reconcile-empty {
+  margin: 0;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+}
+
+@media (max-width: 640px) {
+  .ff-reconcile-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 html[data-theme='dark'] .ff-card,

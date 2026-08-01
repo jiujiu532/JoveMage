@@ -139,8 +139,10 @@ import StateBadge from '@/components/ai/StateBadge.vue'
 import StateBlock from '@/components/ai/StateBlock.vue'
 import {
   channelsApi,
+  type AccountUsageFailureReason,
   type AccountUsageProfile,
   type AccountUsageRecentItem,
+  type AccountUsageToday,
 } from '@/api/channels'
 import { useClipboard } from '@/composables/useClipboard'
 import { resolveAccountChannelId } from '@/config/channels'
@@ -160,24 +162,19 @@ const error = ref('')
 const profile = ref<AccountUsageProfile | null>(null)
 let lastLoadedId = ''
 
-const channelId = computed(() => {
-  if (profile.value?.channel_id || profile.value?.channel) {
-    return resolveAccountChannelId(profile.value.channel_id || profile.value.channel)
-  }
-  return resolveAccountChannelId(props.sourceType)
-})
+const channelId = computed(() => resolveAccountChannelId(props.sourceType))
 
 const metricItems = computed(() => {
-  const data = profile.value
-  const today = data?.today_calls ?? 0
-  const rate = normalizeSuccessRate(data?.success_rate)
-  const credits = data?.credits_used ?? 0
-  const recentCount = Array.isArray(data?.recent) ? data!.recent.length : 0
+  const today = profile.value?.today
+  const calls = Number(today?.calls) || 0
+  const rate = normalizeSuccessRate(today?.success_rate)
+  const credits = Number(today?.credits) || 0
+  const recentCount = Array.isArray(profile.value?.recent) ? profile.value!.recent.length : 0
   return [
     {
       key: 'today',
       label: '今日调用',
-      value: today,
+      value: calls,
       icon: 'lucide:activity',
     },
     {
@@ -219,11 +216,11 @@ const recentRows = computed<RecentRow[]>(() => {
 })
 
 const failureRows = computed(() => {
-  const map = profile.value?.failure_reasons || {}
-  return Object.entries(map)
-    .map(([reason, count]) => ({
-      reason: String(reason || 'unknown'),
-      count: Number(count) || 0,
+  const list = Array.isArray(profile.value?.failure_reasons) ? profile.value!.failure_reasons : []
+  return list
+    .map((item) => ({
+      reason: String(item?.reason || 'unknown'),
+      count: Number(item?.count) || 0,
     }))
     .filter((item) => item.count > 0)
     .sort((a, b) => b.count - a.count)
@@ -268,18 +265,30 @@ function formatTimeLabel(value: unknown): string {
 }
 
 function normalizeRecentRow(item: AccountUsageRecentItem, index: number, fallbackChannel: string): RecentRow {
-  const timeRaw = item.time ?? item.at ?? item.created_at
-  const action = String(item.action || item.kind || item.type || 'call').trim() || 'call'
+  // 后端 account_profile.recent 以 ts（unix 秒）为准；其它字段仅兼容兜底
+  const loose = item as AccountUsageRecentItem & {
+    time?: unknown
+    at?: unknown
+    created_at?: unknown
+    kind?: unknown
+    type?: unknown
+    status?: unknown
+    success?: unknown
+    traceId?: unknown
+    channel_id?: unknown
+  }
+  const timeRaw = item.ts ?? loose.time ?? loose.at ?? loose.created_at
+  const action = String(item.action || loose.kind || loose.type || 'call').trim() || 'call'
   const model = String(item.model || '').trim() || '—'
-  const traceId = String(item.trace_id || item.traceId || '').trim()
-  const channel = resolveAccountChannelId(item.channel_id || item.channel || fallbackChannel)
+  const traceId = String(item.trace_id || loose.traceId || '').trim()
+  const channel = resolveAccountChannelId(item.channel || loose.channel_id || fallbackChannel)
 
-  let resultLabel = String(item.result || item.status || '').trim()
+  let resultLabel = String(item.result || loose.status || '').trim()
   let resultTone: RecentRow['resultTone'] = 'muted'
-  if (item.success === true) {
+  if (loose.success === true) {
     resultLabel = resultLabel || 'success'
     resultTone = 'success'
-  } else if (item.success === false) {
+  } else if (loose.success === false) {
     resultLabel = resultLabel || 'error'
     resultTone = 'danger'
   } else {
@@ -299,7 +308,7 @@ function normalizeRecentRow(item: AccountUsageRecentItem, index: number, fallbac
   }
 
   return {
-    key: traceId || `${action}-${index}-${timeRaw || ''}`,
+    key: traceId || `${action}-${index}-${timeRaw ?? ''}`,
     timeLabel: formatTimeLabel(timeRaw),
     actionLabel: action,
     modelLabel: model,
@@ -349,19 +358,72 @@ async function reload() {
   }
 }
 
+function emptyToday(): AccountUsageToday {
+  return {
+    calls: 0,
+    success: 0,
+    failed: 0,
+    success_rate: 0,
+    credits: 0,
+    quota: 0,
+  }
+}
+
+function normalizeToday(raw: unknown): AccountUsageToday {
+  const bag = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+  // 嵌套 today.{calls,success_rate,credits} 为主；扁平 today_calls/credits_used 仅兜底
+  return {
+    calls: Number(bag.calls ?? bag.today_calls) || 0,
+    success: Number(bag.success) || 0,
+    failed: Number(bag.failed) || 0,
+    success_rate: Number(bag.success_rate) || 0,
+    credits: Number(bag.credits ?? bag.credits_used) || 0,
+    quota: Number(bag.quota) || 0,
+  }
+}
+
+function normalizeFailureReasons(raw: unknown): AccountUsageFailureReason[] {
+  if (Array.isArray(raw)) {
+    return raw
+      .map((item) => {
+        if (!item || typeof item !== 'object') return null
+        const row = item as Record<string, unknown>
+        return {
+          reason: String(row.reason || 'unknown'),
+          count: Number(row.count) || 0,
+        }
+      })
+      .filter((item): item is AccountUsageFailureReason => Boolean(item && item.count > 0))
+  }
+  // 兼容旧 map 形状 { reason: count }
+  if (raw && typeof raw === 'object') {
+    return Object.entries(raw as Record<string, unknown>)
+      .map(([reason, count]) => ({
+        reason: String(reason || 'unknown'),
+        count: Number(count) || 0,
+      }))
+      .filter((item) => item.count > 0)
+  }
+  return []
+}
+
 function normalizeProfile(raw: AccountUsageProfile | null | undefined, accountId: string): AccountUsageProfile {
-  const source = raw && typeof raw === 'object' ? raw : ({} as AccountUsageProfile)
+  const source = raw && typeof raw === 'object' ? (raw as AccountUsageProfile & Record<string, unknown>) : null
+  if (!source) {
+    return {
+      account_id: accountId,
+      today: emptyToday(),
+      failure_reasons: [],
+      recent: [],
+    }
+  }
+  // 优先嵌套 today；若缺席则把整包当扁平字段兜底
+  const todaySource = source.today && typeof source.today === 'object' ? source.today : source
   return {
     account_id: String(source.account_id || accountId),
-    channel: source.channel,
-    channel_id: source.channel_id,
-    today_calls: Number(source.today_calls) || 0,
-    success_rate: Number(source.success_rate) || 0,
-    credits_used: Number(source.credits_used) || 0,
+    today: normalizeToday(todaySource),
+    failure_reasons: normalizeFailureReasons(source.failure_reasons),
     recent: Array.isArray(source.recent) ? source.recent : [],
-    failure_reasons: source.failure_reasons && typeof source.failure_reasons === 'object'
-      ? source.failure_reasons
-      : {},
   }
 }
 

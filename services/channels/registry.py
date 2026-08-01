@@ -62,7 +62,8 @@ def _build_static_registry() -> dict[str, ChannelEntry]:
         is_default=True,
         credential_type="token",
         registerable=True,
-        capabilities=["chat", "image"],
+        # edit：真实支持 /v1/images/edits（图生图/参考图）；与前端能力驱动 UI 对齐
+        capabilities=["chat", "image", "edit"],
         enabled=True,
         # ChatGPT 配置留在 config 顶层，不是 channels.chatgpt.*
         config_ns="",
