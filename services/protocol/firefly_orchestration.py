@@ -38,6 +38,12 @@ from services.backends.firefly_video_catalog import (
 )
 from services.backends.firefly_video_payloads import build_firefly_video_payload
 from services.channel_usage_service import channel_usage_service
+from services.channels.runtime import (
+    acquire_channel_rate,
+    is_channel_open,
+    record_channel_failure,
+    record_channel_success,
+)
 from services.config import config
 from services.image_failure import ImageFailure, classify_image_exception, image_failure
 from services.protocol.conversation import (
@@ -55,6 +61,21 @@ from services.request_cancel_service import RequestCancelledError
 from utils.diagnostics import diagnostic_excerpt
 from utils.helper import is_firefly_model, is_firefly_video_model
 from utils.log import logger
+
+
+def _firefly_acquire_upstream_budget(*, op: str = "poll") -> None:
+    """Firefly 打上游前 acquire 渠道速率预算（03 §10 占位兑现）。
+
+    失败按暂时不可用 503 终结，避免无界打爆 Adobe；不碰全局线程池。
+    """
+    ok = acquire_channel_rate("firefly", op=op, timeout_sec=30.0)
+    if not ok:
+        raise ImageGenerationError(
+            "firefly channel rate budget exhausted",
+            status_code=503,
+            error_type="server_error",
+            code="upstream_unavailable",
+        )
 
 # 槽位 finalize：success + 可选 failure / quota_consumed
 FinalizeImageSlot = Callable[..., None]
@@ -167,6 +188,34 @@ def _run_firefly_account_attempts(
 
     for attempt in range(1, attempts + 1):
         _raise_if_request_cancelled(request)
+        # 渠道级熔断：open 时立即 503 终结，不烧重试额度、不占号槽
+        # 仅判 firefly；ChatGPT 主航道不经此路径
+        if is_channel_open(ledger_channel):
+            status = {}
+            try:
+                from services.channels.runtime import channel_circuit_status
+
+                status = channel_circuit_status(ledger_channel)
+            except Exception:
+                status = {}
+            open_payload = {
+                "event": "firefly_channel_circuit_open",
+                "channel": ledger_channel,
+                "index": index,
+                "attempt": attempt,
+                "fail_count": status.get("fail_count"),
+                "open_until": status.get("until"),
+            }
+            open_payload.update(extra)
+            logger.warning(open_payload)
+            raise ImageGenerationError(
+                "firefly channel temporarily unavailable (circuit open)",
+                status_code=503,
+                error_type="server_error",
+                code="upstream_unavailable",
+                account_email=account_email,
+            )
+
         account_wait_started = time.perf_counter()
         image_slot_finalized = False
         token = ""
@@ -283,6 +332,26 @@ def _run_firefly_account_attempts(
                 attempt_seq=_attempt,
                 attempt_started=_attempt_started,
             )
+            # 渠道熔断计数：成功清零 / 失败累计（仅 firefly 编排路径）
+            try:
+                if success:
+                    record_channel_success(ledger_channel)
+                else:
+                    record_channel_failure(
+                        ledger_channel,
+                        trace_id=str(request.trace_id or request.call_id or ""),
+                        model=str(request.model or ""),
+                        account_id=str(
+                            (_account.get("account_id") or _account.get("email") or account_email or "system")
+                        ),
+                    )
+            except Exception as circuit_exc:
+                logger.warning({
+                    "event": "firefly_channel_circuit_record_failed",
+                    "channel": ledger_channel,
+                    "success": success,
+                    "error": diagnostic_excerpt(circuit_exc, 500),
+                })
 
         _monitor_image_stage(
             request,
@@ -328,6 +397,25 @@ def _run_firefly_account_attempts(
                     attempt_seq=attempt,
                     attempt_started=attempt_started,
                 )
+                # 不走 finalize，单独计熔断失败
+                try:
+                    record_channel_failure(
+                        ledger_channel,
+                        trace_id=str(request.trace_id or request.call_id or ""),
+                        model=str(request.model or ""),
+                        account_id=str(
+                            (account.get("account_id") if isinstance(account, dict) else None)
+                            or account_email
+                            or "system"
+                        ),
+                    )
+                except Exception as circuit_exc:
+                    logger.warning({
+                        "event": "firefly_channel_circuit_record_failed",
+                        "channel": ledger_channel,
+                        "success": False,
+                        "error": diagnostic_excerpt(circuit_exc, 500),
+                    })
             except Exception as report_exc:
                 report_payload = {
                     "event": evt_report_exhausted,
@@ -803,6 +891,8 @@ def _generate_single_image_firefly(
         gen_started = time.perf_counter()
         # 已在线程池 worker 内；generate_image 同步阻塞轮询。
         # 签名以 (token, payload) 为准，timeout/poll 作可选 kwargs 兼容。
+        # 上游入口前 acquire 渠道速率预算（防 poll 打爆 Adobe）
+        _firefly_acquire_upstream_budget(op="poll")
         try:
             image_bytes = firefly_generate(
                 token,
@@ -963,6 +1053,7 @@ def _generate_single_image_firefly_edit(
 
         # 3) 同步 generate
         gen_started = time.perf_counter()
+        _firefly_acquire_upstream_budget(op="poll")
         try:
             image_bytes = firefly_generate(
                 token,
@@ -1374,6 +1465,7 @@ def _generate_single_video_firefly(
             entity_mentions=entity_mentions or None,
         )
         gen_started = time.perf_counter()
+        _firefly_acquire_upstream_budget(op="poll")
         try:
             video_result = firefly_generate_video(
                 token,

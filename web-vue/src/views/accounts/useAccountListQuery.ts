@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { accountsApi } from '@/api/accounts'
 import type { Account, AccountListParams } from '@/api/accounts'
 import { usePagedList } from '@/composables/usePagedList'
@@ -6,6 +6,7 @@ import {
   buildChannelTabOptions,
   listChannels,
   resolveAccountChannelId,
+  useChannelRegistry,
 } from '@/config/channels'
 import { preferenceKeys } from '@/lib/preferences'
 import { type AccountStatusFilter } from './viewUtils'
@@ -75,8 +76,17 @@ export function useAccountListQuery(options: UseAccountListQueryOptions) {
    * 顶部渠道 Tab 选项：从 channels.ts 数据驱动。
    * 将来 setChannelsFromApi 后自动出现新渠道，无需改本文件。
    */
+  const channelRegistry = useChannelRegistry()
   const channelTabOptions = computed(() => {
+    // 依赖注册表，API 刷新后 Tab 自动重算
+    void channelRegistry.value
     const counts: Record<string, number> = { ...channelCounts.value }
+    // 优先用描述符里的 account_count
+    for (const channel of listChannels()) {
+      if (typeof channel.account_count === 'number') {
+        counts[channel.id] = channel.account_count
+      }
+    }
     if (sourceFilter.value === 'all') {
       counts.all = accountAllTotal.value || accountListTotal.value
     } else if (sourceFilter.value) {
@@ -84,6 +94,13 @@ export function useAccountListQuery(options: UseAccountListQueryOptions) {
       if (counts.all == null) counts.all = accountAllTotal.value || accountListTotal.value
     }
     return buildChannelTabOptions(counts)
+  })
+
+  // 当前 Tab 对应渠道若被禁用，回落到「全部」
+  watch(channelTabOptions, (tabs) => {
+    if (!tabs.some((tab) => tab.value === sourceFilter.value)) {
+      sourceFilter.value = 'all'
+    }
   })
 
   /** 兼容旧名：下拉筛选项（若别处仍引用） */

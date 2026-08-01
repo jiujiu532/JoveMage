@@ -7,7 +7,12 @@ from sqlalchemy import Column, Float, Integer, String, Text, create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-from services.storage.base import StorageBackend
+from services.storage.base import (
+    CHANNEL_USAGE_DAILY_AGGREGATE_NOTE,
+    StorageBackend,
+    aggregate_channel_usage_rows,
+    is_channel_usage_aggregate_row,
+)
 from services.storage.channel_usage import normalize_channel_usage_entry
 
 Base = declarative_base()
@@ -182,6 +187,113 @@ class DatabaseStorageBackend(StorageBackend):
             return items
         finally:
             session.close()
+
+    def delete_channel_usage_before(self, ts: float) -> int:
+        """删除 ts 之前的明细行；跳过 note=daily_aggregate 的冷数据。"""
+        cutoff = float(ts)
+        session = self.Session()
+        try:
+            # 先查再删：SQLAlchemy 1.x 对复杂 OR 的 bulk delete 在部分方言上不友好
+            candidates = (
+                session.query(ChannelUsageModel)
+                .filter(ChannelUsageModel.ts < cutoff)
+                .all()
+            )
+            deleted = 0
+            for row in candidates:
+                if self._row_is_aggregate(row):
+                    continue
+                session.delete(row)
+                deleted += 1
+            if deleted:
+                session.commit()
+            return deleted
+        except Exception as e:
+            session.rollback()
+            raise e
+        finally:
+            session.close()
+
+    def aggregate_channel_usage_daily(
+        self,
+        day_start_ts: float,
+        day_end_ts: float,
+    ) -> list[dict[str, Any]]:
+        """SQL 侧拉一天明细后按 (channel, account_id, action, result) 聚合。"""
+        start = float(day_start_ts)
+        end = float(day_end_ts)
+        session = self.Session()
+        try:
+            rows = (
+                session.query(ChannelUsageModel)
+                .filter(ChannelUsageModel.ts >= start)
+                .filter(ChannelUsageModel.ts < end)
+                .all()
+            )
+            items: list[dict[str, Any]] = []
+            for row in rows:
+                payload = self._row_to_entry(row)
+                if payload is not None:
+                    items.append(payload)
+            return aggregate_channel_usage_rows(
+                items,
+                day_start_ts=start,
+                day_end_ts=end,
+            )
+        finally:
+            session.close()
+
+    def export_channel_usage(self) -> list[dict[str, Any]]:
+        """导出全部 channel_usage 流水（备份用，无 limit）。"""
+        session = self.Session()
+        try:
+            rows = session.query(ChannelUsageModel).order_by(ChannelUsageModel.ts.asc()).all()
+            items: list[dict[str, Any]] = []
+            for row in rows:
+                payload = self._row_to_entry(row)
+                if payload is not None:
+                    items.append(payload)
+            return items
+        finally:
+            session.close()
+
+    @staticmethod
+    def _row_is_aggregate(row: ChannelUsageModel) -> bool:
+        if str(row.note or "").strip() == CHANNEL_USAGE_DAILY_AGGREGATE_NOTE:
+            return True
+        try:
+            payload = json.loads(row.data) if row.data else {}
+        except (TypeError, json.JSONDecodeError):
+            payload = {}
+        return is_channel_usage_aggregate_row(payload if isinstance(payload, dict) else None)
+
+    @staticmethod
+    def _row_to_entry(row: ChannelUsageModel) -> dict[str, Any] | None:
+        try:
+            payload = json.loads(row.data) if row.data else None
+            if isinstance(payload, dict):
+                return payload
+        except (TypeError, json.JSONDecodeError):
+            pass
+        try:
+            cost = json.loads(row.cost) if row.cost else {}
+        except (TypeError, json.JSONDecodeError):
+            cost = {}
+        return {
+            "id": row.id,
+            "ts": row.ts,
+            "trace_id": row.trace_id,
+            "channel": row.channel,
+            "account_id": row.account_id,
+            "action": row.action,
+            "model": row.model or "",
+            "cost": cost if isinstance(cost, dict) else {},
+            "result": row.result,
+            "upstream_id": row.upstream_id,
+            "note": row.note,
+            "attempt_seq": row.attempt_seq,
+            "elapsed_ms": row.elapsed_ms,
+        }
 
     def _load_rows(self, model: type[AccountModel] | type[AuthKeyModel]) -> list[dict[str, Any]]:
         session = self.Session()

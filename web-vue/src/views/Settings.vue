@@ -553,7 +553,7 @@
       />
 
       <SettingsFireflyPanel
-        v-else-if="activeSettingsTab === 'firefly' && localSettings"
+        v-else-if="isFireflySettingsTab && localSettings"
         :settings="localSettings"
       />
 
@@ -599,6 +599,7 @@ import {
   prepareSettingsPatch,
 } from '@/api/settings'
 import { parseProxyReference, proxyApi, type ClearanceTestResult, type ProxyRuntimeStatus, type ProxyTestResult } from '@/api/proxy'
+import { useChannels } from '@/composables/useChannels'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useSettingsStore } from '@/stores/settings'
 import { useToast } from '@/composables/useToast'
@@ -630,6 +631,7 @@ const settingsStore = useSettingsStore()
 const { settings } = storeToRefs(settingsStore)
 const toast = useToast()
 const confirmDialog = useConfirmDialog()
+const { bypassChannels, loadChannels } = useChannels()
 
 const localSettings = ref<Settings | null>(null)
 const savedSettingsBaseline = ref<Settings | null>(null)
@@ -645,20 +647,39 @@ const clearanceTestTarget = ref('https://chatgpt.com')
 const clearanceTestResult = ref<ClearanceTestResult | null>(null)
 let hasActivatedOnce = false
 
-const settingsTabs = [
-  { value: 'basic', label: '基础配置' },
-  { value: 'image-errors', label: '图片错误' },
-  { value: 'firefly', label: 'Firefly' },
-  { value: 'storage', label: '图片存储与审核' },
-  { value: 'prompts', label: '提示词源' },
-  { value: 'domain-blacklist', label: '域名黑名单' },
-  { value: 'backup', label: 'R2 备份' },
-  { value: 'keys', label: '用户密钥' },
-  { value: 'api-docs', label: '接口接入' },
-  { value: 'canvas', label: '画布入口' },
-  { value: 'cpa', label: 'CPA' },
-  { value: 'sub2api', label: 'Sub2API' },
-]
+const settingsTabs = computed(() => {
+  // 设置页展示全部已注册旁路渠道（含未启用），否则关了开关就回不去
+  const channelTabs = bypassChannels.value.map((channel) => ({
+    value: `channel:${channel.id}`,
+    label: channel.id === 'firefly' ? 'Firefly' : channel.name,
+  }))
+  return [
+    { value: 'basic', label: '基础配置' },
+    { value: 'image-errors', label: '图片错误' },
+    ...channelTabs,
+    { value: 'storage', label: '图片存储与审核' },
+    { value: 'prompts', label: '提示词源' },
+    { value: 'domain-blacklist', label: '域名黑名单' },
+    { value: 'backup', label: 'R2 备份' },
+    { value: 'keys', label: '用户密钥' },
+    { value: 'api-docs', label: '接口接入' },
+    { value: 'canvas', label: '画布入口' },
+    { value: 'cpa', label: 'CPA' },
+    { value: 'sub2api', label: 'Sub2API' },
+  ]
+})
+
+const isFireflySettingsTab = computed(() => {
+  if (activeSettingsTab.value === 'firefly') return true
+  return activeSettingsTab.value === 'channel:firefly'
+})
+
+watch(settingsTabs, (tabs) => {
+  // 当前 Tab 对应渠道关掉后，回落到基础配置
+  if (!tabs.some((tab) => tab.value === activeSettingsTab.value)) {
+    activeSettingsTab.value = 'basic'
+  }
+})
 
 const logLevelOptions = ['debug', 'info', 'warning', 'error']
 
@@ -1023,7 +1044,10 @@ watch(settings, (value) => {
 const reloadSettings = async () => {
   settingsLoadError.value = ''
   try {
-    await settingsStore.loadSettings()
+    await Promise.all([
+      settingsStore.loadSettings(),
+      loadChannels(true),
+    ])
     await loadProxyRuntimeStatus(true)
   } catch (error: any) {
     settingsLoadError.value = error.message || '设置加载失败'

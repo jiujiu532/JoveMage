@@ -1,5 +1,6 @@
-import { nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
 import { statsApi } from '@/api/stats'
+import { useChannels } from '@/composables/useChannels'
 import {
   getLineChartTheme,
   getPieChartTheme,
@@ -15,6 +16,9 @@ import { BP } from '@/lib/breakpoints'
 
 
 export function useDashboardPage() {
+  const { enabledChannels, loadChannels } = useChannels()
+  /** 概览渠道卡：只渲染启用渠道（缺席=不出现） */
+  const channelCards = computed(() => enabledChannels.value)
   type ChartInstance = {
     setOption: (
       option: unknown,
@@ -688,6 +692,8 @@ export function useDashboardPage() {
     const entrySeq = ++dashboardEntrySeq
     resetDashboardViewState()
     await nextTick()
+    // 渠道卡号池统计：进概览时强制刷新描述符
+    void loadChannels(true)
     const refreshed = await refreshDashboardData(true)
     if (entrySeq !== dashboardEntrySeq) return
     dashboardDataReady.value = true
@@ -1110,6 +1116,7 @@ export function useDashboardPage() {
 
   return {
     stats,
+    channelCards,
     dashboardDataReady,
     timeRangeHourlyRequests,
     timeRangeTrend,

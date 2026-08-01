@@ -6,6 +6,10 @@ token 到期则用 cookie 刷 IMS access_token；失败退避 60/180/600/1800s�
 
 集成层通过 accounts_getter / accounts_updater 注入账号读写，本模块不直接
 依赖 account_service，便于单测与解耦。
+
+凭证保鲜度（03-backend-governance §2）：
+- Cookie/IMS token 临期字段由 compute_cookie_credential_freshness 产出
+- 刷新失败写 channel_usage Ledger（action=refresh, result=failed），不静默吞掉
 """
 
 from __future__ import annotations
@@ -13,6 +17,7 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable
+from datetime import datetime, timezone
 from typing import Any
 
 from services.backends.firefly_auth import (
@@ -31,6 +36,8 @@ _DEFAULT_INTERVAL_HOURS = 15
 _DEFAULT_SKEW_SECONDS = 300
 # 距过期不足该时间也强制刷新，避免 interval 推后留下真空
 _FORCE_REFRESH_WITHIN_SECONDS = 3600
+# 账号页亮黄阈值：剩余有效期 ≤ 该小时数视为临期（前端消费 credential_expiring_soon）
+_DEFAULT_WARN_WITHIN_HOURS = 6.0
 
 _lock = threading.Lock()
 _runner_started = False
@@ -50,14 +57,37 @@ def _account_key(account: dict[str, Any]) -> str:
     return str(id(account))
 
 
+def _parse_epoch_seconds(value: object) -> float | None:
+    """解析 epoch / ISO 时间戳为 epoch 秒。"""
+    if value in (None, ""):
+        return None
+    if isinstance(value, (int, float)):
+        ts = float(value)
+        return ts if ts > 0 else None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        ts = float(text)
+        if ts > 0:
+            return ts
+    except (TypeError, ValueError):
+        pass
+    try:
+        # 支持尾部 Z
+        iso = text.replace("Z", "+00:00") if text.endswith("Z") else text
+        dt = datetime.fromisoformat(iso)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.timestamp()
+    except (TypeError, ValueError):
+        return None
+
+
 def _token_exp_ts(account: dict[str, Any]) -> float | None:
     """解析 token 过期时间：优先 token_expires_at，否则 JWT exp。"""
-    expires_at = account.get("token_expires_at")
-    try:
-        exp_ts = float(expires_at) if expires_at not in (None, "") else None
-    except (TypeError, ValueError):
-        exp_ts = None
-    if exp_ts is not None and exp_ts > 0:
+    exp_ts = _parse_epoch_seconds(account.get("token_expires_at"))
+    if exp_ts is not None:
         return exp_ts
 
     token = str(account.get("access_token") or "").strip()
@@ -71,6 +101,130 @@ def _token_exp_ts(account: dict[str, Any]) -> float | None:
     except (TypeError, ValueError):
         return None
     return exp_ts if exp_ts > 0 else None
+
+
+def compute_cookie_credential_freshness(
+    account: dict[str, Any],
+    *,
+    now: float | None = None,
+    interval_hours: float | None = None,
+    warn_within_hours: float | None = None,
+) -> dict[str, Any]:
+    """计算 Firefly Cookie / IMS token 临期字段（只读，不触发远端刷新）。
+
+    过期时间口径（有则用，无则按刷新周期推算）：
+    1. token_expires_at / JWT exp（IMS access_token 过期点，cookie 刷 token 的真实期限）
+    2. 否则 last_cookie_refresh_at / last_token_refresh_at + firefly_refresh_interval_hours
+       （Adobe 会话无显式 cookie 过期字段时，按配置刷新周期推算下次应刷新点）
+    3. 再否则 unknown
+
+    字段契约（账号页亮黄，前端 agent 消费）：
+    - credential_expires_at: float | None — 过期/应刷新 epoch 秒
+    - credential_expires_in_hours: float | None — 剩余小时（已过期为负）
+    - credential_expiring_soon: bool — 临期（0 < remaining_hours <= warn_within_hours）
+    - credential_expired: bool — 已过期（remaining_hours <= 0）
+    - credential_freshness_source: "token_expires_at" | "jwt_exp" | "refresh_interval_estimate" | "unknown"
+    """
+    now_ts = float(now if now is not None else time.time())
+    interval_h = float(
+        interval_hours if interval_hours is not None else _DEFAULT_INTERVAL_HOURS
+    )
+    if interval_h <= 0:
+        interval_h = float(_DEFAULT_INTERVAL_HOURS)
+    warn_h = float(
+        warn_within_hours if warn_within_hours is not None else _DEFAULT_WARN_WITHIN_HOURS
+    )
+    if warn_h < 0:
+        warn_h = float(_DEFAULT_WARN_WITHIN_HOURS)
+
+    source = "unknown"
+    exp_ts: float | None = None
+
+    # 1) 显式 token_expires_at
+    explicit = _parse_epoch_seconds(account.get("token_expires_at"))
+    if explicit is not None:
+        exp_ts = explicit
+        source = "token_expires_at"
+    else:
+        # 2) JWT exp（与 _token_exp_ts 一致，但要区分 source）
+        token = str(account.get("access_token") or "").strip()
+        if token:
+            jwt_exp = decode_jwt_exp(token)
+            try:
+                jwt_ts = float(jwt_exp) if jwt_exp is not None else None
+            except (TypeError, ValueError):
+                jwt_ts = None
+            if jwt_ts is not None and jwt_ts > 0:
+                exp_ts = jwt_ts
+                source = "jwt_exp"
+
+    # 3) 无过期点时按上次 cookie 刷新 + 刷新周期推算
+    if exp_ts is None:
+        last_refresh = None
+        for field in ("last_cookie_refresh_at", "last_token_refresh_at"):
+            last_refresh = _parse_epoch_seconds(account.get(field))
+            if last_refresh is not None:
+                break
+        if last_refresh is not None:
+            exp_ts = last_refresh + interval_h * 3600.0
+            source = "refresh_interval_estimate"
+        elif str(account.get("cookie") or "").strip():
+            # 有 cookie 但从无刷新记录：以 now+interval 作为下一次应刷新点（保守）
+            exp_ts = now_ts + interval_h * 3600.0
+            source = "refresh_interval_estimate"
+
+    remaining_hours: float | None
+    if exp_ts is None:
+        remaining_hours = None
+        expired = False
+        expiring_soon = False
+    else:
+        remaining_hours = (exp_ts - now_ts) / 3600.0
+        # 保留一位小数，便于前端展示「还有 X 小时」
+        remaining_hours = round(remaining_hours, 1)
+        expired = remaining_hours <= 0
+        expiring_soon = (not expired) and remaining_hours <= warn_h
+
+    return {
+        "credential_expires_at": exp_ts,
+        "credential_expires_in_hours": remaining_hours,
+        "credential_expiring_soon": bool(expiring_soon),
+        "credential_expired": bool(expired),
+        "credential_freshness_source": source,
+    }
+
+
+def _record_refresh_failure_to_ledger(
+    account: dict[str, Any],
+    exc: BaseException,
+    *,
+    fails: int,
+) -> None:
+    """刷新失败写 channel_usage Ledger；失败只打日志，不抛回主链路。"""
+    try:
+        # 懒加载：避免 daemon 启动路径硬依赖存储后端
+        from services.channel_usage_service import (
+            channel_usage_service,
+            resolve_account_id,
+        )
+
+        key = _account_key(account)
+        account_id = resolve_account_id(account) or key
+        note = redact_auth_diagnostic(str(exc), 500)
+        channel_usage_service.append(
+            trace_id=f"firefly-refresh-{key[:24]}-{int(time.time())}",
+            channel="firefly",
+            account_id=account_id,
+            action="refresh",
+            result="failed",
+            note=note,
+            attempt_seq=fails,
+        )
+    except Exception as ledger_exc:
+        logger.warning(
+            "firefly refresh ledger append failed: "
+            + redact_auth_diagnostic(str(ledger_exc))[:200]
+        )
 
 
 def _should_refresh(
@@ -157,10 +311,13 @@ def refresh_one_account(
         account.get("account_id") or ""
     ).strip()
 
+    now_ts = time.time()
     update: dict[str, Any] = {
         "access_token": access_token,
         # 与号池中文状态对齐
         "status": "正常",
+        # Cookie→IMS 刷新成功时间，供临期推算（refresh_interval_estimate）
+        "last_cookie_refresh_at": int(now_ts),
     }
     if exp_ts:
         update["token_expires_at"] = int(exp_ts)
@@ -168,6 +325,14 @@ def refresh_one_account(
         update["account_id"] = account_id
     if expires_in_i is not None:
         update["expires_in"] = expires_in_i
+    # 临期预警字段随写回一并落库，账号页可直接读（亮黄）
+    merged_for_freshness = {**account, **update}
+    update.update(
+        compute_cookie_credential_freshness(
+            merged_for_freshness,
+            now=now_ts,
+        )
+    )
     return update
 
 
@@ -181,8 +346,8 @@ def _process_accounts(
         accounts = accounts_getter() or []
     except Exception as exc:
         logger.warning(
-            "firefly refresh getter failed: %s",
-            redact_auth_diagnostic(str(exc))[:200],
+            "firefly refresh getter failed: "
+            + redact_auth_diagnostic(str(exc))[:200]
         )
         return
 
@@ -231,9 +396,8 @@ def _process_accounts(
                 exp_ts=new_exp,
             )
             logger.info(
-                "firefly token refreshed account=%s expires_at=%s",
-                key[:16],
-                update.get("token_expires_at"),
+                f"firefly token refreshed account={key[:16]} "
+                f"expires_at={update.get('token_expires_at')}"
             )
         except Exception as exc:
             with _lock:
@@ -242,12 +406,11 @@ def _process_accounts(
                 delay = _FAILURE_BACKOFFS[min(fails - 1, len(_FAILURE_BACKOFFS) - 1)]
                 _next_retry_at[key] = now + delay
             logger.warning(
-                "firefly refresh failed account=%s fails=%s delay=%ss err=%s",
-                key[:16],
-                fails,
-                delay,
-                redact_auth_diagnostic(str(exc))[:200],
+                f"firefly refresh failed account={key[:16]} fails={fails} "
+                f"delay={delay}s err={redact_auth_diagnostic(str(exc))[:200]}"
             )
+            # 刷新失败进 Ledger（不静默吞掉；退避重试仍按阶梯，但每次失败都记账）
+            _record_refresh_failure_to_ledger(account, exc, fails=fails)
             # 连续失败达上限 → 标「异常」（由 updater 写回）
             if fails >= len(_FAILURE_BACKOFFS):
                 try:
@@ -260,8 +423,8 @@ def _process_accounts(
                     )
                 except Exception as upd_exc:
                     logger.warning(
-                        "firefly mark invalid failed: %s",
-                        redact_auth_diagnostic(str(upd_exc))[:200],
+                        "firefly mark invalid failed: "
+                        + redact_auth_diagnostic(str(upd_exc))[:200]
                     )
 
 
@@ -302,8 +465,7 @@ def start_refresh_daemon(
 
         def _run() -> None:
             logger.info(
-                "firefly refresh daemon started interval_hours=%s",
-                interval_hours,
+                f"firefly refresh daemon started interval_hours={interval_hours}"
             )
             while not _stop_event.is_set():
                 try:
@@ -314,8 +476,8 @@ def start_refresh_daemon(
                     )
                 except Exception as exc:
                     logger.warning(
-                        "firefly refresh loop error: %s",
-                        redact_auth_diagnostic(str(exc))[:200],
+                        "firefly refresh loop error: "
+                        + redact_auth_diagnostic(str(exc))[:200]
                     )
                 _stop_event.wait(_DAEMON_TICK_SECONDS)
             logger.info("firefly refresh daemon stopped")

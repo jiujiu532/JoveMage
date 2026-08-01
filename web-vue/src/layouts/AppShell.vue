@@ -422,6 +422,7 @@ import PageLoadingState from '@/components/ai/PageLoadingState.vue'
 import ApiInfoModal from '@/components/shell/ApiInfoModal.vue'
 import ReleaseNotesModal from '@/components/shell/ReleaseNotesModal.vue'
 import { useAppVersion } from '@/composables/useAppVersion'
+import { useChannels } from '@/composables/useChannels'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useMediaQuery } from '@/composables/useMediaQuery'
 import { MQ } from '@/lib/breakpoints'
@@ -467,6 +468,7 @@ const {
   imageModels: supportedImageModels,
   loadModelCatalog,
 } = useModelCatalog(() => settingsStore.settings)
+const { loadChannels } = useChannels()
 
 const menuItems = [
   {
@@ -819,6 +821,10 @@ onMounted(() => {
   document.addEventListener('keydown', handleSidebarEscape)
   void loadCurrentVersion()
   void loadThirdPartyApps()
+  // 渠道描述符：壳层挂载时拉一次，失败回落本地默认表
+  if (authStore.isLoggedIn) {
+    void loadChannels()
+  }
 })
 
 onBeforeUnmount(() => {

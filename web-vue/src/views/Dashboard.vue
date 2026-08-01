@@ -20,6 +20,15 @@
       />
     </section>
 
+    <!-- 渠道并列卡：从 /api/channels 描述符渲染；未启用渠道不出现 -->
+    <section v-if="channelCards.length" class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <ChannelCard
+        v-for="channel in channelCards"
+        :key="channel.id"
+        :descriptor="channel"
+      />
+    </section>
+
     <section class="grid grid-cols-1 gap-4">
       <ChartCard title="模型请求分布">
         <template #actions>
@@ -75,6 +84,7 @@
 
 <script setup lang="ts">
 import { ChartCard, StatCard } from 'nanocat-ui'
+import ChannelCard from '@/components/ai/ChannelCard.vue'
 import PageLoadingState from '@/components/ai/PageLoadingState.vue'
 import TimeRangeTabs from '@/components/ai/TimeRangeTabs.vue'
 import { useDashboardPage } from './dashboard/useDashboardPage'
@@ -83,6 +93,7 @@ defineOptions({ name: 'Dashboard' })
 
 const {
   stats,
+  channelCards,
   dashboardDataReady,
   timeRangeHourlyRequests,
   timeRangeTrend,

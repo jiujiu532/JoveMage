@@ -13,6 +13,7 @@ from api import accounts, ai, channels, image_tasks, prompts, register, system, 
 from api.errors import install_exception_handlers
 from api.support import resolve_web_asset, start_limited_account_watcher
 from services.backup_service import backup_service
+from services.channel_usage_service import start_channel_usage_retention_scheduler
 from services.config import config
 from services.image_service import start_image_cleanup_scheduler
 from services.log_service import cleanup_old_logs, start_log_cleanup_scheduler
@@ -60,6 +61,7 @@ def create_app() -> FastAPI:
         thread = start_limited_account_watcher(stop_event)
         cleanup_thread = start_image_cleanup_scheduler(stop_event)
         log_cleanup_thread = start_log_cleanup_scheduler(stop_event)
+        channel_usage_retention_thread = start_channel_usage_retention_scheduler(stop_event)
         backup_service.start()
         config.cleanup_old_images()
         cleanup_old_logs()
@@ -70,6 +72,7 @@ def create_app() -> FastAPI:
             thread.join(timeout=1)
             cleanup_thread.join(timeout=1)
             log_cleanup_thread.join(timeout=1)
+            channel_usage_retention_thread.join(timeout=1)
             backup_service.stop()
 
     app = FastAPI(title="JoveMage", version=app_version, lifespan=lifespan)

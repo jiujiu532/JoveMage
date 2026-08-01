@@ -4,6 +4,7 @@ export { default as AccountSelectionSummary } from './AccountSelectionSummary.vu
 export { default as ActionRow } from './ActionRow.vue'
 export { ChartCard, StatCard } from 'nanocat-ui'
 export { default as ChannelBadge } from './ChannelBadge.vue'
+export { default as ChannelCard } from './ChannelCard.vue'
 export { default as ChannelDot } from './ChannelDot.vue'
 export { default as CodeBlock } from './CodeBlock.vue'
 export { default as ConsoleSegmentedTabs } from './ConsoleSegmentedTabs.vue'

@@ -25,6 +25,15 @@
           root-class="gallery-filter-search"
           @update:model-value="searchQuery = $event"
         />
+        <div class="gallery-filter-field gallery-filter-field--channel">
+          <GroupedSelectMenu
+            v-model="channelFilter"
+            :options="channelFilterOptions"
+            placeholder="全部渠道"
+            selected-indicator="none"
+            aria-label="渠道筛选"
+          />
+        </div>
         <div class="gallery-filter-field gallery-filter-field--tag">
           <GroupedSelectMenu
             v-model="tagFilter"
@@ -116,6 +125,7 @@
             :size-label="formatSize(file.size)"
             :dimensions="formatDimensions(file)"
             :time-remaining="file.expires_in_seconds !== null ? formatTimeRemaining(file.expires_in_seconds) : ''"
+            :channel-id="resolveGalleryChannelId(file)"
             @preview="openPreview"
             @select="(item, checked) => toggleSelect(item.path, checked)"
             @image-error="(event, item) => handleImageError(event, item.path)"
@@ -327,6 +337,11 @@ import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { usePagedList } from '@/composables/usePagedList'
 import { useSelectionSet } from '@/composables/useSelectionSet'
 import { useToast } from '@/composables/useToast'
+import {
+  buildChannelFilterOptions,
+  channelOfModel,
+  useChannelRegistry,
+} from '@/config/channels'
 import { downloadUrlAsFile, saveBlob } from '@/lib/downloads'
 import { preferenceKeys } from '@/lib/preferences'
 
@@ -351,6 +366,8 @@ const tagEditorFile = ref<GalleryFile | null>(null)
 const tagDraft = ref('')
 const copiedFileKey = ref('')
 const tagFilter = ref('all')
+/** 渠道筛选：all | chatgpt | firefly；前端按文件名/标签/模型字段推断 */
+const channelFilter = ref('all')
 const searchQuery = ref('')
 const startDate = ref('')
 const endDate = ref('')
@@ -386,6 +403,33 @@ const operationProgress = reactive({
   error: '',
   busy: false,
 })
+
+const channelRegistry = useChannelRegistry()
+const channelFilterOptions = computed(() => {
+  void channelRegistry.value
+  return buildChannelFilterOptions({ allLabel: '全部渠道' })
+})
+
+/**
+ * 从画廊文件推断渠道：优先后端 channel 字段，其次 model 前缀，
+ * 再看 tags / 文件名里是否含 firefly- 命名空间。
+ */
+function resolveGalleryChannelId(file: GalleryFile | null | undefined): string {
+  if (!file) return ''
+  const raw = file as GalleryFile & { channel?: string; model?: string; source_type?: string }
+  const explicit = String(raw.channel || raw.source_type || '').trim().toLowerCase()
+  if (explicit && explicit !== 'all') {
+    if (explicit === 'firefly' || explicit.startsWith('firefly')) return 'firefly'
+    if (explicit === 'chatgpt') return 'chatgpt'
+  }
+  const model = String(raw.model || '').trim()
+  if (model) return channelOfModel(model)
+  const haystack = [file.filename, file.path, ...(file.tags || [])].join(' ').toLowerCase()
+  if (haystack.includes('firefly-') || haystack.includes('firefly_') || /(^|[^a-z])firefly([^a-z]|$)/.test(haystack)) {
+    return 'firefly'
+  }
+  return 'chatgpt'
+}
 
 const tagOptions = computed(() => [
   { label: '全部标签', value: 'all' },
@@ -439,9 +483,14 @@ async function loadGallery() {
       galleryApi.getTags().catch(() => allTags.value),
     ])
     if (loadToken !== latestLoadToken) return
-    files.value = data.files
+    const channelId = String(channelFilter.value || 'all').trim().toLowerCase()
+    const nextFiles = (!channelId || channelId === 'all')
+      ? data.files
+      : data.files.filter((file) => resolveGalleryChannelId(file) === channelId)
+    files.value = nextFiles
     totalSize.value = data.total_size
-    totalItems.value = data.total
+    // 渠道过滤时 total 以当前页过滤结果为弱提示
+    totalItems.value = (!channelId || channelId === 'all') ? data.total : nextFiles.length
     counts.value = data.counts
     currentPage.value = data.page
     allTags.value = tags || []
@@ -843,7 +892,7 @@ function canPreviewFile(file: GalleryFile): boolean {
   return file.size > 128 && !isBroken(file.path)
 }
 
-watch([tagFilter, startDate, endDate, pageSize], () => {
+watch([tagFilter, channelFilter, startDate, endDate, pageSize], () => {
   resetAndLoad()
 })
 const galleryMetricItems = computed(() => [

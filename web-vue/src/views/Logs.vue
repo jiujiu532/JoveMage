@@ -70,6 +70,14 @@
         </div>
         <div class="log-filter-select">
           <GroupedSelectMenu
+            v-model="filters.channel"
+            :options="channelFilterOptions"
+            selected-indicator="none"
+            aria-label="渠道筛选"
+          />
+        </div>
+        <div class="log-filter-select">
+          <GroupedSelectMenu
             :model-value="advancedConditionSelection"
             :groups="advancedConditionMenuGroups"
             multiple
@@ -461,6 +469,11 @@ import { Button, Checkbox, EmptyState, Input } from 'nanocat-ui'
 import type { ActionMenuItem } from 'nanocat-ui'
 import ConfirmDialog from '@/components/ui/AppConfirmDialog.vue'
 import GroupedSelectMenu from '@/components/ui/GroupedSelectMenu.vue'
+import {
+  buildChannelFilterOptions,
+  channelOfModel,
+  useChannelRegistry,
+} from '@/config/channels'
 import DateRangeInputs from '@/components/ai/DateRangeInputs.vue'
 import DetailFieldCard from '@/components/ai/DetailFieldCard.vue'
 import DetailImagePreview from '@/components/ai/DetailImagePreview.vue'
@@ -614,6 +627,8 @@ const filters = reactive({
   endpoint: '',
   model: '',
   account: '',
+  /** 渠道筛选：all | chatgpt | firefly | …；前端按模型前缀级联 */
+  channel: 'all',
   conversationId: '',
   search: '',
   startDate: '',
@@ -624,6 +639,13 @@ const filters = reactive({
   set limit(value: number) {
     pageSize.value = value
   },
+})
+
+/** 依赖渠道注册表，后端刷新后下拉自动更新 */
+const channelRegistry = useChannelRegistry()
+const channelFilterOptions = computed(() => {
+  void channelRegistry.value
+  return buildChannelFilterOptions({ allLabel: '全部渠道' })
 })
 
 const runtimeFilters = reactive({
@@ -742,6 +764,7 @@ const activeSystemFilterCount = computed(() => [
   filters.endpoint,
   filters.model,
   filters.account,
+  filters.channel !== 'all' ? filters.channel : '',
   filters.conversationId,
   filters.type !== 'call' ? filters.type || 'all' : '',
 ].filter(Boolean).length)
@@ -812,7 +835,16 @@ const statusOptions = computed(() => [
   { label: '限流/受限', value: 'limited' },
 ])
 
-const modelOptions = computed(() => optionFromFacet(logMeta.facets.models, '全部模型'))
+/** 模型下拉：选中渠道后级联收窄（防渠道×模型不存在组合） */
+const modelOptions = computed(() => {
+  const all = optionFromFacet(logMeta.facets.models, '全部模型')
+  const channelId = String(filters.channel || 'all').trim().toLowerCase()
+  if (!channelId || channelId === 'all') return all
+  return all.filter((option) => {
+    if (!option.value) return true
+    return channelOfModel(option.value) === channelId
+  })
+})
 const accountOptions = computed(() => optionFromFacet(logMeta.facets.accounts, '全部账号'))
 const advancedConditionCount = computed(() => [
   filters.type !== 'call' ? filters.type || 'all' : '',
@@ -1191,6 +1223,7 @@ function resetFilters() {
   filters.endpoint = ''
   filters.model = ''
   filters.account = ''
+  filters.channel = 'all'
   filters.conversationId = ''
   filters.search = ''
   filters.startDate = ''
@@ -1352,15 +1385,23 @@ async function fetchLogs() {
       limit: filters.limit,
       offset: pageOffset.value,
     })
-    logs.value = response.items.map((item, index) => normalizeSystemLogRow(item, index, { apiBaseUrl }))
+    // 渠道筛选：后端暂无 channel 参数时前端按模型归属过滤
+    const channelId = String(filters.channel || 'all').trim().toLowerCase()
+    const mapped = response.items.map((item, index) => normalizeSystemLogRow(item, index, { apiBaseUrl }))
+    const filtered = (!channelId || channelId === 'all')
+      ? mapped
+      : mapped.filter((row) => channelOfModel(row.model) === channelId)
+    logs.value = filtered
     pruneLogSelection(logs.value.map((item) => item.id))
     const targetId = routeTargetLogId.value
     if (targetId) {
       const targetLog = logs.value.find((item) => item.id === targetId)
       if (targetLog) selectedLog.value = targetLog
     }
-    logMeta.total = response.total
-    totalCount.value = response.total
+    // 有渠道过滤时 total 以本页过滤结果为弱提示；无过滤走后端 total
+    const total = (!channelId || channelId === 'all') ? response.total : filtered.length
+    logMeta.total = total
+    totalCount.value = total
     logMeta.limit = response.limit
     logMeta.offset = response.offset
     logMeta.has_more = response.has_more
@@ -1534,6 +1575,7 @@ watch(
     filters.endpoint,
     filters.model,
     filters.account,
+    filters.channel,
     filters.conversationId,
     filters.search,
     filters.startDate,
@@ -1541,6 +1583,20 @@ watch(
     filters.limit,
   ],
   scheduleFilterFetch,
+)
+
+/** 渠道切换后：模型若不在新渠道命名空间内则清空，防脏组合 */
+watch(
+  () => filters.channel,
+  (channelId) => {
+    const selected = String(filters.model || '').trim()
+    if (!selected) return
+    const cid = String(channelId || 'all').trim().toLowerCase()
+    if (!cid || cid === 'all') return
+    if (channelOfModel(selected) !== cid) {
+      filters.model = ''
+    }
+  },
 )
 
 watch(currentPage, () => {

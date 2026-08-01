@@ -5,7 +5,11 @@ from pathlib import Path
 from typing import Any
 
 from services.json_file import read_json_file, write_json_file
-from services.storage.base import StorageBackend
+from services.storage.base import (
+    StorageBackend,
+    aggregate_channel_usage_rows,
+    is_channel_usage_aggregate_row,
+)
 from services.storage.channel_usage import match_channel_usage, normalize_channel_usage_entry
 
 
@@ -106,6 +110,50 @@ class JSONStorageBackend(StorageBackend):
         matched.sort(key=lambda row: float(row.get("ts") or 0), reverse=True)
         cap = max(1, min(int(limit or 100), 1000))
         return matched[:cap]
+
+    def delete_channel_usage_before(self, ts: float) -> int:
+        """删除 ts 之前的明细行；日聚合冷数据永久保留。"""
+        cutoff = float(ts)
+        with self._channel_usage_lock:
+            items = self._load_json_list(self.channel_usage_path)
+            kept: list[dict[str, Any]] = []
+            deleted = 0
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                if is_channel_usage_aggregate_row(item):
+                    kept.append(item)
+                    continue
+                try:
+                    row_ts = float(item.get("ts") or 0)
+                except (TypeError, ValueError):
+                    row_ts = 0.0
+                if row_ts < cutoff:
+                    deleted += 1
+                    continue
+                kept.append(item)
+            if deleted:
+                write_json_file(self.channel_usage_path, kept)
+            return deleted
+
+    def aggregate_channel_usage_daily(
+        self,
+        day_start_ts: float,
+        day_end_ts: float,
+    ) -> list[dict[str, Any]]:
+        with self._channel_usage_lock:
+            items = self._load_json_list(self.channel_usage_path)
+        return aggregate_channel_usage_rows(
+            items,
+            day_start_ts=day_start_ts,
+            day_end_ts=day_end_ts,
+        )
+
+    def export_channel_usage(self) -> list[dict[str, Any]]:
+        """导出全部 channel_usage 流水（备份用）。"""
+        with self._channel_usage_lock:
+            items = self._load_json_list(self.channel_usage_path)
+        return [dict(item) for item in items if isinstance(item, dict)]
 
     def health_check(self) -> dict[str, Any]:
         """健康检查"""

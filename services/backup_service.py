@@ -647,10 +647,46 @@ class BackupService:
                     "snapshots/auth_keys.json",
                     _json_bytes(config.get_storage_backend().load_auth_keys()),
                 )
+            # 多渠道 P1：账本与 channels.* 配置纳入备份（03 §5）
+            # 不依赖 include 开关——与 accounts_snapshot 同属可插拔后端数据，默认始终导出
+            self._add_channel_usage_snapshot(archive)
+            self._add_channels_config_snapshot(archive)
             if include.get("images"):
                 self._add_file_to_archive(archive, TAGS_FILE, "data/image_tags.json")
                 self._add_directory_to_archive(archive, config.images_dir, "data/images")
         return buffer.getvalue()
+
+    def _add_channel_usage_snapshot(self, archive: tarfile.TarFile) -> None:
+        """从当前存储后端导出 channel_usage 流水，不假设某个 json 文件路径。"""
+        try:
+            backend = config.get_storage_backend()
+            export = getattr(backend, "export_channel_usage", None)
+            if callable(export):
+                items = export()
+            else:
+                items = backend.query_channel_usage(limit=1000)
+            if not isinstance(items, list):
+                items = []
+        except Exception:
+            items = []
+        self._add_bytes_to_archive(
+            archive,
+            "snapshots/channel_usage.json",
+            _json_bytes(items),
+        )
+
+    def _add_channels_config_snapshot(self, archive: tarfile.TarFile) -> None:
+        """备份 config.data['channels'] 命名空间（缺省写空对象，保持恢复兼容）。"""
+        try:
+            raw = config.data.get("channels") if isinstance(config.data, dict) else None
+            channels = raw if isinstance(raw, dict) else {}
+        except Exception:
+            channels = {}
+        self._add_bytes_to_archive(
+            archive,
+            "snapshots/channels_config.json",
+            _json_bytes(channels),
+        )
 
     def _add_bytes_to_archive(self, archive: tarfile.TarFile, name: str, payload: bytes) -> None:
         info = tarfile.TarInfo(name=name)

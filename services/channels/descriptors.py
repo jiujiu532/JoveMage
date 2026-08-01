@@ -7,6 +7,7 @@ from typing import Any
 
 from services.account_service import AccountService, account_service
 from services.channels.registry import ChannelEntry, get_channel, list_channel_entries
+from services.channels.runtime import channel_circuit_status
 from services.config import config
 
 
@@ -75,6 +76,19 @@ def _resolve_enabled(entry: ChannelEntry) -> bool:
     return bool(entry.enabled)
 
 
+def _freshness_kind_for_channel(entry: ChannelEntry) -> str:
+    """号池 healthy_count 所用新鲜度口径标注（不改统计算法，只说明含义）。
+
+    - token_check：ChatGPT 等，last_remote_checked_at 在 refresh_account_interval_minute 内算 confirmed
+    - cookie_refresh：Firefly 等 cookie 凭证，同一套 _pool_health_metrics_from_accounts 数字，
+      但运维语义应对照 cookie/IMS 刷新（见 firefly_refresh.compute_cookie_credential_freshness）
+    """
+    cred = str(entry.credential_type or "").strip().lower()
+    if cred == "cookie" or entry.id == "firefly":
+        return "cookie_refresh"
+    return "token_check"
+
+
 def build_channel_descriptor(
     entry: ChannelEntry,
     *,
@@ -88,7 +102,14 @@ def build_channel_descriptor(
     payload["enabled"] = _resolve_enabled(entry)
     payload["account_count"] = len(channel_accounts)
     # healthy_count：与 evaluate_account_pool 的 current_available 同口径（新鲜 + 正常）
+    # 不另造「status==正常」简易统计；仅标注该渠道新鲜度口径来源
     payload["healthy_count"] = int(metrics.get("current_available") or 0)
+    payload["freshness_kind"] = _freshness_kind_for_channel(entry)
+    # 渠道熔断状态（P1-B）：概览卡可直接展示 open/until/fail_count；主航道恒为关闭态
+    try:
+        payload["circuit"] = channel_circuit_status(entry.id)
+    except Exception:
+        payload["circuit"] = {"open": False, "until": 0.0, "fail_count": 0}
     if entry.meter_kind == "credits" or entry.id == "firefly":
         payload["credits_total"] = _firefly_credits_total(channel_accounts)
     return payload

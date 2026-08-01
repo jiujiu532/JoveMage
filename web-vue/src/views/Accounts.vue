@@ -126,11 +126,21 @@
           <tbody class="text-sm text-foreground">
             <tr v-if="!loading && filteredAccounts.length === 0">
               <td colspan="11" class="py-6">
-                <EmptyState
-                  plain
-                  title="暂无账号数据"
-                  description="可以先导入 Access Token、Session JSON 或 CPA JSON 文件。"
-                />
+                <div class="flex flex-col items-center gap-3">
+                  <EmptyState
+                    plain
+                    :title="channelEmptyTitle"
+                    :description="channelEmptyDescription"
+                  />
+                  <Button
+                    v-if="sourceFilter === 'firefly'"
+                    size="sm"
+                    variant="primary"
+                    @click="openCreateModalForFirefly"
+                  >
+                    导入 Express Cookie
+                  </Button>
+                </div>
               </td>
             </tr>
             <tr
@@ -240,11 +250,21 @@
       <!-- 卡片：多列网格 -->
       <div v-else-if="effectiveViewMode === 'cards'" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         <div v-if="!loading && filteredAccounts.length === 0" class="col-span-full">
-          <EmptyState
-            plain
-            title="暂无账号数据"
-            description="可以先导入 Access Token、Session JSON 或 CPA JSON 文件。"
-          />
+          <div class="flex flex-col items-center gap-3">
+            <EmptyState
+              plain
+              :title="channelEmptyTitle"
+              :description="channelEmptyDescription"
+            />
+            <Button
+              v-if="sourceFilter === 'firefly'"
+              size="sm"
+              variant="primary"
+              @click="openCreateModalForFirefly"
+            >
+              导入 Express Cookie
+            </Button>
+          </div>
         </div>
 
         <article
@@ -357,11 +377,21 @@
         :class="effectiveViewMode === 'double' ? 'account-stream-grid--double' : 'account-stream-grid--single'"
       >
         <div v-if="!loading && filteredAccounts.length === 0" class="col-span-full">
-          <EmptyState
-            plain
-            title="暂无账号数据"
-            description="可以先导入 Access Token、Session JSON 或 CPA JSON 文件。"
-          />
+          <div class="flex flex-col items-center gap-3">
+            <EmptyState
+              plain
+              :title="channelEmptyTitle"
+              :description="channelEmptyDescription"
+            />
+            <Button
+              v-if="sourceFilter === 'firefly'"
+              size="sm"
+              variant="primary"
+              @click="openCreateModalForFirefly"
+            >
+              导入 Express Cookie
+            </Button>
+          </div>
         </div>
 
         <AccountStreamCard
@@ -884,7 +914,7 @@ import { actionMenuGroups } from '@/components/ai/menuItems'
 import GroupedSelectMenu from '@/components/ui/GroupedSelectMenu.vue'
 import type { Account } from '@/api/accounts'
 import { parseProxyReference } from '@/api/proxy'
-import { resolveAccountChannelId } from '@/config/channels'
+import { resolveAccountChannelId, channelShortName, getChannel } from '@/config/channels'
 import { useAccountsPage, type AccountImportMode } from './accounts/useAccountsPage'
 import {
   accountCreatedText,
@@ -1035,6 +1065,38 @@ const accountToolbarButtonClass = 'shrink-0 whitespace-nowrap justify-between ga
 const accountStatusDetailCardClass = 'w-72 account-status-detail-card'
 const accountToolbarSecondaryClass = `${accountToolbarButtonClass} text-muted-foreground`
 const importModalBusy = computed(() => importBusy.value || remoteImportBusy.value)
+
+/** 渠道空态文案：Firefly 引导导入 Express Cookie；其它渠道通用 */
+const channelEmptyTitle = computed(() => {
+  if (sourceFilter.value === 'firefly') return '还没有 Firefly 账号'
+  if (sourceFilter.value && sourceFilter.value !== 'all') {
+    const name = channelShortName(getChannel(sourceFilter.value) || sourceFilter.value)
+    return `还没有 ${name} 账号`
+  }
+  return '暂无账号数据'
+})
+
+const channelEmptyDescription = computed(() => {
+  if (sourceFilter.value === 'firefly') {
+    return '导入 Express Cookie 开始。到 new.express.adobe.com 登录后复制完整 Cookie，点下方按钮添加。'
+  }
+  if (sourceFilter.value && sourceFilter.value !== 'all') {
+    return '当前渠道还没有账号，先导入或手动添加。'
+  }
+  return '可以先导入 Access Token、Session JSON 或 CPA JSON 文件。'
+})
+
+function openCreateModalForFirefly() {
+  openCreateModal()
+  // 打开后切到 Firefly 来源（若 form 已暴露 source_type）
+  try {
+    // form 由 useAccountsPage 暴露；优先设 source_type
+    const pageForm = (form as { source_type?: string } | undefined)
+    if (pageForm) pageForm.source_type = 'firefly'
+  } catch {
+    // ignore
+  }
+}
 
 const accountGroupNameMap = computed(() => new Map(
   accountGroups.value.map((group) => [group.id, group.name || group.id]),

@@ -4,6 +4,8 @@
  * 后端接口未就绪时，页面用 DEFAULT_CHANNELS 渲染；就绪后调用 setChannelsFromApi。
  */
 
+import { computed, shallowRef, type ComputedRef } from 'vue'
+
 export type ChannelCapability = 'chat' | 'image' | 'video' | 'edit'
 export type ChannelCredentialType = 'token' | 'cookie'
 export type ChannelMeterKind = 'quota' | 'credits'
@@ -108,11 +110,18 @@ export const DEFAULT_CHANNELS: readonly ChannelDescriptor[] = Object.freeze([
   },
 ] as const satisfies readonly ChannelDescriptor[])
 
-/** 运行时注册表；初始=本地默认，可被 setChannelsFromApi 替换 */
-let channelRegistry: ChannelDescriptor[] = DEFAULT_CHANNELS.map((item) => ({ ...item }))
+/** 运行时注册表（响应式）；初始=本地默认，可被 setChannelsFromApi 替换 */
+const channelRegistry = shallowRef<ChannelDescriptor[]>(
+  DEFAULT_CHANNELS.map((item) => ({ ...item })),
+)
 
 function cleanId(value: unknown): string {
   return String(value || '').trim().toLowerCase()
+}
+
+/** 供 computed 依赖：注册表更新后自动重算 Tab / 分组等 */
+export function useChannelRegistry(): ComputedRef<ChannelDescriptor[]> {
+  return computed(() => channelRegistry.value.map((item) => ({ ...item })))
 }
 
 function normalizeDescriptor(raw: Partial<ChannelDescriptor> & { id: string }): ChannelDescriptor {
@@ -141,7 +150,7 @@ function normalizeDescriptor(raw: Partial<ChannelDescriptor> & { id: string }): 
 
 /** 当前渠道表（副本，避免外部原地改坏注册表） */
 export function listChannels(): ChannelDescriptor[] {
-  return channelRegistry.map((item) => ({ ...item }))
+  return channelRegistry.value.map((item) => ({ ...item }))
 }
 
 /** 仅启用渠道 */
@@ -149,19 +158,26 @@ export function listEnabledChannels(): ChannelDescriptor[] {
   return listChannels().filter((item) => item.enabled)
 }
 
-/** 旁路渠道（非默认主体） */
+/** 旁路渠道（非默认主体；含未启用，便于设置页打开开关） */
 export function listBypassChannels(): ChannelDescriptor[] {
   return listChannels().filter((item) => !item.is_default)
+}
+
+/** 已启用的旁路渠道（概览卡 / 筛选下拉用：缺席=不出现） */
+export function listEnabledBypassChannels(): ChannelDescriptor[] {
+  return listEnabledChannels().filter((item) => !item.is_default)
 }
 
 export function getChannel(id: string | null | undefined): ChannelDescriptor | undefined {
   const needle = cleanId(id)
   if (!needle) return undefined
-  return channelRegistry.find((item) => item.id === needle)
+  return channelRegistry.value.find((item) => item.id === needle)
 }
 
 export function getDefaultChannel(): ChannelDescriptor {
-  return channelRegistry.find((item) => item.is_default) || channelRegistry[0] || { ...DEFAULT_CHANNELS[0] }
+  return channelRegistry.value.find((item) => item.is_default)
+    || channelRegistry.value[0]
+    || { ...DEFAULT_CHANNELS[0] }
 }
 
 /**
@@ -187,13 +203,13 @@ export function setChannelsFromApi(channels: unknown): ChannelDescriptor[] {
   if (!next.some((item) => item.is_default)) {
     next[0] = { ...next[0], is_default: true, color: null }
   }
-  channelRegistry = next
+  channelRegistry.value = next
   return listChannels()
 }
 
 /** 恢复本地默认表（测试 / 回退） */
 export function resetChannelsToDefault(): void {
-  channelRegistry = DEFAULT_CHANNELS.map((item) => ({ ...item }))
+  channelRegistry.value = DEFAULT_CHANNELS.map((item) => ({ ...item }))
 }
 
 /**
@@ -220,13 +236,47 @@ export function isFireflyChannel(sourceType: unknown): boolean {
 export function channelOfModel(model: string): string {
   const value = String(model || '').trim().toLowerCase()
   if (!value) return getDefaultChannel().id
-  for (const channel of channelRegistry) {
+  for (const channel of channelRegistry.value) {
     if (channel.is_default) continue
     if (value === channel.id || value.startsWith(`${channel.id}-`) || value.startsWith(`${channel.id}_`)) {
       return channel.id
     }
   }
   return getDefaultChannel().id
+}
+
+/**
+ * 短展示名：Adobe Firefly → Firefly；主体保留 ChatGPT。
+ * UI 徽标/Tab/卡片标题用，避免长名撑破布局。
+ */
+export function channelShortName(channel: ChannelDescriptor | string | null | undefined): string {
+  const descriptor = typeof channel === 'string' || !channel ? getChannel(channel as string) : channel
+  if (!descriptor) return typeof channel === 'string' ? channel : ''
+  if (descriptor.id === 'firefly') return 'Firefly'
+  return descriptor.name
+}
+
+/**
+ * 渠道筛选下拉：全部 + 启用渠道。
+ * 未启用渠道不出现（空状态原则）。
+ */
+export function buildChannelFilterOptions(options?: {
+  allLabel?: string
+  includeDefault?: boolean
+}): Array<{ label: string; value: string }> {
+  const allLabel = options?.allLabel || '全部渠道'
+  const includeDefault = options?.includeDefault !== false
+  const items: Array<{ label: string; value: string }> = [
+    { label: allLabel, value: 'all' },
+  ]
+  for (const channel of listEnabledChannels()) {
+    if (!includeDefault && channel.is_default) continue
+    items.push({
+      label: channelShortName(channel),
+      value: channel.id,
+    })
+  }
+  return items
 }
 
 export function getChannelColorStyle(channel: ChannelDescriptor | string | null | undefined): ChannelColorStyle | null {
