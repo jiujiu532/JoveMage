@@ -111,8 +111,11 @@ def new_uuid() -> str:
 
 
 def is_firefly_model(model: object) -> bool:
-    """Adobe Firefly 渠道：模型 id 以 firefly- 为前缀。"""
-    return str(model or "").strip().lower().startswith("firefly-")
+    """Adobe Firefly 渠道：是否归属 firefly（权威路由见 channels.channel_for_model）。"""
+    # 延迟导入，避免 helper ↔ services 循环
+    from services.channels.registry import channel_for_model
+
+    return channel_for_model(model) == "firefly"
 
 
 # Firefly 图像族前缀（不含 firefly-）；视频识别时需排除，避免与 sora/veo/kling 混淆。
@@ -133,9 +136,10 @@ def is_firefly_video_model(model: object) -> bool:
 
     与图像族（nano-banana / gpt-image）互斥；不改变 is_firefly_model 行为。
     """
-    text = str(model or "").strip().lower()
-    if not text.startswith("firefly-"):
+    # 渠道归属走注册表；族内细分仍本地判断
+    if not is_firefly_model(model):
         return False
+    text = str(model or "").strip().lower()
     rest = text[len("firefly-") :]
     if not rest:
         return False
@@ -151,8 +155,10 @@ def is_firefly_video_model(model: object) -> bool:
 
 
 def image_model_channel(model: object) -> str:
-    """图片渠道：firefly-* → firefly，其余走 chatgpt。"""
-    return "firefly" if is_firefly_model(model) else "chatgpt"
+    """图片渠道：查注册表 channel_for_model（firefly-* → firefly，其余 chatgpt）。"""
+    from services.channels.registry import channel_for_model
+
+    return channel_for_model(model)
 
 
 def split_image_model(model: object) -> tuple[str | None, str | None]:

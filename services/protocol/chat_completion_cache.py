@@ -29,7 +29,7 @@ CACHEABLE_TEXT_KEYS = {
     "thinking_effort",
     "user",
 }
-INTERNAL_RESPONSE_KEYS = {"_account_email", "_conversation_id", "_call_id", "_image_urls"}
+INTERNAL_RESPONSE_KEYS = {"_account_email", "_conversation_id", "_call_id", "_trace_id", "_image_urls"}
 
 
 @dataclass

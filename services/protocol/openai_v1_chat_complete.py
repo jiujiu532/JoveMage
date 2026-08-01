@@ -242,6 +242,7 @@ def image_chat_response(body: dict[str, Any]) -> dict[str, Any]:
         # 与 images 端点一致：上游未出图只回文本/拒绝时走错误语义，不当正常完成
         message_as_error=True,
         call_id=str(body.get("_call_id") or ""),
+        trace_id=str(body.get("_trace_id") or ""),
         trace_image_perf=bool(body.get("_trace_image_perf")),
     )))
     response = completion_response(model, image_result_content(result), int(result.get("created") or 0) or None)
@@ -271,6 +272,7 @@ def image_chat_events(body: dict[str, Any]) -> Iterator[dict[str, Any]]:
         # 与 images 端点一致：生图只回 message 时 raise，避免 finish_reason=stop 假成功
         message_as_error=True,
         call_id=str(body.get("_call_id") or ""),
+        trace_id=str(body.get("_trace_id") or ""),
         trace_image_perf=bool(body.get("_trace_image_perf")),
     ))
     yield from stream_image_chat_completion(image_outputs, model)

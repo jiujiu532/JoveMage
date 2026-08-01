@@ -41,6 +41,7 @@
         {{ accountSecondaryText(item) }}
       </p>
       <div class="account-stream-card__tags">
+        <ChannelBadge :channel="accountChannelId" size="xs" />
         <StatusPill
           :label="accountSourceText(item)"
           tone-class="border-cyan-500/40 bg-cyan-500/10 text-cyan-600"
@@ -104,6 +105,8 @@ import { computed } from 'vue'
 import { Checkbox, StatusDetailPill, StatusPill } from 'nanocat-ui'
 import type { Account } from '@/api/accounts'
 import AccountActionButtons from '@/components/ai/AccountActionButtons.vue'
+import ChannelBadge from '@/components/ai/ChannelBadge.vue'
+import { resolveAccountChannelId } from '@/config/channels'
 import {
   accountCreatedText,
   accountPrimaryText,
@@ -128,6 +131,8 @@ const props = defineProps<{
   reloginBusy?: boolean
   density?: 'comfortable' | 'dense'
 }>()
+
+const accountChannelId = computed(() => resolveAccountChannelId(props.item.source_type))
 
 const emit = defineEmits<{
   (e: 'toggle-select', value: boolean): void

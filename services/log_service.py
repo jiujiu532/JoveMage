@@ -31,7 +31,7 @@ from utils.timezone import beijing_from_timestamp, beijing_now_str
 
 LOG_TYPE_CALL = "call"
 LOG_TYPE_ACCOUNT = "account"
-INTERNAL_RESPONSE_KEYS = {"_account_email", "_conversation_id", "_call_id", "_image_urls"}
+INTERNAL_RESPONSE_KEYS = {"_account_email", "_conversation_id", "_call_id", "_trace_id", "_image_urls"}
 LOG_IMAGE_URL_RE = re.compile(r"(?:!\[[^\]]*\]\()(?P<url>(?:https?://|/images/|/image-thumbnails/)[^\s)\"']+)\)")
 PERF_WAIT_WARN_MS = 1000
 REQUEST_TEXT_EXCERPT_LIMIT = 1000
@@ -843,6 +843,8 @@ class LoggedCall:
     request_text: str = ""
     request_shape: dict[str, int] | None = None
     call_id: str = field(default_factory=lambda: uuid4().hex[:16])
+    # 全链路溯源键：构造时生成，只读透传（与 call_id 并存，trace_id 更长便于对外报障）
+    trace_id: str = field(default_factory=lambda: uuid4().hex)
     perf_timings: dict[str, int] = field(default_factory=dict)
     trace_metadata: dict[str, object] = field(default_factory=dict)
 
@@ -972,9 +974,11 @@ class LoggedCall:
     def attach_trace_metadata(self, body: dict[str, Any]) -> None:
         if not isinstance(body, dict):
             return
+        # 始终透传 trace_id / call_id，供协议层 ConversationRequest 与账本使用
+        body["_call_id"] = self.call_id
+        body["_trace_id"] = self.trace_id
         if not self._trace_image_perf():
             return
-        body["_call_id"] = self.call_id
         body["_trace_image_perf"] = True
         self.trace_metadata.update(_image_trace_metadata(body))
 
@@ -1020,6 +1024,7 @@ class LoggedCall:
             "endpoint": self.endpoint,
             "model": self.model,
             "call_id": self.call_id,
+            "trace_id": self.trace_id,
             "started_at": beijing_from_timestamp(self.started),
             "ended_at": beijing_now_str(),
             "duration_ms": int((time.time() - self.started) * 1000),

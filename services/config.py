@@ -434,6 +434,98 @@ def _promote_legacy_settings(data: dict[str, object]) -> dict[str, object]:
     return _promote_legacy_proxy_runtime(_promote_legacy_basic_settings(data))
 
 
+# Firefly 平铺键 → channels.firefly.* 命名空间（见 multi-channel/01 §1.2 / 03 §6）
+FIREFLY_FLAT_CONFIG_KEYS: tuple[str, ...] = (
+    "firefly_enabled",
+    "firefly_poll_interval_sec",
+    "firefly_gen_timeout_sec",
+    "firefly_retry_max_attempts",
+    "firefly_refresh_interval_hours",
+    "firefly_default_model",
+    "firefly_video_enabled",
+    "firefly_video_poll_interval_sec",
+    "firefly_video_timeout_sec",
+    "firefly_video_default_model",
+)
+
+# channels.firefly 内字段名（去掉 firefly_ 前缀）
+_FIREFLY_NS_KEY_BY_FLAT: dict[str, str] = {
+    flat: flat.removeprefix("firefly_") for flat in FIREFLY_FLAT_CONFIG_KEYS
+}
+
+
+def _channels_firefly_dict(data: dict[str, object] | None) -> dict[str, object]:
+    root = data if isinstance(data, dict) else {}
+    channels = root.get("channels")
+    if not isinstance(channels, dict):
+        return {}
+    firefly = channels.get("firefly")
+    return dict(firefly) if isinstance(firefly, dict) else {}
+
+
+def _firefly_config_value(
+    data: dict[str, object] | None,
+    flat_key: str,
+    default: object = None,
+) -> object:
+    """新结构优先、旧平铺键兜底。channels.firefly.* > firefly_*。"""
+    root = data if isinstance(data, dict) else {}
+    ns_key = _FIREFLY_NS_KEY_BY_FLAT.get(flat_key, flat_key.removeprefix("firefly_"))
+    nested = _channels_firefly_dict(root)
+    if ns_key in nested:
+        return nested.get(ns_key)
+    if flat_key in root:
+        return root.get(flat_key)
+    return default
+
+
+def migrate_firefly_flat_keys_to_namespace(
+    data: dict[str, object] | None,
+    *,
+    drop_flat: bool = False,
+) -> tuple[dict[str, object], bool]:
+    """把 firefly_* 平铺键迁入 channels.firefly.*（幂等）。
+
+    - 新结构已有字段不覆盖（以 nested 为准）
+    - 默认**保留**旧平铺键，供存量读写兼容
+    - drop_flat=True 时才删除旧键（本期默认 False）
+    返回 (next_data, changed)。
+    """
+    next_data = dict(data or {})
+    flat_present = {key: next_data[key] for key in FIREFLY_FLAT_CONFIG_KEYS if key in next_data}
+    if not flat_present and not _channels_firefly_dict(next_data):
+        return next_data, False
+
+    channels = next_data.get("channels")
+    channels_dict: dict[str, object] = dict(channels) if isinstance(channels, dict) else {}
+    firefly = channels_dict.get("firefly")
+    firefly_dict: dict[str, object] = dict(firefly) if isinstance(firefly, dict) else {}
+
+    changed = False
+    for flat_key, value in flat_present.items():
+        ns_key = _FIREFLY_NS_KEY_BY_FLAT[flat_key]
+        if ns_key not in firefly_dict:
+            firefly_dict[ns_key] = value
+            changed = True
+
+    if firefly_dict != (firefly if isinstance(firefly, dict) else {}):
+        channels_dict["firefly"] = firefly_dict
+        if channels_dict != (channels if isinstance(channels, dict) else {}):
+            next_data["channels"] = channels_dict
+            changed = True
+        elif "channels" not in next_data:
+            next_data["channels"] = channels_dict
+            changed = True
+
+    if drop_flat:
+        for flat_key in FIREFLY_FLAT_CONFIG_KEYS:
+            if flat_key in next_data:
+                next_data.pop(flat_key, None)
+                changed = True
+
+    return next_data, changed
+
+
 # 设置项「********」哨兵：与 backup_service.get_settings 脱敏值一致，防止脱敏值被当真值写回
 _SECRET_SENTINEL = "********"
 
@@ -544,6 +636,8 @@ class ConfigStore:
         self._lock = threading.RLock()
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         self.data = _promote_legacy_settings(self._load())
+        # 启动时幂等迁移 firefly_* → channels.firefly.*（保留旧键）
+        self._maybe_migrate_firefly_namespace(persist=True)
         self._loaded_mtime_ns = self._config_mtime_ns()
         self._storage_backend: StorageBackend | None = None
         if _is_invalid_auth_key(self.auth_key):
@@ -565,16 +659,39 @@ class ConfigStore:
         except OSError:
             return 0
 
+    def _maybe_migrate_firefly_namespace(self, *, persist: bool = True) -> bool:
+        """幂等迁移；已迁则跳过。返回是否发生写入。"""
+        migrated, changed = migrate_firefly_flat_keys_to_namespace(self.data, drop_flat=False)
+        if not changed:
+            return False
+        self.data = migrated
+        if persist:
+            self._save()
+        return True
+
+    def ensure_firefly_namespace_migrated(self) -> bool:
+        """对外入口：起服务/测试可显式再跑一次（幂等）。"""
+        with self._lock:
+            self.reload_if_changed()
+            return self._maybe_migrate_firefly_namespace(persist=True)
+
     def reload_if_changed(self) -> None:
         with self._lock:
             current_mtime_ns = self._config_mtime_ns()
             if current_mtime_ns and current_mtime_ns != self._loaded_mtime_ns:
                 self.data = _promote_legacy_settings(self._load())
+                # 外部改盘后也补齐命名空间（不强制写盘，避免抢写；下次 update/启动再落）
+                migrated, changed = migrate_firefly_flat_keys_to_namespace(self.data, drop_flat=False)
+                if changed:
+                    self.data = migrated
                 self._loaded_mtime_ns = current_mtime_ns
 
     def _save(self) -> None:
         write_json_file(self.path, self.data)
         self._loaded_mtime_ns = self._config_mtime_ns()
+
+    def _read_firefly_value(self, flat_key: str, default: object = None) -> object:
+        return _firefly_config_value(self.data, flat_key, default)
 
     @property
     def auth_key(self) -> str:
@@ -653,6 +770,7 @@ class ConfigStore:
         return bool(value)
 
     # ---- Adobe Firefly 渠道（环境变量 CHATGPT2API_FIREFLY_* 覆盖 config.json）----
+    # 读路径：env > channels.firefly.* > 旧 firefly_* 平铺键 > 默认值
 
     @property
     def firefly_enabled(self) -> bool:
@@ -660,34 +778,50 @@ class ConfigStore:
         env = os.getenv("CHATGPT2API_FIREFLY_ENABLED")
         if env is not None and str(env).strip() != "":
             return _normalize_bool(env, False)
-        return _normalize_bool(self.data.get("firefly_enabled"), False)
+        return _normalize_bool(self._read_firefly_value("firefly_enabled", False), False)
 
     @property
     def firefly_poll_interval_sec(self) -> int:
         self.reload_if_changed()
         env = os.getenv("CHATGPT2API_FIREFLY_POLL_INTERVAL_SEC")
-        raw = env if env is not None and str(env).strip() != "" else self.data.get("firefly_poll_interval_sec", 3)
+        raw = (
+            env
+            if env is not None and str(env).strip() != ""
+            else self._read_firefly_value("firefly_poll_interval_sec", 3)
+        )
         return _normalize_positive_int(raw, 3, 1)
 
     @property
     def firefly_gen_timeout_sec(self) -> int:
         self.reload_if_changed()
         env = os.getenv("CHATGPT2API_FIREFLY_GEN_TIMEOUT_SEC")
-        raw = env if env is not None and str(env).strip() != "" else self.data.get("firefly_gen_timeout_sec", 180)
+        raw = (
+            env
+            if env is not None and str(env).strip() != ""
+            else self._read_firefly_value("firefly_gen_timeout_sec", 180)
+        )
         return _normalize_positive_int(raw, 180, 1)
 
     @property
     def firefly_retry_max_attempts(self) -> int:
         self.reload_if_changed()
         env = os.getenv("CHATGPT2API_FIREFLY_RETRY_MAX_ATTEMPTS")
-        raw = env if env is not None and str(env).strip() != "" else self.data.get("firefly_retry_max_attempts", 3)
+        raw = (
+            env
+            if env is not None and str(env).strip() != ""
+            else self._read_firefly_value("firefly_retry_max_attempts", 3)
+        )
         return _normalize_positive_int(raw, 3, 1)
 
     @property
     def firefly_refresh_interval_hours(self) -> int:
         self.reload_if_changed()
         env = os.getenv("CHATGPT2API_FIREFLY_REFRESH_INTERVAL_HOURS")
-        raw = env if env is not None and str(env).strip() != "" else self.data.get("firefly_refresh_interval_hours", 15)
+        raw = (
+            env
+            if env is not None and str(env).strip() != ""
+            else self._read_firefly_value("firefly_refresh_interval_hours", 15)
+        )
         return _normalize_positive_int(raw, 15, 1)
 
     @property
@@ -696,7 +830,7 @@ class ConfigStore:
         env = os.getenv("CHATGPT2API_FIREFLY_DEFAULT_MODEL")
         if env is not None and str(env).strip():
             return str(env).strip()
-        value = str(self.data.get("firefly_default_model") or "firefly-nano-banana-pro").strip()
+        value = str(self._read_firefly_value("firefly_default_model") or "firefly-nano-banana-pro").strip()
         return value or "firefly-nano-banana-pro"
 
     @property
@@ -706,7 +840,7 @@ class ConfigStore:
         env = os.getenv("CHATGPT2API_FIREFLY_VIDEO_ENABLED")
         if env is not None and str(env).strip() != "":
             return _normalize_bool(env, False)
-        return _normalize_bool(self.data.get("firefly_video_enabled"), False)
+        return _normalize_bool(self._read_firefly_value("firefly_video_enabled", False), False)
 
     @property
     def firefly_video_poll_interval_sec(self) -> int:
@@ -715,7 +849,7 @@ class ConfigStore:
         raw = (
             env
             if env is not None and str(env).strip() != ""
-            else self.data.get("firefly_video_poll_interval_sec", 3)
+            else self._read_firefly_value("firefly_video_poll_interval_sec", 3)
         )
         return _normalize_positive_int(raw, 3, 1)
 
@@ -726,7 +860,7 @@ class ConfigStore:
         raw = (
             env
             if env is not None and str(env).strip() != ""
-            else self.data.get("firefly_video_timeout_sec", 600)
+            else self._read_firefly_value("firefly_video_timeout_sec", 600)
         )
         return _normalize_positive_int(raw, 600, 1)
 
@@ -736,7 +870,7 @@ class ConfigStore:
         env = os.getenv("CHATGPT2API_FIREFLY_VIDEO_DEFAULT_MODEL")
         if env is not None and str(env).strip():
             return str(env).strip()
-        value = str(self.data.get("firefly_video_default_model") or "firefly-sora2-4s-16x9").strip()
+        value = str(self._read_firefly_value("firefly_video_default_model") or "firefly-sora2-4s-16x9").strip()
         return value or "firefly-sora2-4s-16x9"
 
     @property
@@ -987,6 +1121,8 @@ class ConfigStore:
                         incoming_runtime["_existing_cf_cookies"] = previous_clearance.get("cf_cookies")
                         incoming_runtime["_existing_cf_clearance"] = previous_clearance.get("cf_clearance")
                 next_data["proxy_runtime"] = _normalize_proxy_runtime_settings(incoming_runtime)
+            # 写入后同步命名空间：新结构为主，旧键继续保留可读
+            next_data, _ = migrate_firefly_flat_keys_to_namespace(next_data, drop_flat=False)
             next_data["basic"] = _legacy_basic_from_settings(next_data.get("basic"), next_data)
             next_data.pop("backup_state", None)
             self.data = next_data

@@ -12,6 +12,7 @@ from typing import Any, Callable, Iterable, Iterator
 import tiktoken
 
 from services.account_service import ImageAccountSelectionError, account_service
+from services.channel_usage_service import channel_usage_service
 from services.config import config
 from services.protocol.conversation_types import (
     ConversationRequest,
@@ -1949,6 +1950,28 @@ def _generate_single_image(
                         "account_email": account_email,
                         "error": diagnostic_excerpt(release_exc, 500),
                     })
+            # 溯源账本：与 mark 同点写入，失败不阻断主链路
+            try:
+                action = "edit" if request.images else "image"
+                channel_usage_service.record_image_result(
+                    trace_id=str(request.trace_id or request.call_id or ""),
+                    channel="chatgpt",
+                    account=account if isinstance(account, dict) else {},
+                    access_token=token,
+                    action=action,
+                    model=str(request.model or ""),
+                    success=success,
+                    quota_consumed=quota_consumed,
+                    failure=failure,
+                    elapsed_ms=int((time.perf_counter() - single_started) * 1000),
+                )
+            except Exception as ledger_exc:
+                logger.warning({
+                    "event": "channel_usage_record_failed",
+                    "channel": "chatgpt",
+                    "account_email": account_email,
+                    "error": diagnostic_excerpt(ledger_exc, 500),
+                })
 
         _monitor_image_stage(
             request,

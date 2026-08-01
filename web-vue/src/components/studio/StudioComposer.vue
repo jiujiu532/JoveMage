@@ -268,6 +268,7 @@ import {
   resolveImageSizePresets,
   type ImageSizeResolution,
 } from '@/api/imageTasks'
+import { groupImageModelsByChannel } from '@/config/channels'
 import { isFireflyImageModel } from '@/config/modelCatalog'
 import type { StudioComposeMode, StudioImageForm, StudioReference } from './types'
 
@@ -378,22 +379,23 @@ const imageModelSelectOptions = computed(() => props.imageModelOptions.map((mode
   value: model,
 })))
 
+/**
+ * 图像模型分组：按启用渠道数据驱动（渠道名=组名）。
+ * 仍用 isFireflyImageModel 决定旁路图像归属，避免 sora2/veo/kling 视频模型进 Firefly 图像组。
+ * 渠道禁用 → 整组消失（listEnabledChannels）。
+ */
 const imageModelSelectGroups = computed(() => {
-  const chatgpt: Array<{ label: string; value: string }> = []
-  const firefly: Array<{ label: string; value: string }> = []
-  for (const model of props.imageModelOptions) {
-    const option = { label: model, value: model }
-    // 图像路径只认 Firefly 图像族，避免 sora2/veo/kling 视频模型误入
-    if (isFireflyImageModel(model)) firefly.push(option)
-    else chatgpt.push(option)
-  }
-  const groups: Array<{ label?: string; options: Array<{ label: string; value: string }> }> = []
-  if (chatgpt.length) groups.push({ label: 'ChatGPT', options: chatgpt })
-  if (firefly.length) groups.push({ label: 'Adobe Firefly', options: firefly })
+  const groups = groupImageModelsByChannel(props.imageModelOptions, {
+    // 只有图像族进 Firefly 组；视频/未知 firefly 前缀回落到默认渠道（与旧手写逻辑一致）
+    isBypassImageModel: isFireflyImageModel,
+  })
   if (!groups.length) {
-    groups.push({ options: imageModelSelectOptions.value })
+    return [{ options: imageModelSelectOptions.value }]
   }
-  return groups
+  return groups.map((group) => ({
+    label: group.label,
+    options: group.options,
+  }))
 })
 
 const sizePresets = computed(() => resolveImageSizePresets(props.imageForm.model, props.imageUpscaleEnabled))

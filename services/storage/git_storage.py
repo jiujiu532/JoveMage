@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import tempfile
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,7 @@ from git.exc import GitCommandError
 
 from services.json_file import read_json_file, write_json_file
 from services.storage.base import StorageBackend
+from services.storage.channel_usage import match_channel_usage, normalize_channel_usage_entry
 
 
 class GitStorageBackend(StorageBackend):
@@ -22,6 +24,7 @@ class GitStorageBackend(StorageBackend):
         branch: str = "main",
         file_path: str = "accounts.json",
         auth_keys_file_path: str = "auth_keys.json",
+        channel_usage_file_path: str = "channel_usage.json",
         local_cache_dir: Path | None = None,
     ):
         self.repo_url = repo_url
@@ -29,13 +32,15 @@ class GitStorageBackend(StorageBackend):
         self.branch = branch
         self.file_path = file_path
         self.auth_keys_file_path = auth_keys_file_path
-        
+        self.channel_usage_file_path = channel_usage_file_path
+        self._channel_usage_lock = threading.RLock()
+
         # 本地缓存目录
         if local_cache_dir is None:
             local_cache_dir = Path(tempfile.gettempdir()) / "chatgpt2api_git_cache"
         self.local_cache_dir = local_cache_dir
         self.local_cache_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # 构建带认证的 Git URL
         self.auth_repo_url = self._build_auth_url(repo_url, token)
 
@@ -117,6 +122,60 @@ class GitStorageBackend(StorageBackend):
             print(f"[git-storage] save failed: {e}")
             raise e
 
+    def append_channel_usage(self, entry: dict[str, Any]) -> dict[str, Any]:
+        """追加 channel_usage 流水到 Git 仓库中的 channel_usage.json。"""
+        normalized = normalize_channel_usage_entry(entry)
+        if normalized is None:
+            raise ValueError("invalid channel_usage entry")
+        with self._channel_usage_lock:
+            try:
+                items = self._load_json_file(self.channel_usage_file_path)
+                items.append(normalized)
+                if len(items) > 50000:
+                    items = items[-50000:]
+                self._save_json_file(
+                    self.channel_usage_file_path,
+                    items,
+                    "Append channel_usage ledger entry",
+                )
+            except Exception as e:
+                print(f"[git-storage] channel_usage append failed: {e}")
+                raise e
+        return dict(normalized)
+
+    def query_channel_usage(
+        self,
+        *,
+        account_id: str | None = None,
+        trace_id: str | None = None,
+        channel: str | None = None,
+        ts_from: float | None = None,
+        ts_to: float | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        with self._channel_usage_lock:
+            try:
+                items = self._load_json_file(self.channel_usage_file_path)
+            except Exception as e:
+                print(f"[git-storage] channel_usage query failed: {e}")
+                raise
+        matched = [
+            dict(item)
+            for item in items
+            if isinstance(item, dict)
+            and match_channel_usage(
+                item,
+                account_id=account_id,
+                trace_id=trace_id,
+                channel=channel,
+                ts_from=ts_from,
+                ts_to=ts_to,
+            )
+        ]
+        matched.sort(key=lambda row: float(row.get("ts") or 0), reverse=True)
+        cap = max(1, min(int(limit or 100), 1000))
+        return matched[:cap]
+
     def _load_json_file(self, file_path: str) -> list[dict[str, Any]]:
         data = self._load_json_value(file_path)
         return data if isinstance(data, list) else []
@@ -148,6 +207,7 @@ class GitStorageBackend(StorageBackend):
                 "branch": self.branch,
                 "file_path": self.file_path,
                 "auth_keys_file_path": self.auth_keys_file_path,
+                "channel_usage_file_path": self.channel_usage_file_path,
                 "last_commit": repo.head.commit.hexsha[:8],
             }
         except Exception as e:
@@ -166,6 +226,7 @@ class GitStorageBackend(StorageBackend):
             "branch": self.branch,
             "file_path": self.file_path,
             "auth_keys_file_path": self.auth_keys_file_path,
+            "channel_usage_file_path": self.channel_usage_file_path,
         }
 
     @staticmethod

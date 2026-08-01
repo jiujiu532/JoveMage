@@ -1,6 +1,15 @@
 <template>
   <div class="relative space-y-8">
     <PagePanel class="space-y-5">
+      <!-- 渠道 Tab：全部 | ChatGPT · N | Firefly · N；数据来自 channels.ts（将来 /api/channels） -->
+      <ConsoleSegmentedTabs
+        :model-value="sourceFilter"
+        :options="channelTabOptions"
+        aria-label="账号渠道"
+        fit="content"
+        @update:model-value="setSourceFilter"
+      />
+
       <div class="accounts-toolbar">
         <div class="accounts-toolbar-row accounts-toolbar-row-main">
           <FilterToolbar class="accounts-toolbar-filters" :bordered="false">
@@ -18,13 +27,6 @@
               placeholder="状态筛选"
               selected-indicator="none"
               aria-label="账号状态筛选"
-            />
-            <GroupedSelectMenu
-              v-model="sourceFilter"
-              :options="sourceFilterOptions"
-              placeholder="渠道筛选"
-              selected-indicator="none"
-              aria-label="账号渠道筛选"
             />
             <GroupedSelectMenu
               v-model="groupFilter"
@@ -109,13 +111,13 @@
                   @update:model-value="toggleSelectAllVisible"
                 />
               </th>
-              <th>TOKEN</th>
+              <th>{{ sourceFilter === 'firefly' ? 'COOKIE' : 'TOKEN' }}</th>
               <th>类型</th>
-              <th>来源</th>
+              <th>渠道</th>
               <th>状态</th>
               <th>账户信息</th>
               <th class="table-num">创建时间</th>
-              <th class="table-num">图片额度</th>
+              <th class="table-num">{{ sourceFilter === 'firefly' ? 'Credits' : '图片额度' }}</th>
               <th class="table-num">恢复时间</th>
               <th class="table-num">成功 / 失败</th>
               <th class="text-right">操作</th>
@@ -165,8 +167,14 @@
                   {{ accountTypeLabel(item) }}
                 </span>
               </td>
-              <td class="align-middle text-xs text-muted-foreground">
-                {{ accountSourceLabel(item) }}
+              <td class="align-middle">
+                <div class="flex items-center gap-1.5">
+                  <ChannelBadge
+                    :channel="accountChannelId(item)"
+                    size="xs"
+                  />
+                  <span class="text-xs text-muted-foreground">{{ accountSourceLabel(item) }}</span>
+                </div>
               </td>
               <td class="align-middle">
                 <StatusDetailPill
@@ -271,6 +279,7 @@
           </div>
 
           <div class="mt-2.5 flex flex-wrap items-center gap-1.5">
+            <ChannelBadge :channel="accountChannelId(item)" size="xs" />
             <StatusPill
               :label="accountSourceText(item)"
               tone-class="border-cyan-500/40 bg-cyan-500/10 text-cyan-600"
@@ -452,7 +461,16 @@
                         ></textarea>
                       </label>
                       <SurfaceBox tone="muted" density="compact" class="text-[11px] leading-5 text-muted-foreground">
-                        Firefly 账号以 Cookie 为刷新源，不使用 ChatGPT 的 refresh_token / id_token。
+                        Firefly 账号以 Cookie 为刷新源，不使用 ChatGPT 的 refresh_token / id_token；无密码字段。
+                      </SurfaceBox>
+                      <SurfaceBox
+                        v-if="editingFireflyCreditsText"
+                        tone="muted"
+                        density="compact"
+                        class="space-y-1"
+                      >
+                        <span class="ui-field-label">Credits（远端）</span>
+                        <p class="font-mono text-xs text-foreground">{{ editingFireflyCreditsText }}</p>
                       </SurfaceBox>
                     </template>
                     <template v-else>
@@ -842,6 +860,8 @@ import AccountActionButtons from '@/components/ai/AccountActionButtons.vue'
 import AccountBulkBar from '@/components/ai/AccountBulkBar.vue'
 import AccountSelectionSummary from '@/components/ai/AccountSelectionSummary.vue'
 import AccountStreamCard from '@/components/ai/AccountStreamCard.vue'
+import ChannelBadge from '@/components/ai/ChannelBadge.vue'
+import ConsoleSegmentedTabs from '@/components/ai/ConsoleSegmentedTabs.vue'
 import FilterToolbar from '@/components/ai/FilterToolbar.vue'
 import FloatingActionMenu from '@/components/ai/FloatingActionMenu.vue'
 import FormSection from '@/components/ai/FormSection.vue'
@@ -864,6 +884,7 @@ import { actionMenuGroups } from '@/components/ai/menuItems'
 import GroupedSelectMenu from '@/components/ui/GroupedSelectMenu.vue'
 import type { Account } from '@/api/accounts'
 import { parseProxyReference } from '@/api/proxy'
+import { resolveAccountChannelId } from '@/config/channels'
 import { useAccountsPage, type AccountImportMode } from './accounts/useAccountsPage'
 import {
   accountCreatedText,
@@ -894,7 +915,8 @@ const {
   groupFilter,
   sourceFilter,
   statusFilterOptions,
-  sourceFilterOptions,
+  channelTabOptions,
+  setSourceFilter,
   groupFilterOptions,
   editingId,
   accounts,
@@ -952,6 +974,7 @@ const {
   accountStatusOptions,
   accountSourceTypeOptions,
   isFireflyForm,
+  editingFireflyCreditsText,
   form,
   filteredAccounts,
   pagedAccounts,
@@ -1070,6 +1093,10 @@ function accountSourceLabel(item: Account) {
   const source = String(item.source_type || '').trim() || 'web'
   if (source === 'firefly') return 'Firefly'
   return source
+}
+
+function accountChannelId(item: Account) {
+  return resolveAccountChannelId(item.source_type)
 }
 
 function accountCreditsHint(item: Account) {

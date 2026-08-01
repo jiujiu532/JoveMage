@@ -15,7 +15,7 @@ import {
   preferenceKeys,
   setStringPreference,
 } from '@/lib/preferences'
-import { statusCategory } from './viewUtils'
+import { accountCreditsText, statusCategory } from './viewUtils'
 import {
   createDefaultForm,
   createExportFilename,
@@ -70,6 +70,9 @@ export function useAccountsPage() {
     sourceFilter,
     statusFilterOptions,
     sourceFilterOptions: sourceFilterOptionList,
+    channelTabOptions,
+    applyChannelCounts,
+    setSourceFilter,
     accounts,
     accountListTotal,
     accountAllTotal,
@@ -216,6 +219,8 @@ export function useAccountsPage() {
   const customProxyInput = ref('')
   const form = reactive(createDefaultForm())
   const isFireflyForm = computed(() => isFireflySourceType(form.source_type))
+  /** 编辑态 Firefly credits 只读展示（不进提交表单） */
+  const editingFireflyCreditsText = ref('')
   const accountStatusOptions = [
     { label: '正常', value: '正常' },
     { label: '限流', value: '限流' },
@@ -296,6 +301,7 @@ export function useAccountsPage() {
   function resetForm() {
     editingId.value = null
     Object.assign(form, createDefaultForm())
+    editingFireflyCreditsText.value = ''
     syncProxyControlsFromValue(form.proxy)
   }
 
@@ -417,6 +423,9 @@ export function useAccountsPage() {
     form.proxy = item.proxy || ''
     form.quota = item.image_quota_unknown ? '' : String(item.quota ?? '')
     form.status = normalizeAccountBackendStatus(item.backend_status, item.enabled ? '正常' : '禁用')
+    editingFireflyCreditsText.value = isFireflySourceType(item.source_type)
+      ? accountCreditsText(item)
+      : ''
     syncProxyControlsFromValue(form.proxy)
     void loadAccountGroups({ silentErrorToast: true })
     showModal.value = true
@@ -764,6 +773,9 @@ export function useAccountsPage() {
     sourceFilter,
     statusFilterOptions,
     sourceFilterOptions,
+    channelTabOptions,
+    applyChannelCounts,
+    setSourceFilter,
     groupFilterOptions,
     editingId,
     accounts,
@@ -825,6 +837,7 @@ export function useAccountsPage() {
     accountStatusOptions,
     accountSourceTypeOptions,
     isFireflyForm,
+    editingFireflyCreditsText,
     form,
     filteredAccounts,
     pagedAccounts,

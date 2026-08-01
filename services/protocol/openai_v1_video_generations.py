@@ -71,6 +71,7 @@ def handle(body: dict[str, Any]) -> dict[str, Any]:
             message_as_error=True,
             progress_callback=progress_callback,
             call_id=str(body.get("_call_id") or ""),
+            trace_id=str(body.get("_trace_id") or ""),
             trace_image_perf=bool(body.get("_trace_image_perf")),
         )
     )

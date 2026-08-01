@@ -72,6 +72,8 @@ class ConversationRequest:
     message_as_error: bool = False
     progress_callback: Any = None  # Callable[[str], None] | None
     call_id: str = ""
+    # 与 LoggedCall.trace_id 对齐的全链路溯源键（由 body._trace_id 注入）
+    trace_id: str = ""
     trace_image_perf: bool = False
 
 

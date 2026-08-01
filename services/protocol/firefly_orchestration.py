@@ -37,6 +37,7 @@ from services.backends.firefly_video_catalog import (
     resolve_firefly_video_model,
 )
 from services.backends.firefly_video_payloads import build_firefly_video_payload
+from services.channel_usage_service import channel_usage_service
 from services.config import config
 from services.image_failure import ImageFailure, classify_image_exception, image_failure
 from services.protocol.conversation import (
@@ -97,6 +98,14 @@ def _run_firefly_account_attempts(
     select = select_token or _default_select_firefly_token
     extra = dict(monitor_extra or {})
     is_video = str(log_kind or "image").strip().lower() == "video"
+    # 账本 channel 收敛为 firefly；action 区分 image/edit/video
+    ledger_channel = "firefly"
+    if is_video:
+        ledger_action = "video"
+    elif str(extra.get("mode") or "").strip().lower() == "edit":
+        ledger_action = "edit"
+    else:
+        ledger_action = "image"
     if is_video:
         evt_result_update = "firefly_video_account_result_update_failed"
         evt_slot_release = "firefly_video_account_slot_release_failed"
@@ -120,6 +129,41 @@ def _run_firefly_account_attempts(
     attempted_tokens: set[str] = set()
     last_error: Exception | None = None
     attempts = max(1, int(max_attempts or 1))
+
+    def _record_ledger(
+        *,
+        token: str,
+        account: dict[str, Any],
+        success: bool,
+        failure: ImageFailure | None = None,
+        quota_consumed: bool | None = None,
+        attempt_seq: int | None = None,
+        attempt_started: float | None = None,
+    ) -> None:
+        """attempt 轨迹 + 用量流水；异常吞掉避免影响主链路。"""
+        try:
+            elapsed_ms = None
+            if attempt_started is not None:
+                elapsed_ms = int((time.perf_counter() - attempt_started) * 1000)
+            channel_usage_service.record_image_result(
+                trace_id=str(request.trace_id or request.call_id or ""),
+                channel=ledger_channel,
+                account=account if isinstance(account, dict) else {},
+                access_token=token,
+                action=ledger_action,
+                model=str(request.model or ""),
+                success=success,
+                quota_consumed=quota_consumed,
+                failure=failure,
+                attempt_seq=attempt_seq,
+                elapsed_ms=elapsed_ms,
+            )
+        except Exception as ledger_exc:
+            logger.warning({
+                "event": "channel_usage_record_failed",
+                "channel": ledger_channel,
+                "error": diagnostic_excerpt(ledger_exc, 500),
+            })
 
     for attempt in range(1, attempts + 1):
         _raise_if_request_cancelled(request)
@@ -184,12 +228,17 @@ def _run_firefly_account_attempts(
         account_email = str(account.get("email") or "").strip()
         attempt_access_token = token
         attempt_refresh_token = str(account.get("refresh_token") or "").strip()
+        attempt_started = time.perf_counter()
 
         def finalize_image_slot(
             success: bool,
             *,
             failure: ImageFailure | None = None,
             quota_consumed: bool | None = None,
+            _token: str = token,
+            _account: dict[str, Any] = account if isinstance(account, dict) else {},
+            _attempt: int = attempt,
+            _attempt_started: float = attempt_started,
         ) -> None:
             nonlocal image_slot_finalized
             if image_slot_finalized:
@@ -197,7 +246,7 @@ def _run_firefly_account_attempts(
             image_slot_finalized = True
             try:
                 account_service.mark_image_result(
-                    token,
+                    _token,
                     success,
                     failure=failure,
                     quota_consumed=quota_consumed,
@@ -215,7 +264,7 @@ def _run_firefly_account_attempts(
                 log_payload.update(extra)
                 logger.warning(log_payload)
                 try:
-                    account_service.release_image_slot(token)
+                    account_service.release_image_slot(_token)
                 except Exception as release_exc:
                     release_payload = {
                         "event": evt_slot_release,
@@ -224,6 +273,16 @@ def _run_firefly_account_attempts(
                     }
                     release_payload.update(extra)
                     logger.warning(release_payload)
+            # attempt 轨迹 + 用量流水
+            _record_ledger(
+                token=_token,
+                account=_account,
+                success=success,
+                failure=failure,
+                quota_consumed=quota_consumed,
+                attempt_seq=_attempt,
+                attempt_started=_attempt_started,
+            )
 
         _monitor_image_stage(
             request,
@@ -259,6 +318,16 @@ def _run_firefly_account_attempts(
             try:
                 account_service.report_exhausted(token, reason="taste_exhausted")
                 image_slot_finalized = True
+                # report_exhausted 不走 finalize，单独补 attempt 流水
+                _record_ledger(
+                    token=token,
+                    account=account if isinstance(account, dict) else {},
+                    success=False,
+                    failure=image_failure("image_quota_exhausted", raw_detail=str(exc)),
+                    quota_consumed=False,
+                    attempt_seq=attempt,
+                    attempt_started=attempt_started,
+                )
             except Exception as report_exc:
                 report_payload = {
                     "event": evt_report_exhausted,

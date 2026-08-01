@@ -3,11 +3,12 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from sqlalchemy import Column, String, Text, create_engine, Integer, text
+from sqlalchemy import Column, Float, Integer, String, Text, create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 from services.storage.base import StorageBackend
+from services.storage.channel_usage import normalize_channel_usage_entry
 
 Base = declarative_base()
 
@@ -28,6 +29,26 @@ class AuthKeyModel(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     key_id = Column(String(255), unique=True, nullable=False, index=True)
     data = Column(Text, nullable=False)
+
+
+class ChannelUsageModel(Base):
+    """渠道用量流水（只增不改）"""
+    __tablename__ = "channel_usage"
+
+    id = Column(String(64), primary_key=True)
+    ts = Column(Float, nullable=False, index=True)
+    trace_id = Column(String(128), nullable=False, index=True)
+    channel = Column(String(64), nullable=False, index=True)
+    account_id = Column(String(512), nullable=False, index=True)
+    action = Column(String(32), nullable=False)
+    model = Column(String(255), nullable=False, default="")
+    cost = Column(Text, nullable=False, default="{}")
+    result = Column(String(32), nullable=False)
+    upstream_id = Column(String(255), nullable=True)
+    note = Column(Text, nullable=True)
+    attempt_seq = Column(Integer, nullable=True)
+    elapsed_ms = Column(Integer, nullable=True)
+    data = Column(Text, nullable=False)  # 完整 JSON 备份，便于扩展字段
 
 
 class DatabaseStorageBackend(StorageBackend):
@@ -70,6 +91,97 @@ class DatabaseStorageBackend(StorageBackend):
     def save_auth_keys(self, auth_keys: list[dict[str, Any]]) -> None:
         """保存鉴权密钥数据到数据库"""
         self._save_rows(AuthKeyModel, auth_keys, "id", "key_id")
+
+    def append_channel_usage(self, entry: dict[str, Any]) -> dict[str, Any]:
+        """追加一条 channel_usage 流水。"""
+        normalized = normalize_channel_usage_entry(entry)
+        if normalized is None:
+            raise ValueError("invalid channel_usage entry")
+        session = self.Session()
+        try:
+            session.add(
+                ChannelUsageModel(
+                    id=str(normalized["id"]),
+                    ts=float(normalized["ts"]),
+                    trace_id=str(normalized["trace_id"]),
+                    channel=str(normalized["channel"]),
+                    account_id=str(normalized["account_id"]),
+                    action=str(normalized["action"]),
+                    model=str(normalized.get("model") or ""),
+                    cost=json.dumps(normalized.get("cost") or {}, ensure_ascii=False),
+                    result=str(normalized["result"]),
+                    upstream_id=normalized.get("upstream_id"),
+                    note=normalized.get("note"),
+                    attempt_seq=normalized.get("attempt_seq"),
+                    elapsed_ms=normalized.get("elapsed_ms"),
+                    data=json.dumps(normalized, ensure_ascii=False),
+                )
+            )
+            session.commit()
+            return dict(normalized)
+        except Exception as e:
+            session.rollback()
+            raise e
+        finally:
+            session.close()
+
+    def query_channel_usage(
+        self,
+        *,
+        account_id: str | None = None,
+        trace_id: str | None = None,
+        channel: str | None = None,
+        ts_from: float | None = None,
+        ts_to: float | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        session = self.Session()
+        try:
+            q = session.query(ChannelUsageModel)
+            if account_id is not None:
+                q = q.filter(ChannelUsageModel.account_id == str(account_id))
+            if trace_id is not None:
+                q = q.filter(ChannelUsageModel.trace_id == str(trace_id))
+            if channel is not None:
+                q = q.filter(ChannelUsageModel.channel == str(channel))
+            if ts_from is not None:
+                q = q.filter(ChannelUsageModel.ts >= float(ts_from))
+            if ts_to is not None:
+                q = q.filter(ChannelUsageModel.ts <= float(ts_to))
+            cap = max(1, min(int(limit or 100), 1000))
+            rows = q.order_by(ChannelUsageModel.ts.desc()).limit(cap).all()
+            items: list[dict[str, Any]] = []
+            for row in rows:
+                try:
+                    payload = json.loads(row.data)
+                    if isinstance(payload, dict):
+                        items.append(payload)
+                        continue
+                except (TypeError, json.JSONDecodeError):
+                    pass
+                # data 损坏时回退列字段
+                try:
+                    cost = json.loads(row.cost) if row.cost else {}
+                except (TypeError, json.JSONDecodeError):
+                    cost = {}
+                items.append({
+                    "id": row.id,
+                    "ts": row.ts,
+                    "trace_id": row.trace_id,
+                    "channel": row.channel,
+                    "account_id": row.account_id,
+                    "action": row.action,
+                    "model": row.model or "",
+                    "cost": cost if isinstance(cost, dict) else {},
+                    "result": row.result,
+                    "upstream_id": row.upstream_id,
+                    "note": row.note,
+                    "attempt_seq": row.attempt_seq,
+                    "elapsed_ms": row.elapsed_ms,
+                })
+            return items
+        finally:
+            session.close()
 
     def _load_rows(self, model: type[AccountModel] | type[AuthKeyModel]) -> list[dict[str, Any]]:
         session = self.Session()
@@ -124,12 +236,14 @@ class DatabaseStorageBackend(StorageBackend):
                 session.execute(text("SELECT 1"))
                 count = session.query(AccountModel).count()
                 auth_key_count = session.query(AuthKeyModel).count()
+                usage_count = session.query(ChannelUsageModel).count()
                 return {
                     "status": "healthy",
                     "backend": "database",
                     "database_url": self._mask_password(self.database_url),
                     "account_count": count,
                     "auth_key_count": auth_key_count,
+                    "channel_usage_count": usage_count,
                 }
             finally:
                 session.close()

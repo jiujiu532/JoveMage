@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from api import accounts, ai, image_tasks, prompts, register, system, videos
+from api import accounts, ai, channels, image_tasks, prompts, register, system, videos
 from api.errors import install_exception_handlers
 from api.support import resolve_web_asset, start_limited_account_watcher
 from services.backup_service import backup_service
@@ -51,6 +51,11 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         _configure_threadpool()
+        # 幂等：firefly_* → channels.firefly.*（ConfigStore 初始化已跑过，这里再保险一次）
+        try:
+            config.ensure_firefly_namespace_migrated()
+        except Exception as exc:
+            logger.warning({"event": "config_firefly_namespace_migrate_failed", "error": str(exc)})
         stop_event = Event()
         thread = start_limited_account_watcher(stop_event)
         cleanup_thread = start_image_cleanup_scheduler(stop_event)
@@ -78,6 +83,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(ai.create_router())
     app.include_router(accounts.create_router())
+    app.include_router(channels.create_router())
     app.include_router(image_tasks.create_router())
     app.include_router(prompts.create_router())
     app.include_router(register.create_router())
