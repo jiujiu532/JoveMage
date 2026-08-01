@@ -20,10 +20,11 @@
       />
     </section>
 
-    <!-- 渠道并列卡：从 /api/channels 描述符渲染；未启用渠道不出现；窄屏竖排堆叠 -->
+    <!-- 渠道并列卡：启用渠道始终占位（含 0 账号空态）；未启用不出现；窄屏竖排 -->
     <section
       v-if="channelCards.length"
-      class="channel-cards-grid grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"
+      class="channel-cards-grid grid grid-cols-1 gap-3 md:grid-cols-2"
+      :class="channelCards.length >= 3 ? 'xl:grid-cols-3' : ''"
     >
       <ChannelCard
         v-for="channel in channelCards"

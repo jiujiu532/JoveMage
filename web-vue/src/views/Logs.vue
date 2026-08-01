@@ -138,10 +138,11 @@
 
       <div v-else class="logs-desktop-table">
         <TableShell>
-          <table class="logs-table w-full min-w-[1120px] table-fixed text-left">
+          <table class="logs-table w-full min-w-[1200px] table-fixed text-left">
             <colgroup>
               <col class="w-12" />
               <col class="w-36" />
+              <col class="w-24" />
               <col class="w-24" />
               <col class="w-40" />
               <col class="w-28" />
@@ -163,6 +164,7 @@
                 </th>
                 <th class="py-3 pr-5">时间</th>
                 <th class="py-3 pr-5">类型</th>
+                <th class="py-3 pr-5">渠道</th>
                 <th class="py-3 pr-5">令牌名称</th>
                 <th class="py-3 pr-5 table-num">调用耗时</th>
                 <th class="py-3 pr-5">状态</th>
@@ -191,6 +193,14 @@
                 </td>
                 <td class="py-4 pr-5 align-middle">
                   <MetaChip size="xs" tone="muted">{{ typeLabel(item.type) }}</MetaChip>
+                </td>
+                <td class="py-4 pr-5 align-middle">
+                  <ChannelBadge
+                    :channel="item.channel"
+                    size="xs"
+                    force
+                    class="logs-channel-badge"
+                  />
                 </td>
                 <td class="py-4 pr-5 align-middle">
                   <p class="cell-token max-w-[12rem] truncate text-xs" :title="tokenLabel(item)">
@@ -496,6 +506,7 @@ import {
   channelOfModel,
   useChannelRegistry,
 } from '@/config/channels'
+import ChannelBadge from '@/components/ai/ChannelBadge.vue'
 import DateRangeInputs from '@/components/ai/DateRangeInputs.vue'
 import DetailFieldCard from '@/components/ai/DetailFieldCard.vue'
 import DetailImagePreview from '@/components/ai/DetailImagePreview.vue'
@@ -953,6 +964,7 @@ const selectedPrimaryDetailFields = computed<DetailField[]>(() => {
     { label: '请求 ID', value: rawDetailValue(item, 'call_id') || item.id, copyable: true },
     { label: 'Trace ID', value: traceId, copyable: true },
     { label: '接口', value: item.endpoint, copyable: true },
+    { label: '渠道', value: item.channel },
     { label: '模型', value: item.model, copyable: true },
     { label: '账号', value: item.accountEmail, copyable: true },
     { label: '密钥', value: maskApiKey([item.keyName, item.keyId].filter(Boolean).join(' / ')) },
@@ -1492,12 +1504,12 @@ async function fetchLogs() {
       limit: filters.limit,
       offset: pageOffset.value,
     })
-    // 渠道筛选：后端暂无 channel 参数时前端按模型归属过滤
+    // 渠道筛选：后端暂无 channel 参数时前端按行内 channel（detail 优先 / model 归属）过滤
     const channelId = String(filters.channel || 'all').trim().toLowerCase()
     const mapped = response.items.map((item, index) => normalizeSystemLogRow(item, index, { apiBaseUrl }))
     const filtered = (!channelId || channelId === 'all')
       ? mapped
-      : mapped.filter((row) => channelOfModel(row.model) === channelId)
+      : mapped.filter((row) => row.channel === channelId)
     logs.value = filtered
     pruneLogSelection(logs.value.map((item) => item.id))
     const targetId = routeTargetLogId.value

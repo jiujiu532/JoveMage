@@ -154,6 +154,42 @@ def _video_models_from_runtime() -> list[str]:
     return models
 
 
+def _image_models_from_runtime() -> list[str]:
+    """Firefly 图像族级 id；渠道开启且有可用 firefly 账号时返回，否则空。
+
+    与 _video_models_from_runtime 对齐：catalog 主路径（/api/model-catalog）此前只注入
+    Firefly 视频，图像漏了 → Studio 画图模式看不到 Firefly 生图模型（review 项 5）。
+    """
+    if not config.firefly_enabled:
+        return []
+    try:
+        from services.backends.firefly_catalog import list_firefly_image_families
+    except ImportError:
+        return []
+    accounts = account_service.list_accounts()
+    has_firefly = any(
+        isinstance(account, dict)
+        and account_service._normalize_source_type(account.get("source_type")) == "firefly"
+        and account_service._is_image_account_available(account)
+        for account in accounts
+    )
+    if not has_firefly:
+        return []
+    try:
+        families = list_firefly_image_families()
+    except Exception:
+        return []
+    if not isinstance(families, list):
+        return []
+    models: list[str] = []
+    for item in families:
+        family = str(item or "").strip().lower()
+        if not family:
+            continue
+        models.append(family if family.startswith("firefly-") else f"firefly-{family}")
+    return models
+
+
 def _unique(values: list[str]) -> list[str]:
     result: list[str] = []
     seen: set[str] = set()
@@ -181,6 +217,12 @@ def get_model_catalog() -> dict[str, Any]:
         account_models = _image_models_from_accounts(account_service.list_accounts())
         image_source = "accounts" if account_models else "fallback"
         image_models = account_models or list(FALLBACK_IMAGE_MODELS)
+
+    # Firefly 图像族注入（与视频对齐）：渠道开启 + 有可用 firefly 账号时合并进 image_models，
+    # 避免 Studio 画图模式只列 ChatGPT 模型（review 项 5）
+    firefly_image_models = _image_models_from_runtime()
+    if firefly_image_models:
+        image_models = _unique([*image_models, *firefly_image_models])
 
     runtime_video = _video_models_from_runtime()
     if configured_video_models:

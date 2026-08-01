@@ -1,5 +1,6 @@
 import apiClient from './client'
 import type { AdminLogGroup, AdminLogStats, AdminLogsResponse, LogEntry } from '@/types/api'
+import { channelOfModel } from '@/config/channels'
 import { isImageModelId } from '@/config/modelCatalog'
 
 type LogsListParams = {
@@ -127,6 +128,8 @@ export type SystemLogRow = {
   summary: string
   endpoint: string
   model: string
+  /** 渠道 id：detail.channel 优先，否则由 model 前缀归属推断 */
+  channel: string
   status: string
   keyId: string
   keyName: string
@@ -396,6 +399,10 @@ export function normalizeSystemLogRow(item: SystemLog, index: number, options: N
   const blocked = boolDetailLabel(detailRawValue(detail, 'blocked'))
   const upstreamMessageLen = detailValue(detail, 'upstream_message_len')
   const time = startedAt || cleanString(item.time) || endedAt
+  const model = detailValue(detail, 'model')
+  // detail.channel 优先（演示数据/新链路）；否则按 model 命名空间归属
+  const explicitChannel = detailValue(detail, 'channel').toLowerCase()
+  const channel = explicitChannel || channelOfModel(model)
 
   return {
     id: cleanString(item.id) || `log-${index}`,
@@ -404,7 +411,8 @@ export function normalizeSystemLogRow(item: SystemLog, index: number, options: N
     type: cleanString(item.type),
     summary,
     endpoint: detailValue(detail, 'endpoint'),
-    model: detailValue(detail, 'model'),
+    model,
+    channel,
     status,
     keyId: detailValue(detail, 'key_id'),
     keyName: detailValue(detail, 'key_name'),

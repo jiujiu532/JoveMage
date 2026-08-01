@@ -15,6 +15,19 @@ export const FALLBACK_IMAGE_MODELS = [
   'gpt-image-2',
 ]
 
+/**
+ * Firefly 图像族级 id 兜底（对齐 services/backends/firefly_catalog 与设置页建议列表）。
+ * 后端 /api/model-catalog 目前不注入 Firefly 图像；画图下拉靠此补齐。
+ * 渠道未启用时由 groupImageModelsByChannel 隐藏整组。
+ */
+export const FALLBACK_FIREFLY_IMAGE_MODELS = [
+  'firefly-nano-banana-pro',
+  'firefly-nano-banana',
+  'firefly-nano-banana2',
+  'firefly-gpt-image-2',
+  'firefly-gpt-image-1.5',
+]
+
 /** 无 catalog 时的视频模型兜底（Firefly 族级 id） */
 export const FALLBACK_VIDEO_MODELS = [
   'firefly-sora2',
@@ -94,16 +107,40 @@ export function resolveChatModels(settings: Settings | null | undefined): string
   return [...FALLBACK_CHAT_MODELS]
 }
 
+/**
+ * 在已有图像列表上补齐 Firefly 图像族（不重复、不引入视频）。
+ * 用于 catalog/配置只有 ChatGPT 图像时，画图下拉仍能按渠道分组展示 Firefly。
+ */
+export function ensureFireflyImageModels(
+  models: string[],
+  settings?: Settings | null,
+): string[] {
+  const base = normalizeList(models).filter((model) => !isFireflyVideoModel(model))
+  if (base.some(isFireflyImageModel)) return base
+
+  const extras: string[] = []
+  const fireflyDefault = String(settings?.firefly_default_model || '').trim()
+  if (fireflyDefault && isFireflyImageModel(fireflyDefault)) {
+    extras.push(fireflyDefault)
+  }
+  extras.push(...FALLBACK_FIREFLY_IMAGE_MODELS)
+  return normalizeList([...base, ...extras])
+}
+
 export function resolveImageModels(settings: Settings | null | undefined): string[] {
   const fromImageConfig = normalizeList(settings?.image_generation?.model_options)
   // 图像配置/目录里若混入视频模型，一律剔除，避免画图下拉里出现 sora/veo
   const fromImageConfigImages = fromImageConfig.filter((model) => !isFireflyVideoModel(model))
-  if (fromImageConfigImages.length > 0) return fromImageConfigImages
+  if (fromImageConfigImages.length > 0) {
+    return ensureFireflyImageModels(fromImageConfigImages, settings)
+  }
   const fromCatalog = normalizeList(settings?.model_catalog?.image_api_models).filter(
     (model) => !isFireflyVideoModel(model),
   )
-  if (fromCatalog.length > 0) return fromCatalog
-  return [...FALLBACK_IMAGE_MODELS]
+  if (fromCatalog.length > 0) {
+    return ensureFireflyImageModels(fromCatalog, settings)
+  }
+  return ensureFireflyImageModels([...FALLBACK_IMAGE_MODELS], settings)
 }
 
 /**

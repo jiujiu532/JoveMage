@@ -3,6 +3,8 @@ import { modelsApi } from '@/api/models'
 import type { ModelCatalogResponse, ModelListResponse } from '@/api/models'
 import type { Settings } from '@/types/api'
 import {
+  ensureFireflyImageModels,
+  isFireflyImageModel,
   isImageModelId,
   isVideoModelId,
   resolveChatModels,
@@ -86,10 +88,22 @@ export function useModelCatalog(resolveSettings: SettingsResolver) {
   })
 
   const imageModels = computed(() => {
+    const settings = resolveSettings()
     const fromCatalog = normalizeList(sharedCatalog.value?.image_models).filter(
       (model) => !isVideoModelId(model),
     )
-    return fromCatalog.length > 0 ? fromCatalog : resolveImageModels(resolveSettings())
+    // catalog 非空也不能短路：后端 /api/model-catalog 会返回 ChatGPT 图像，
+    // 但不注入 Firefly 图像（视频有 runtime 注入、图像没有）。
+    // 若列表尚无 Firefly 图像族，从 all_models / settings / fallback 补齐。
+    if (fromCatalog.length > 0) {
+      if (fromCatalog.some(isFireflyImageModel)) return fromCatalog
+      const fromAll = normalizeList(sharedCatalog.value?.all_models).filter(
+        (model) => isFireflyImageModel(model) && !isVideoModelId(model),
+      )
+      if (fromAll.length > 0) return normalizeList([...fromCatalog, ...fromAll])
+      return ensureFireflyImageModels(fromCatalog, settings)
+    }
+    return resolveImageModels(settings)
   })
 
   const videoModels = computed(() => {

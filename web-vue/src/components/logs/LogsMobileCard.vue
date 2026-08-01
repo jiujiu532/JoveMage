@@ -17,6 +17,13 @@
     </div>
     <div class="logs-mobile-card__meta">
       <MetaChip size="xs" tone="muted">{{ typeLabel }}</MetaChip>
+      <ChannelBadge
+        v-if="item.channel"
+        :channel="item.channel"
+        size="xs"
+        force
+        class="logs-mobile-card__channel"
+      />
       <span class="cell-num text-xs text-muted-foreground">{{ durationLabel }}</span>
       <p class="cell-token min-w-0 flex-1 truncate text-xs" :title="tokenLabel">
         {{ tokenLabel || '-' }}
@@ -51,6 +58,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Button, Checkbox } from 'nanocat-ui'
+import ChannelBadge from '@/components/ai/ChannelBadge.vue'
 import LogImagePreviewCell from '@/components/ai/LogImagePreviewCell.vue'
 import MetaChip from '@/components/ai/MetaChip.vue'
 import StateBadge from '@/components/ai/StateBadge.vue'

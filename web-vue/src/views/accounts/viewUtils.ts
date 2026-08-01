@@ -1,5 +1,6 @@
 import type { Account, AccountLane } from '@/api/accounts'
 import { proxyReferenceLabel } from '@/api/proxy'
+import { resolveAccountChannelId } from '@/config/channels'
 import { maskToken } from '@/lib/mask'
 import { isFireflySourceType } from './accountPageShared'
 
@@ -524,6 +525,22 @@ export function accountSourceText(item: Account): string {
   const sourceType = cleanString(item.source_type) || 'web'
   if (isFireflySourceType(sourceType)) return `Firefly / ${type || 'adobe'}`
   return `${type} / ${sourceType}`
+}
+
+/** 账号所属渠道 id（chatgpt / firefly …）；渠道列主展示用 */
+export function accountChannelId(item: Account): string {
+  return resolveAccountChannelId(item.source_type)
+}
+
+/**
+ * 渠道列次要文案：仅 source_type（web / cpa / codex / register …）。
+ * 与渠道 id 相同（如 firefly）时不重复显示。
+ */
+export function accountSourceTypeSecondary(item: Account): string {
+  const source = cleanString(item.source_type) || 'web'
+  const channelId = accountChannelId(item)
+  if (!source || source === channelId) return ''
+  return source
 }
 
 export function accountProxyText(item: Account): string {

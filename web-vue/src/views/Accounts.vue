@@ -192,12 +192,17 @@
                 </span>
               </td>
               <td class="align-middle">
-                <div class="flex items-center gap-1.5">
+                <div class="flex min-w-0 flex-col gap-0.5">
                   <ChannelBadge
                     :channel="accountChannelId(item)"
                     size="xs"
+                    force
                   />
-                  <span class="text-xs text-muted-foreground">{{ accountSourceLabel(item) }}</span>
+                  <span
+                    v-if="accountSourceTypeSecondary(item)"
+                    class="text-[11px] leading-tight text-muted-foreground"
+                    :title="`来源类型：${accountSourceTypeSecondary(item)}`"
+                  >{{ accountSourceTypeSecondary(item) }}</span>
                 </div>
               </td>
               <td class="align-middle">
@@ -313,7 +318,7 @@
           </div>
 
           <div class="mt-2.5 flex flex-wrap items-center gap-1.5">
-            <ChannelBadge :channel="accountChannelId(item)" size="xs" />
+            <ChannelBadge :channel="accountChannelId(item)" size="xs" force />
             <StatusPill
               :label="accountSourceText(item)"
               tone-class="border-cyan-500/40 bg-cyan-500/10 text-cyan-600"
@@ -953,7 +958,7 @@ import { actionMenuGroups } from '@/components/ai/menuItems'
 import GroupedSelectMenu from '@/components/ui/GroupedSelectMenu.vue'
 import type { Account } from '@/api/accounts'
 import { parseProxyReference } from '@/api/proxy'
-import { resolveAccountChannelId, channelShortName, getChannel } from '@/config/channels'
+import { channelShortName, getChannel } from '@/config/channels'
 import { useAccountsPage, type AccountImportMode } from './accounts/useAccountsPage'
 import {
   accountCreatedText,
@@ -963,7 +968,9 @@ import {
   accountQuotaText,
   accountRestoreText,
   accountSecondaryText,
+  accountChannelId,
   accountSourceText,
+  accountSourceTypeSecondary,
   accountTokenPreview,
   rowClass,
   statusClass,
@@ -1226,16 +1233,6 @@ function accountTypeTone(item: Account): AccountTypeTone {
   if (value === 'plus' || value === 'pro' || value === 'premium') return 'plus'
   if (value === 'team' || value === 'enterprise' || value === 'business') return 'team'
   return 'free'
-}
-
-function accountSourceLabel(item: Account) {
-  const source = String(item.source_type || '').trim() || 'web'
-  if (source === 'firefly') return 'Firefly'
-  return source
-}
-
-function accountChannelId(item: Account) {
-  return resolveAccountChannelId(item.source_type)
 }
 
 function accountCreditsHint(item: Account) {

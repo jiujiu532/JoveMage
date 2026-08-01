@@ -24,11 +24,12 @@
           @update:model-value="(checked) => $emit('select', file, Boolean(checked))"
         />
         <div class="media-topline__right">
-          <ChannelDot
+          <ChannelBadge
             v-if="channelId"
             :channel="channelId"
             size="xs"
-            class="media-channel-dot"
+            force
+            class="media-channel-badge"
           />
           <span v-if="file.expired" class="media-badge danger">已过期</span>
           <span v-else class="media-badge">{{ storageLabel }}</span>
@@ -82,7 +83,7 @@
 import { Icon } from '@iconify/vue'
 import { Checkbox, Tooltip } from 'nanocat-ui'
 import type { GalleryFile } from '@/api/gallery'
-import ChannelDot from './ChannelDot.vue'
+import ChannelBadge from './ChannelBadge.vue'
 
 withDefaults(defineProps<{
   file: GalleryFile
@@ -94,7 +95,7 @@ withDefaults(defineProps<{
   sizeLabel: string
   dimensions: string
   timeRemaining: string
-  /** 渠道 id；主体 chatgpt 时 ChannelDot 自动不渲染 */
+  /** 渠道 id；force 下 chatgpt 也显示中性标，firefly 显示火焰色 */
   channelId?: string
 }>(), {
   channelId: '',
@@ -208,8 +209,9 @@ defineEmits<{
   min-width: 0;
 }
 
-.media-channel-dot {
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.75);
+.media-channel-badge {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(8px);
 }
 
 .media-badge {

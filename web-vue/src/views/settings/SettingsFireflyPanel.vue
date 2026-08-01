@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-3xl">
+  <div class="ff-panel">
     <FormSection
       collapsible
       title="Adobe Firefly"
@@ -27,155 +27,158 @@
           </div>
         </div>
 
-        <!-- 图像生成 -->
-        <section class="ff-card">
-          <header class="ff-card__header">
-            <span class="ff-card__icon" aria-hidden="true"><Icon icon="mdi:image-outline" class="h-4 w-4" /></span>
-            <div class="ff-card__headtext">
-              <p class="ff-card__title">图像生成</p>
-              <p class="ff-card__desc">文生图 / 图生图（nano-banana / gpt-image）的等待节奏与默认模型。</p>
+        <!-- 图像 / 视频：宽屏并排 -->
+        <div class="ff-media-grid">
+          <!-- 图像生成 -->
+          <section class="ff-card">
+            <header class="ff-card__header">
+              <span class="ff-card__icon" aria-hidden="true"><Icon icon="mdi:image-outline" class="h-4 w-4" /></span>
+              <div class="ff-card__headtext">
+                <p class="ff-card__title">图像生成</p>
+                <p class="ff-card__desc">文生图 / 图生图（nano-banana / gpt-image）的等待节奏与默认模型。</p>
+              </div>
+              <span class="ff-card__tag">text2image · image2image</span>
+            </header>
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <FormField label="生成超时">
+                <template #label-extra>
+                  <HelpTip text="单位秒，单次 Firefly 文生图从提交到拿到结果的最长等待。" />
+                </template>
+                <Input
+                  :model-value="genTimeoutField.input.value"
+                  type="number"
+                  step="1"
+                  block
+                  placeholder="180"
+                  @update:model-value="genTimeoutField.update"
+                />
+              </FormField>
+
+              <FormField label="轮询间隔">
+                <template #label-extra>
+                  <HelpTip text="单位秒，轮询 Adobe 状态接口的间隔，默认 3 秒。" />
+                </template>
+                <Input
+                  :model-value="pollIntervalField.input.value"
+                  type="number"
+                  step="1"
+                  block
+                  placeholder="3"
+                  @update:model-value="pollIntervalField.update"
+                />
+              </FormField>
+
+              <FormField label="最大重试次数">
+                <template #label-extra>
+                  <HelpTip text="临时错误（429 / 451 / 5xx）时的最大换号重试次数。" />
+                </template>
+                <Input
+                  :model-value="retryMaxField.input.value"
+                  type="number"
+                  step="1"
+                  block
+                  placeholder="3"
+                  @update:model-value="retryMaxField.update"
+                />
+              </FormField>
+
+              <FormField label="Cookie 刷新间隔（小时）">
+                <template #label-extra>
+                  <HelpTip text="单位小时，Firefly 账号 Cookie 主动刷新间隔，默认 15 小时。" />
+                </template>
+                <Input
+                  :model-value="refreshIntervalField.input.value"
+                  type="number"
+                  step="1"
+                  block
+                  placeholder="15"
+                  @update:model-value="refreshIntervalField.update"
+                />
+              </FormField>
+
+              <FormField label="默认模型" class="sm:col-span-2">
+                <template #label-extra>
+                  <HelpTip text="Firefly 渠道默认模型 id，例如 firefly-nano-banana-pro。" />
+                </template>
+                <Input
+                  v-model.trim="defaultModelProxy"
+                  block
+                  root-class="font-mono"
+                  placeholder="firefly-nano-banana-pro"
+                  list="firefly-default-model-suggestions"
+                />
+                <datalist id="firefly-default-model-suggestions">
+                  <option v-for="model in defaultModelSuggestions" :key="model" :value="model" />
+                </datalist>
+              </FormField>
             </div>
-            <span class="ff-card__tag">text2image · image2image</span>
-          </header>
-          <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <FormField label="生成超时">
-              <template #label-extra>
-                <HelpTip text="单位秒，单次 Firefly 文生图从提交到拿到结果的最长等待。" />
-              </template>
-              <Input
-                :model-value="genTimeoutField.input.value"
-                type="number"
-                step="1"
-                block
-                placeholder="180"
-                @update:model-value="genTimeoutField.update"
-              />
-            </FormField>
+          </section>
 
-            <FormField label="轮询间隔">
-              <template #label-extra>
-                <HelpTip text="单位秒，轮询 Adobe 状态接口的间隔，默认 3 秒。" />
-              </template>
-              <Input
-                :model-value="pollIntervalField.input.value"
-                type="number"
-                step="1"
-                block
-                placeholder="3"
-                @update:model-value="pollIntervalField.update"
-              />
-            </FormField>
-
-            <FormField label="最大重试次数">
-              <template #label-extra>
-                <HelpTip text="临时错误（429 / 451 / 5xx）时的最大换号重试次数。" />
-              </template>
-              <Input
-                :model-value="retryMaxField.input.value"
-                type="number"
-                step="1"
-                block
-                placeholder="3"
-                @update:model-value="retryMaxField.update"
-              />
-            </FormField>
-
-            <FormField label="Cookie 刷新间隔（小时）">
-              <template #label-extra>
-                <HelpTip text="单位小时，Firefly 账号 Cookie 主动刷新间隔，默认 15 小时。" />
-              </template>
-              <Input
-                :model-value="refreshIntervalField.input.value"
-                type="number"
-                step="1"
-                block
-                placeholder="15"
-                @update:model-value="refreshIntervalField.update"
-              />
-            </FormField>
-
-            <FormField label="默认模型" class="md:col-span-2">
-              <template #label-extra>
-                <HelpTip text="Firefly 渠道默认模型 id，例如 firefly-nano-banana-pro。" />
-              </template>
-              <Input
-                v-model.trim="defaultModelProxy"
-                block
-                root-class="font-mono"
-                placeholder="firefly-nano-banana-pro"
-                list="firefly-default-model-suggestions"
-              />
-              <datalist id="firefly-default-model-suggestions">
-                <option v-for="model in defaultModelSuggestions" :key="model" :value="model" />
-              </datalist>
-            </FormField>
-          </div>
-        </section>
-
-        <!-- 视频生成 -->
-        <section class="ff-card">
-          <header class="ff-card__header">
-            <span class="ff-card__icon" aria-hidden="true"><Icon icon="mdi:video-outline" class="h-4 w-4" /></span>
-            <div class="ff-card__headtext">
-              <p class="ff-card__title">视频生成</p>
-              <p class="ff-card__desc">sora2 / veo31 / kling 的开关与等待节奏。</p>
+          <!-- 视频生成 -->
+          <section class="ff-card">
+            <header class="ff-card__header">
+              <span class="ff-card__icon" aria-hidden="true"><Icon icon="mdi:video-outline" class="h-4 w-4" /></span>
+              <div class="ff-card__headtext">
+                <p class="ff-card__title">视频生成</p>
+                <p class="ff-card__desc">sora2 / veo31 / kling 的开关与等待节奏。</p>
+              </div>
+              <span class="ff-card__tag ff-card__tag--video">video</span>
+            </header>
+            <div class="ff-video-toggle" :class="{ 'ff-video-toggle--on': settings.firefly_video_enabled }">
+              <Checkbox
+                :model-value="Boolean(settings.firefly_video_enabled)"
+                @update:model-value="settings.firefly_video_enabled = Boolean($event)"
+              >
+                启用 Firefly 视频生成
+              </Checkbox>
             </div>
-            <span class="ff-card__tag ff-card__tag--video">video</span>
-          </header>
-          <div class="ff-video-toggle" :class="{ 'ff-video-toggle--on': settings.firefly_video_enabled }">
-            <Checkbox
-              :model-value="Boolean(settings.firefly_video_enabled)"
-              @update:model-value="settings.firefly_video_enabled = Boolean($event)"
-            >
-              启用 Firefly 视频生成
-            </Checkbox>
-          </div>
-          <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <FormField label="视频超时">
-              <template #label-extra>
-                <HelpTip text="单位秒，单次 Firefly 视频从提交到拿到结果的最长等待，默认 600 秒。" />
-              </template>
-              <Input
-                :model-value="videoTimeoutField.input.value"
-                type="number"
-                step="1"
-                block
-                placeholder="600"
-                @update:model-value="videoTimeoutField.update"
-              />
-            </FormField>
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <FormField label="视频超时">
+                <template #label-extra>
+                  <HelpTip text="单位秒，单次 Firefly 视频从提交到拿到结果的最长等待，默认 600 秒。" />
+                </template>
+                <Input
+                  :model-value="videoTimeoutField.input.value"
+                  type="number"
+                  step="1"
+                  block
+                  placeholder="600"
+                  @update:model-value="videoTimeoutField.update"
+                />
+              </FormField>
 
-            <FormField label="视频轮询间隔">
-              <template #label-extra>
-                <HelpTip text="单位秒，轮询 Adobe 视频任务状态的间隔，默认 3 秒。" />
-              </template>
-              <Input
-                :model-value="videoPollIntervalField.input.value"
-                type="number"
-                step="1"
-                block
-                placeholder="3"
-                @update:model-value="videoPollIntervalField.update"
-              />
-            </FormField>
+              <FormField label="视频轮询间隔">
+                <template #label-extra>
+                  <HelpTip text="单位秒，轮询 Adobe 视频任务状态的间隔，默认 3 秒。" />
+                </template>
+                <Input
+                  :model-value="videoPollIntervalField.input.value"
+                  type="number"
+                  step="1"
+                  block
+                  placeholder="3"
+                  @update:model-value="videoPollIntervalField.update"
+                />
+              </FormField>
 
-            <FormField label="默认视频模型" class="md:col-span-2">
-              <template #label-extra>
-                <HelpTip text="Firefly 视频默认模型 id，例如 firefly-sora2-4s-16x9。" />
-              </template>
-              <Input
-                v-model.trim="videoDefaultModelProxy"
-                block
-                root-class="font-mono"
-                placeholder="firefly-sora2-4s-16x9"
-                list="firefly-video-default-model-suggestions"
-              />
-              <datalist id="firefly-video-default-model-suggestions">
-                <option v-for="model in videoDefaultModelSuggestions" :key="model" :value="model" />
-              </datalist>
-            </FormField>
-          </div>
-        </section>
+              <FormField label="默认视频模型" class="sm:col-span-2">
+                <template #label-extra>
+                  <HelpTip text="Firefly 视频默认模型 id，例如 firefly-sora2-4s-16x9。" />
+                </template>
+                <Input
+                  v-model.trim="videoDefaultModelProxy"
+                  block
+                  root-class="font-mono"
+                  placeholder="firefly-sora2-4s-16x9"
+                  list="firefly-video-default-model-suggestions"
+                />
+                <datalist id="firefly-video-default-model-suggestions">
+                  <option v-for="model in videoDefaultModelSuggestions" :key="model" :value="model" />
+                </datalist>
+              </FormField>
+            </div>
+          </section>
+        </div>
 
         <!-- Credits 对账 -->
         <section class="ff-card">
@@ -450,10 +453,29 @@ const videoDefaultModelProxy = computed({
 </script>
 
 <style scoped>
+.ff-panel {
+  width: 100%;
+  max-width: none;
+}
+
 .ff-stack {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+/* 图像 / 视频：宽屏两列并排，窄屏纵向堆叠 */
+.ff-media-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+
+@media (min-width: 1100px) {
+  .ff-media-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
 }
 
 /* 渠道总开关：醒目大卡 */

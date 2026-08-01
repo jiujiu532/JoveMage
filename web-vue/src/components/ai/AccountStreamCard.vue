@@ -41,7 +41,7 @@
         {{ accountSecondaryText(item) }}
       </p>
       <div class="account-stream-card__tags">
-        <ChannelBadge :channel="accountChannelId" size="xs" />
+        <ChannelBadge :channel="accountChannelId" size="xs" force />
         <StatusPill
           :label="accountSourceText(item)"
           tone-class="border-cyan-500/40 bg-cyan-500/10 text-cyan-600"

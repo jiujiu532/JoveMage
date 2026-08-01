@@ -17,8 +17,11 @@ import { BP } from '@/lib/breakpoints'
 
 export function useDashboardPage() {
   const { enabledChannels, loadChannels } = useChannels()
-  /** 概览渠道卡：只渲染启用渠道（缺席=不出现） */
-  const channelCards = computed(() => enabledChannels.value)
+  /**
+   * 概览渠道卡：只渲染启用渠道（关闭=不出现）。
+   * 0 账号也保留卡片，由 ChannelCard 空态占位，避免布局跳动。
+   */
+  const channelCards = computed(() => enabledChannels.value.map((item) => ({ ...item })))
   type ChartInstance = {
     setOption: (
       option: unknown,
