@@ -1461,10 +1461,10 @@ function handleRemoteImportDone() {
 .accounts-toolbar {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 6px;
   /* 与下方账号列表拉开距离 */
-  margin-bottom: 6px;
-  padding-bottom: 16px;
+  margin-bottom: 4px;
+  padding-bottom: 12px;
   border-bottom: 2px solid hsl(var(--border) / 0.5);
 }
 
@@ -1482,8 +1482,6 @@ function handleRemoteImportDone() {
 .accounts-toolbar-row-actions {
   align-items: flex-start;
   justify-content: space-between;
-  padding-top: 10px;
-  border-top: 1px solid hsl(var(--border) / 0.62);
 }
 
 .accounts-toolbar-filters {
@@ -1522,8 +1520,8 @@ function handleRemoteImportDone() {
 /* 与 md 断点对齐：<768（max-width:767 = mqDown(md)） */
 @media (max-width: 767px) {
   .accounts-toolbar {
-    gap: 10px;
-    padding-bottom: 12px;
+    gap: 6px;
+    padding-bottom: 10px;
   }
 
   .accounts-toolbar-row-main {
