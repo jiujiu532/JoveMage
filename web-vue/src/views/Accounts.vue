@@ -1,7 +1,7 @@
 <template>
   <div class="relative space-y-8">
     <PagePanel class="space-y-5">
-      <!-- 桌面：渠道分段 Tab；窄屏：下拉（§6.1） -->
+      <!-- 渠道分段 Tab：全断点显示；窄屏横向滚动（§6.1） -->
       <div class="accounts-channel-nav">
         <ConsoleSegmentedTabs
           class="accounts-channel-tabs"
@@ -11,17 +11,6 @@
           fit="content"
           @update:model-value="setSourceFilter"
         />
-        <div class="accounts-channel-select">
-          <GroupedSelectMenu
-            :model-value="sourceFilter"
-            :options="channelTabSelectOptions"
-            placeholder="选择渠道"
-            selected-indicator="none"
-            aria-label="账号渠道"
-            block
-            @update:model-value="setSourceFilter"
-          />
-        </div>
       </div>
 
       <div class="accounts-toolbar">
@@ -1160,14 +1149,6 @@ watch(showModal, (open) => {
   if (!open) accountModalTab.value = 'edit'
 })
 
-/** 窄屏渠道下拉选项（与 Tab 同源）。移动端无角标位，label 直接带计数。 */
-const channelTabSelectOptions = computed(() =>
-  channelTabOptions.value.map((item) => ({
-    label: typeof item.count === 'number' ? `${item.label} · ${item.count}` : item.label,
-    value: item.value,
-  })),
-)
-
 type BatchAction = 'refresh' | 'reset' | 'enable' | 'disable' | 'delete'
 type AccountActionMenuItem = ActionMenuItem & {
   children?: AccountActionMenuItem[]
@@ -1715,13 +1696,6 @@ html[data-theme='dark'] .account-card-tile__metrics {
   max-width: 100%;
 }
 
-.accounts-channel-select {
-  display: none;
-  min-width: 0;
-  width: 100%;
-  max-width: 22rem;
-}
-
 .account-modal-tabs {
   min-width: 0;
 }
@@ -1735,16 +1709,6 @@ html[data-theme='dark'] .account-card-tile__metrics {
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-}
-
-@media (max-width: 767px) {
-  .accounts-channel-tabs {
-    display: none;
-  }
-
-  .accounts-channel-select {
-    display: block;
-  }
 }
 
 @media (max-width: 1100px) {
