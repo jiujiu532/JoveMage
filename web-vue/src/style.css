@@ -1136,7 +1136,10 @@ html[data-theme="dark"] .toast-card {
 .ui-card,
 .ui-card-sm,
 .metric-strip-card,
-.info-card {
+.info-card,
+.dashboard-metric-card,
+.channel-card,
+.monitor-metric-cell {
   transition:
     transform 0.16s ease,
     border-color 0.16s ease,
@@ -1148,7 +1151,10 @@ html[data-theme="dark"] .toast-card {
 .ui-card:hover,
 .ui-card-sm:hover,
 .metric-strip-card:hover,
-.info-card:hover {
+.info-card:hover,
+.dashboard-metric-card:hover,
+.channel-card:hover,
+.monitor-metric-cell:hover {
   transform: translate(-1px, -1px);
   border-color: var(--bauhaus-ink) !important;
 }
@@ -1158,7 +1164,10 @@ html[data-theme="dark"] .ui-panel:hover,
 html[data-theme="dark"] .ui-card:hover,
 html[data-theme="dark"] .ui-card-sm:hover,
 html[data-theme="dark"] .metric-strip-card:hover,
-html[data-theme="dark"] .info-card:hover {
+html[data-theme="dark"] .info-card:hover,
+html[data-theme="dark"] .dashboard-metric-card:hover,
+html[data-theme="dark"] .channel-card:hover,
+html[data-theme="dark"] .monitor-metric-cell:hover {
   border-color: hsl(var(--foreground) / 0.55) !important;
   box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4) !important;
 }
@@ -1235,6 +1244,9 @@ a:not(.ui-btn):not([class*="ui-btn"]):hover {
   .ui-card-sm,
   .metric-strip-card,
   .info-card,
+  .dashboard-metric-card,
+  .channel-card,
+  .monitor-metric-cell,
   .page-panel,
   table tbody tr,
   .table-shell tbody tr,
@@ -1248,6 +1260,9 @@ a:not(.ui-btn):not([class*="ui-btn"]):hover {
   .ui-card-sm:hover,
   .metric-strip-card:hover,
   .info-card:hover,
+  .dashboard-metric-card:hover,
+  .channel-card:hover,
+  .monitor-metric-cell:hover,
   .page-panel {
     transform: none !important;
   }
