@@ -150,7 +150,7 @@
                     v-if="sourceFilter === 'firefly'"
                     size="sm"
                     variant="primary"
-                    @click="openCreateModalForFirefly"
+                    @click="openFireflyCookieImport"
                   >
                     导入 Express Cookie
                   </Button>
@@ -279,7 +279,7 @@
               v-if="sourceFilter === 'firefly'"
               size="sm"
               variant="primary"
-              @click="openCreateModalForFirefly"
+              @click="openFireflyCookieImport"
             >
               导入 Express Cookie
             </Button>
@@ -406,7 +406,7 @@
               v-if="sourceFilter === 'firefly'"
               size="sm"
               variant="primary"
-              @click="openCreateModalForFirefly"
+              @click="openFireflyCookieImport"
             >
               导入 Express Cookie
             </Button>
@@ -822,18 +822,25 @@
 
             <div class="grid grid-cols-1 gap-0 md:grid-cols-[15rem_1fr]">
               <div class="border-b border-border bg-muted/20 p-3 md:border-b-0 md:border-r">
-                <div class="space-y-1">
-                  <button
-                    v-for="option in importModeOptions"
-                    :key="option.value"
-                    type="button"
-                    class="w-full rounded-sm px-3 py-2 text-left text-sm transition-colors"
-                    :class="importMode === option.value ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-card hover:text-foreground'"
-                    :disabled="importModalBusy"
-                    @click="setImportMode(option.value)"
+                <div class="space-y-4">
+                  <div
+                    v-for="section in importModeSections"
+                    :key="section.key"
+                    class="space-y-1"
                   >
-                    {{ option.label }}
-                  </button>
+                    <p class="import-mode-section-title">{{ section.title }}</p>
+                    <button
+                      v-for="option in section.options"
+                      :key="option.value"
+                      type="button"
+                      class="w-full rounded-sm px-3 py-2 text-left text-sm transition-colors"
+                      :class="importMode === option.value ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-card hover:text-foreground'"
+                      :disabled="importModalBusy"
+                      @click="setImportMode(option.value)"
+                    >
+                      {{ option.label }}
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -899,6 +906,27 @@
                     @imported="handleRemoteImportDone"
                   />
                 </div>
+
+                <div v-else-if="importMode === 'firefly_cookie'" class="space-y-3">
+                  <ImportModePanel
+                    title="导入 Express Cookie"
+                    description="一行一个 Adobe Express Cookie。服务端会用 Cookie 换取 Firefly access_token，并标记 source_type=firefly。"
+                  />
+                  <textarea
+                    v-model.trim="fireflyCookieText"
+                    rows="10"
+                    class="ui-textarea-sm font-mono"
+                    placeholder="一行一个 Express Cookie"
+                  ></textarea>
+                  <div class="flex flex-wrap justify-end gap-2">
+                    <Button size="xs" variant="outline" :disabled="importBusy" @click="openFireflyCookieFile">
+                      读取 TXT 文件
+                    </Button>
+                    <Button size="xs" variant="primary" :disabled="importBusy || !fireflyCookieText.trim()" @click="importFireflyCookieText">
+                      {{ importBusy ? '导入中...' : '开始导入' }}
+                    </Button>
+                  </div>
+                </div>
               </div>
             </div>
     </ModalShell>
@@ -922,6 +950,7 @@
 
     <input ref="manualTokenFileInputRef" type="file" accept=".txt,text/plain" class="hidden" @change="handleManualTokenFileChange" />
     <input ref="cpaFileInputRef" type="file" accept=".json,application/json" multiple class="hidden" @change="handleCPAFileChange" />
+    <input ref="fireflyCookieFileInputRef" type="file" accept=".txt,text/plain" class="hidden" @change="handleFireflyCookieFileChange" />
   </div>
 </template>
 
@@ -1025,9 +1054,10 @@ const {
   exportBusy,
   showImportModal,
   importMode,
-  importModeOptions,
+  importModeSections,
   manualTokenText,
   sessionJsonText,
+  fireflyCookieText,
   accountGroups,
   proxyGroups,
   accountGroupsLoading,
@@ -1092,6 +1122,8 @@ const {
   importTokenTextFile,
   importSessionJson,
   importLocalCPAFiles,
+  importFireflyCookieText,
+  importFireflyCookieFile,
   requestStopRefreshProgress,
   closeRefreshProgress,
   copyAccountToken,
@@ -1109,9 +1141,9 @@ const {
   exportAccounts,
 } = useAccountsPage()
 
-function openCreateModal() {
+function openCreateModal(options?: { source_type?: string }) {
   accountModalTab.value = 'edit'
-  openCreateModalBase()
+  openCreateModalBase(options)
 }
 
 function openEditModal(item: Account) {
@@ -1143,6 +1175,7 @@ type AccountActionMenuItem = ActionMenuItem & {
 
 const manualTokenFileInputRef = ref<HTMLInputElement | null>(null)
 const cpaFileInputRef = ref<HTMLInputElement | null>(null)
+const fireflyCookieFileInputRef = ref<HTMLInputElement | null>(null)
 const remoteImportBusy = ref(false)
 const accountToolbarMenuClass = 'shrink-0 whitespace-nowrap'
 const accountToolbarButtonClass = 'shrink-0 whitespace-nowrap justify-between gap-2'
@@ -1162,24 +1195,20 @@ const channelEmptyTitle = computed(() => {
 
 const channelEmptyDescription = computed(() => {
   if (sourceFilter.value === 'firefly') {
-    return '导入 Express Cookie 开始。到 new.express.adobe.com 登录后复制完整 Cookie，点下方按钮添加。'
+    return '导入 Express Cookie 开始。到 new.express.adobe.com 登录后复制完整 Cookie，点下方按钮批量导入。'
   }
   if (sourceFilter.value && sourceFilter.value !== 'all') {
     return '当前渠道还没有账号，先导入或手动添加。'
   }
-  return '可以先导入 Access Token、Session JSON 或 CPA JSON 文件。'
+  return '可以先导入 Access Token、Session JSON、CPA JSON 或 Firefly Express Cookie。'
 })
 
 function openCreateModalForFirefly() {
-  openCreateModal()
-  // 打开后切到 Firefly 来源（若 form 已暴露 source_type）
-  try {
-    // form 由 useAccountsPage 暴露；优先设 source_type
-    const pageForm = (form as { source_type?: string } | undefined)
-    if (pageForm) pageForm.source_type = 'firefly'
-  } catch {
-    // ignore
-  }
+  openCreateModal({ source_type: 'firefly' })
+}
+
+function openFireflyCookieImport() {
+  openImportModal('firefly_cookie')
 }
 
 const accountGroupNameMap = computed(() => new Map(
@@ -1283,18 +1312,33 @@ const importActionKeys = new Set<AccountImportMode>([
   'cpa_json',
   'remote_cpa',
   'sub2api',
+  'firefly_cookie',
 ])
 
-const accountEntryItems = computed<ActionMenuItem[]>(() => actionMenuGroups(
+const accountEntryItems = computed<AccountActionMenuItem[]>(() => actionMenuGroups<AccountActionMenuItem>(
   [
-    { key: 'create', label: '手动添加账号' },
+    {
+      key: 'chatgpt',
+      label: 'ChatGPT',
+      children: [
+        { key: 'create', label: '手动添加账号' },
+        { key: 'access_token', label: '导入 Access Token' },
+        { key: 'session_json', label: '导入 Session JSON' },
+        { key: 'cpa_json', label: '导入 CPA JSON 文件' },
+        { key: 'remote_cpa', label: '从远程 CPA 服务器导入' },
+        { key: 'sub2api', label: '从 Sub2API 服务器导入' },
+      ],
+    },
   ],
   [
-    { key: 'access_token', label: '导入 Access Token' },
-    { key: 'session_json', label: '导入 Session JSON' },
-    { key: 'cpa_json', label: '导入 CPA JSON 文件' },
-    { key: 'remote_cpa', label: '从远程 CPA 服务器导入' },
-    { key: 'sub2api', label: '从 Sub2API 服务器导入' },
+    {
+      key: 'firefly',
+      label: 'Firefly',
+      children: [
+        { key: 'create_firefly', label: '手动添加账号' },
+        { key: 'firefly_cookie', label: '导入 Express Cookie' },
+      ],
+    },
   ],
 ))
 
@@ -1343,6 +1387,10 @@ function handleAccountEntryAction(key: string) {
     openCreateModal()
     return
   }
+  if (key === 'create_firefly') {
+    openCreateModalForFirefly()
+    return
+  }
   if (importActionKeys.has(key as AccountImportMode)) {
     openImportModal(key as AccountImportMode)
   }
@@ -1388,6 +1436,19 @@ function openCPAFileDialog() {
 async function handleCPAFileChange(event: Event) {
   const target = event.target as HTMLInputElement | null
   await importLocalCPAFiles(target?.files)
+  if (target) target.value = ''
+}
+
+function openFireflyCookieFile() {
+  if (!fireflyCookieFileInputRef.value || importBusy.value) return
+  fireflyCookieFileInputRef.value.value = ''
+  fireflyCookieFileInputRef.value.click()
+}
+
+async function handleFireflyCookieFileChange(event: Event) {
+  const target = event.target as HTMLInputElement | null
+  const file = target?.files?.[0]
+  await importFireflyCookieFile(file)
   if (target) target.value = ''
 }
 
@@ -1663,6 +1724,17 @@ html[data-theme='dark'] .account-card-tile__metrics {
 
 .account-modal-tabs {
   min-width: 0;
+}
+
+.import-mode-section-title {
+  margin: 0 0 0.25rem;
+  padding: 0 0.75rem;
+  color: hsl(var(--muted-foreground));
+  font-family: var(--font-display);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 @media (max-width: 767px) {

@@ -14,7 +14,13 @@ import {
   type SetErrorFn,
 } from './accountPageShared'
 
-export type AccountImportMode = 'access_token' | 'session_json' | 'cpa_json' | 'remote_cpa' | 'sub2api'
+export type AccountImportMode =
+  | 'access_token'
+  | 'session_json'
+  | 'cpa_json'
+  | 'remote_cpa'
+  | 'sub2api'
+  | 'firefly_cookie'
 
 export type UseAccountImportOptions = {
   setError: SetErrorFn
@@ -27,7 +33,7 @@ export type UseAccountImportOptions = {
 }
 
 /**
- * 多模式账号导入：token / session JSON / CPA 文件，复用 bulk 进度 UI。
+ * 多模式账号导入：ChatGPT token/session/CPA + Firefly Cookie，复用 bulk 进度 UI。
  */
 export function useAccountImport(options: UseAccountImportOptions) {
   const {
@@ -47,14 +53,35 @@ export function useAccountImport(options: UseAccountImportOptions) {
   const importMode = ref<AccountImportMode>('access_token')
   const manualTokenText = ref('')
   const sessionJsonText = ref('')
+  const fireflyCookieText = ref('')
 
-  const importModeOptions = [
-    { label: '导入 Access Token', value: 'access_token' },
-    { label: '导入 Session JSON', value: 'session_json' },
-    { label: '导入 CPA JSON 文件', value: 'cpa_json' },
-    { label: '从远程 CPA 服务器导入', value: 'remote_cpa' },
-    { label: '从 Sub2API 服务器导入', value: 'sub2api' },
-  ] as const
+  /** 侧栏分组：ChatGPT 与 Firefly 分列，避免混用导入格式 */
+  const importModeSections: Array<{
+    key: string
+    title: string
+    options: Array<{ label: string; value: AccountImportMode }>
+  }> = [
+    {
+      key: 'chatgpt',
+      title: 'ChatGPT',
+      options: [
+        { label: '导入 Access Token', value: 'access_token' },
+        { label: '导入 Session JSON', value: 'session_json' },
+        { label: '导入 CPA JSON 文件', value: 'cpa_json' },
+        { label: '从远程 CPA 服务器导入', value: 'remote_cpa' },
+        { label: '从 Sub2API 服务器导入', value: 'sub2api' },
+      ],
+    },
+    {
+      key: 'firefly',
+      title: 'Firefly',
+      options: [
+        { label: '导入 Express Cookie', value: 'firefly_cookie' },
+      ],
+    },
+  ]
+
+  const importModeOptions = importModeSections.flatMap((section) => section.options)
 
   function setImportMode(mode: AccountImportMode) {
     importMode.value = mode
@@ -201,6 +228,103 @@ export function useAccountImport(options: UseAccountImportOptions) {
     }
   }
 
+  /**
+   * Firefly：一行一个 Express Cookie（或 cookie JSON 里的 cookie 字段）。
+   * 后端用 cookie 走 IMS 换 access_token，不走 ChatGPT OAuth 刷新。
+   */
+  async function importFireflyCookieBatch(cookies: string[], title = '导入 Express Cookie') {
+    const normalizedCookies = uniqueTokens(cookies)
+    if (!normalizedCookies.length) {
+      toast.warning('没有可导入的 Express Cookie')
+      return
+    }
+
+    const confirmed = await confirmDialog.ask({
+      title,
+      message: `即将导入 ${normalizedCookies.length} 个 Firefly 账号。Cookie 会在服务端换取 access_token；已存在账号会按 token 去重跳过。是否继续？`,
+      confirmText: '确认导入',
+      cancelText: '取消',
+    })
+    if (!confirmed) return
+
+    importBusy.value = true
+    batchBusy.value = true
+    batchActionLabel.value = title
+    openBulkProgress(title, normalizedCookies.length, 'mutation')
+    let addedCount = 0
+    let skippedCount = 0
+    let refreshedCount = 0
+    let processed = 0
+    const errors: string[] = []
+    try {
+      for (let index = 0; index < normalizedCookies.length; index += IMPORT_BATCH_SIZE) {
+        if (bulkStopRequested.value) break
+        const batch = normalizedCookies.slice(index, index + IMPORT_BATCH_SIZE)
+        try {
+          const result = await accountsApi.importAccounts(
+            batch.map((cookie) => ({
+              cookie,
+              type: 'firefly',
+              source_type: 'firefly',
+            })),
+            'firefly',
+            // Firefly 创建时后端会跳过 ChatGPT refresh；cookie→token 已在 normalize 完成
+            { refresh: false, returnItems: false },
+          )
+          addedCount += Number(result.added || 0)
+          skippedCount += Number(result.skipped || 0)
+          refreshedCount += Number(result.refreshed || 0)
+          errors.push(...(Array.isArray(result.errors) ? result.errors.filter(Boolean) : []))
+        } catch (error) {
+          errors.push(`${batch[0]?.slice(0, 10) || '-'}... 等 ${batch.length} 个：${normalizeErrorMessage(error)}`)
+        } finally {
+          processed = Math.min(normalizedCookies.length, processed + batch.length)
+          refreshProgress.value = {
+            ...(refreshProgress.value || { total: normalizedCookies.length }),
+            total: normalizedCookies.length,
+            processed,
+            done: processed >= normalizedCookies.length,
+            total_quota: 0,
+          }
+        }
+      }
+
+      await loadData({ silentErrorToast: true })
+      const stopped = bulkStopRequested.value && processed < normalizedCookies.length
+      refreshProgress.value = {
+        ...(refreshProgress.value || { total: normalizedCookies.length, processed }),
+        total: normalizedCookies.length,
+        processed,
+        done: true,
+        total_quota: 0,
+      }
+      if (stopped) {
+        toast.warning(`${title}已停止：已处理 ${processed}/${normalizedCookies.length} 个`)
+      } else if (errors.length > 0) {
+        toast.warning(`${title}完成：新增 ${addedCount}，跳过 ${skippedCount}，失败 ${errors.length}`)
+      } else {
+        toast.success(`${title}完成：新增 ${addedCount}，跳过 ${skippedCount}`)
+      }
+      if (addedCount + skippedCount + refreshedCount > 0) {
+        fireflyCookieText.value = ''
+      }
+    } catch (error) {
+      refreshProgress.value = {
+        ...(refreshProgress.value || { total: normalizedCookies.length, processed }),
+        total: normalizedCookies.length,
+        processed,
+        done: true,
+        error: normalizeErrorMessage(error),
+        total_quota: 0,
+      }
+      setError(`${title}失败`, error)
+    } finally {
+      importBusy.value = false
+      batchBusy.value = false
+      batchActionLabel.value = ''
+    }
+  }
+
   async function importManualTokenText() {
     await importTokenBatch(parseTokenLines(manualTokenText.value), 'manual', '导入 Access Token')
   }
@@ -235,13 +359,26 @@ export function useAccountImport(options: UseAccountImportOptions) {
     }
   }
 
+  async function importFireflyCookieText() {
+    await importFireflyCookieBatch(parseTokenLines(fireflyCookieText.value), '导入 Express Cookie')
+  }
+
+  async function importFireflyCookieFile(file: File | null | undefined) {
+    if (!file) return
+    const text = await file.text()
+    fireflyCookieText.value = text
+    await importFireflyCookieText()
+  }
+
   return {
     importBusy,
     showImportModal,
     importMode,
     importModeOptions,
+    importModeSections,
     manualTokenText,
     sessionJsonText,
+    fireflyCookieText,
     setImportMode,
     openImportModal,
     closeImportModal,
@@ -249,5 +386,7 @@ export function useAccountImport(options: UseAccountImportOptions) {
     importTokenTextFile,
     importSessionJson,
     importLocalCPAFiles,
+    importFireflyCookieText,
+    importFireflyCookieFile,
   }
 }

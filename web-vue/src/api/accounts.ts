@@ -775,16 +775,25 @@ export const accountsApi = {
     const deduped = new Map<string, AccountImportPayload>()
     for (const payload of accountPayloads) {
       if (!payload || typeof payload !== 'object') continue
-      const accessToken = cleanString(payload.access_token || payload.accessToken || payload.cookie)
-      if (!accessToken) continue
-      const nextPayload: AccountImportPayload = {
-        ...payload,
-        access_token: accessToken,
-        source_type: cleanString(payload.source_type) || fallbackSourceType,
-        status: cleanString(payload.status) || STATUS_NORMAL,
+      const sourceType = cleanString(payload.source_type) || fallbackSourceType
+      // Firefly 用 cookie 作主键；ChatGPT 用 access_token。避免把 cookie 误塞进 access_token
+      let nextPayload: AccountImportPayload
+      try {
+        nextPayload = {
+          ...accountFromPayload({
+            ...payload,
+            source_type: sourceType,
+            backend_status: cleanString(payload.status) || STATUS_NORMAL,
+          } as Partial<Account>),
+        } as AccountImportPayload
+      } catch {
+        continue
       }
-      delete nextPayload.accessToken
-      deduped.set(accessToken, nextPayload)
+      const dedupeKey = isFireflySourceType(sourceType)
+        ? cleanString(nextPayload.cookie || nextPayload.access_token)
+        : cleanString(nextPayload.access_token)
+      if (!dedupeKey) continue
+      deduped.set(dedupeKey, nextPayload)
     }
     const accounts = Array.from(deduped.values())
     if (!accounts.length) {

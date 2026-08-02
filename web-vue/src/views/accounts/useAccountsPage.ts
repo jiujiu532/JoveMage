@@ -187,8 +187,10 @@ export function useAccountsPage() {
     showImportModal,
     importMode,
     importModeOptions,
+    importModeSections,
     manualTokenText,
     sessionJsonText,
+    fireflyCookieText,
     setImportMode,
     openImportModal,
     closeImportModal,
@@ -196,6 +198,8 @@ export function useAccountsPage() {
     importTokenTextFile,
     importSessionJson,
     importLocalCPAFiles,
+    importFireflyCookieText,
+    importFireflyCookieFile,
   } = accountImport
 
   // ── 视图模式 / 单账号 CRUD / 导出 ───────────────────────────────
@@ -406,8 +410,15 @@ export function useAccountsPage() {
     setStringPreference(preferenceKeys.accountsViewMode, next)
   }
 
-  function openCreateModal() {
+  function openCreateModal(options?: { source_type?: string }) {
     resetForm()
+    const sourceType = String(options?.source_type || '').trim()
+    if (sourceType) {
+      form.source_type = sourceType
+      if (isFireflySourceType(sourceType)) {
+        form.type = 'firefly'
+      }
+    }
     void loadAccountGroups({ silentErrorToast: true })
     showModal.value = true
   }
@@ -801,8 +812,10 @@ export function useAccountsPage() {
     showImportModal,
     importMode,
     importModeOptions,
+    importModeSections,
     manualTokenText,
     sessionJsonText,
+    fireflyCookieText,
     accountGroups,
     proxyGroups,
     accountGroupsLoading,
@@ -867,6 +880,8 @@ export function useAccountsPage() {
     importTokenTextFile,
     importSessionJson,
     importLocalCPAFiles,
+    importFireflyCookieText,
+    importFireflyCookieFile,
     refreshAllAccounts,
     refreshSelectedAccounts,
     requestStopRefreshProgress,
