@@ -925,6 +925,12 @@ export const accountsApi = {
   fetchTaskStatus: (taskId: string) =>
     apiClient.get<never, TaskStatus>(`/api/tasks/${encodeURIComponent(taskId)}`),
 
+  /** 请求取消后台任务（巡检等；真停止，当前批结束后收尾） */
+  cancelTask: (taskId: string) =>
+    apiClient.post<never, { ok: boolean; task_id: string; status: string }>(
+      `/api/tasks/${encodeURIComponent(taskId)}/cancel`,
+    ),
+
   fetchRunningTasks: () =>
     apiClient.get<never, { tasks: TaskStatus[] }>('/api/tasks'),
 

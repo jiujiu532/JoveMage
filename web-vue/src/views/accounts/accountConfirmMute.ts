@@ -151,12 +151,13 @@ export function consequenceText(action: AccountGlobalAction, options?: {
   if (action === 'inspect') {
     const invalid = options?.autoRemoveInvalid
     const limited = options?.autoRemoveRateLimited
+    const suffix = '巡检过程中可随时停止（当前批次完成后收尾）。'
     if (invalid === false && limited === false) {
-      return '仅探活标记，不会删除任何账号（设置中「自动移除异常 / 额度耗尽」均已关闭）。'
+      return `仅探活标记，不会删除任何账号（设置中「自动移除异常 / 额度耗尽」均已关闭）。${suffix}`
     }
     const invalidText = invalid == null ? '以设置页为准' : (invalid ? '已开启' : '已关闭')
     const limitedText = limited == null ? '以设置页为准' : (limited ? '已开启' : '已关闭')
-    return `将远程探活，并遵守设置策略：自动移除异常账号（${invalidText}）、自动移除额度耗尽账号（${limitedText}）。可在设置页修改。`
+    return `将远程探活，并遵守设置策略：自动移除异常账号（${invalidText}）、自动移除额度耗尽账号（${limitedText}）。可在设置页修改。${suffix}`
   }
   if (action === 'delete') {
     return '删除后不可恢复，请确认渠道与数量无误。'

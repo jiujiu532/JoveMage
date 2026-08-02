@@ -625,6 +625,10 @@ def _run_account_inspect(
 
     try:
         for batch_start in range(0, len(tokens), _INSPECT_BATCH_SIZE):
+            # 真停止：每批边界检查取消标志，置位即收尾（当前批已跑完，不再开下一批）
+            if task.cancel_requested:
+                stats["stopped"] = True
+                break
             batch = tokens[batch_start: batch_start + _INSPECT_BATCH_SIZE]
             max_workers = min(10, len(batch)) or 1
             executor = ThreadPoolExecutor(max_workers=max_workers)
@@ -662,7 +666,7 @@ def _run_account_inspect(
                 marked_invalid=stats["marked_invalid"],
                 marked_rate_limited=stats["marked_rate_limited"],
                 refresh_failed=stats["refresh_failed"],
-                stopped=False,
+                stopped=stats["stopped"],
             )
     except Exception as exc:
         safe = redact_auth_diagnostic(exc)
@@ -677,9 +681,10 @@ def _run_account_inspect(
         return
 
     stats["errors"] = errors[:50]
+    stopped = bool(stats.get("stopped"))
     log_service.add(
         LOG_TYPE_ACCOUNT,
-        "一键巡检完成",
+        "一键巡检已停止" if stopped else "一键巡检完成",
         {
             "scope": scope,
             "total": stats["total"],
@@ -690,9 +695,14 @@ def _run_account_inspect(
             "marked_invalid": stats["marked_invalid"],
             "marked_rate_limited": stats["marked_rate_limited"],
             "refresh_failed": stats["refresh_failed"],
+            "stopped": stopped,
         },
     )
-    task.complete(**stats)
+    if stopped:
+        task.result.update(stats)
+        task.cancel()
+    else:
+        task.complete(**stats)
 
 
 def _precheck_relogin_tokens(tokens: list[str]) -> dict[str, Any]:
@@ -1496,5 +1506,14 @@ def create_router() -> APIRouter:
         if task is None:
             raise HTTPException(status_code=404, detail={"error": "task not found"})
         return task.to_dict()
+
+    @router.post("/api/tasks/{task_id}/cancel")
+    async def cancel_task(task_id: str, authorization: str | None = Header(default=None)):
+        """请求取消后台任务（置标志，任务体每批边界自行收尾；真停止）。"""
+        require_admin(authorization)
+        task = task_manager.request_cancel(task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail={"error": "task not found or already finished"})
+        return {"ok": True, "task_id": task.task_id, "status": task.status}
 
     return router

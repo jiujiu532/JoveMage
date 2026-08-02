@@ -954,10 +954,10 @@
       :current="refreshProgress?.processed || 0"
       :error="refreshProgress?.error || ''"
       :busy="batchBusy && !refreshProgress?.done"
-      :can-cancel="canStopRefreshProgress && !bulkStopRequested"
+      :can-cancel="canStopRefreshProgress && !bulkStopRequested && !globalActions.inspectStopRequested.value"
       :z-index="140"
       @close="closeRefreshProgress"
-      @cancel="requestStopRefreshProgress"
+      @cancel="handleProgressCancel"
     >
       <template #metrics>
         <MetricStrip :items="refreshProgressItems" columns-class="grid-cols-2" density="compact" />
@@ -1136,6 +1136,7 @@ const {
   showRefreshProgress,
   refreshProgressTitle,
   refreshProgress,
+  refreshProgressKind,
   refreshProgressMetricLabel,
   refreshProgressMetricValue,
   refreshProgressStatusText,
@@ -1486,6 +1487,15 @@ async function handleBatchAction(action: string) {
     return
   }
   await runBulkAction(action as BatchAction)
+}
+
+/** 进度弹窗「停止」：巡检走后端真取消，其余走前端分批停止 */
+async function handleProgressCancel() {
+  if (refreshProgressKind.value === 'inspect') {
+    await globalActions.requestStopInspect()
+    return
+  }
+  requestStopRefreshProgress()
 }
 
 function handleAccountEntryAction(key: string) {

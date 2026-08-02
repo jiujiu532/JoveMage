@@ -237,6 +237,28 @@ class InspectStatsTests(unittest.TestCase):
             "removed_invalid",
         )
 
+    def test_inspect_cancel_before_first_batch_stops(self) -> None:
+        """真停止：cancel 标志预置 → 首批前 break，task.cancelled，processed=0，stopped=True。"""
+        store = {f"tok-{i}": _acct(f"tok-{i}", status="正常") for i in range(5)}
+
+        def get_account(token: str):
+            item = store.get(token)
+            return dict(item) if item else None
+
+        def fetch(token: str, event: str = "inspect", remove_invalid=None):
+            return store[token]
+
+        task = BackgroundTask("test-inspect-cancel", "account_inspect", total=5)
+        task.request_cancel()  # 预置取消：任务体应在第一批前就收尾
+        with mock.patch.object(accounts_api.account_service, "get_account", side_effect=get_account), mock.patch.object(
+            accounts_api.account_service, "fetch_remote_info", side_effect=fetch
+        ), mock.patch.object(accounts_api.log_service, "add"):
+            accounts_api._run_account_inspect(task, list(store.keys()), scope="all")
+
+        self.assertEqual(task.status, "cancelled")
+        self.assertEqual(task.result.get("stopped"), True)
+        self.assertEqual(task.result.get("processed"), 0)
+
 
 class ReloginPrecheckTests(unittest.TestCase):
     def setUp(self) -> None:

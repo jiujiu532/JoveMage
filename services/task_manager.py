@@ -10,18 +10,31 @@ from typing import Any, Callable
 
 
 class BackgroundTask:
-    __slots__ = ("task_id", "task_type", "status", "progress", "total", "result", "error", "created_at", "updated_at")
+    __slots__ = ("task_id", "task_type", "status", "progress", "total", "result", "error", "created_at", "updated_at", "_cancel_event")
 
     def __init__(self, task_id: str, task_type: str, total: int = 0) -> None:
         self.task_id = task_id
         self.task_type = task_type
-        self.status: str = "running"  # running | completed | failed
+        self.status: str = "running"  # running | completed | failed | cancelled
         self.progress: int = 0
         self.total: int = total
         self.result: dict[str, Any] = {}
         self.error: str = ""
         self.created_at: str = datetime.now(timezone.utc).isoformat()
         self.updated_at: str = self.created_at
+        self._cancel_event = threading.Event()
+
+    @property
+    def cancel_requested(self) -> bool:
+        return self._cancel_event.is_set()
+
+    def request_cancel(self) -> None:
+        self._cancel_event.set()
+
+    def cancel(self) -> None:
+        """任务体检测到 cancel_requested 后主动收尾调用。"""
+        self.status = "cancelled"
+        self.updated_at = datetime.now(timezone.utc).isoformat()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -102,6 +115,14 @@ class TaskManager:
 
     def get(self, task_id: str) -> BackgroundTask | None:
         return self._tasks.get(task_id)
+
+    def request_cancel(self, task_id: str) -> BackgroundTask | None:
+        """请求取消任务；返回任务（不存在或已结束返回 None）。仅置标志，由任务体在每批边界自行收尾。"""
+        task = self._tasks.get(task_id)
+        if task is None or task.status != "running":
+            return None
+        task.request_cancel()
+        return task
 
     def is_running(self, task_type: str) -> bool:
         with self._lock:

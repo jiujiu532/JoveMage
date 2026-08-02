@@ -75,6 +75,10 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
 
   const inspectSummary = ref<InspectSummary | null>(null)
   const showInspectSummary = ref(false)
+  /** 巡检运行中的后端任务 id；用于真停止 */
+  const inspectTaskId = ref('')
+  /** 巡检是否已请求停止（用于进度态文案/按钮态） */
+  const inspectStopRequested = ref(false)
 
   function scopeCount(scope: AccountGlobalScope): number {
     if (scope === 'selected') return selectedIds.value.length
@@ -241,6 +245,7 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
     openBulkProgress(title, count, 'inspect')
     batchBusy.value = true
     batchActionLabel.value = title
+    inspectStopRequested.value = false
     try {
       const filter = filterParams(true)
       const params = scope === 'filter'
@@ -255,7 +260,9 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
         group_id: params.group_id || 'all',
         source_type: params.source_type || 'all',
       })
+      inspectTaskId.value = started.task_id
       let task = await accountsApi.fetchTaskStatus(started.task_id)
+      // running 期间持续轮询；cancelled/completed/failed 均退出循环
       while (task.status === 'running') {
         refreshProgress.value = {
           total: Number(task.total || count),
@@ -267,16 +274,19 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
         task = await accountsApi.fetchTaskStatus(started.task_id)
       }
       const result = (task.result || {}) as AccountInspectResult
+      const wasCancelled = task.status === 'cancelled' || Boolean(result.stopped)
       refreshProgress.value = {
         total: Number(result.total ?? count),
-        processed: Number(result.processed ?? result.total ?? count),
+        processed: Number(result.processed ?? task.progress ?? result.total ?? count),
         done: true,
         total_quota: 0,
       }
       await loadData({ silentErrorToast: true })
       inspectSummary.value = { ...result, scopeText: scopeLabelText(scope) }
       showInspectSummary.value = true
-      if (task.status === 'failed') {
+      if (wasCancelled) {
+        toast.warning(`巡检已停止，已处理 ${result.processed ?? task.progress ?? 0}/${result.total ?? count} 个账号`)
+      } else if (task.status === 'failed') {
         setError('巡检失败', (task.error as string) || '巡检任务失败')
       }
     } catch (error) {
@@ -292,6 +302,19 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
     } finally {
       batchBusy.value = false
       batchActionLabel.value = ''
+      inspectTaskId.value = ''
+    }
+  }
+
+  /** 请求停止巡检：调后端 cancel，任务体每批边界真收尾 */
+  async function requestStopInspect() {
+    if (!inspectTaskId.value || inspectStopRequested.value) return
+    try {
+      await accountsApi.cancelTask(inspectTaskId.value)
+      inspectStopRequested.value = true
+      toast.info('已请求停止，当前批次完成后会停止后续批次')
+    } catch (error) {
+      setError('停止巡检失败', error)
     }
   }
 
@@ -454,10 +477,12 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
     scopeCount,
     inspectSummary,
     showInspectSummary,
+    inspectStopRequested,
     closeInspectSummary,
     runGlobalRefresh,
     runGlobalDelete,
     runInspect,
+    requestStopInspect,
     runReloginSelected,
     runResetSelected,
     runExport,
