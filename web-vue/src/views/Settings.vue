@@ -1,6 +1,7 @@
 <template>
   <div class="space-y-6">
-    <PagePanel v-if="localSettings" class="space-y-5">
+    <PagePanel v-if="localSettings">
+      <div class="space-y-5">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p class="ui-section-title">设置</p>
@@ -587,6 +588,7 @@
       <SettingsApiDocsPanel
         v-else-if="activeSettingsTab === 'api-docs'"
       />
+      </div>
     </PagePanel>
 
     <SettingsUserKeysPanel v-if="localSettings && activeSettingsTab === 'keys'" />
