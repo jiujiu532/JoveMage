@@ -1,7 +1,7 @@
 import { computed, ref, type Ref } from 'vue'
 import { accountsApi } from '@/api/accounts'
 import type { AccountInspectResult, AccountRefreshProgress } from '@/api/accounts'
-import { settingsApi } from '@/api/settings'
+import { useSettingsStore } from '@/stores/settings'
 import { useToast } from '@/composables/useToast'
 import { useAccountGlobalConfirm } from '@/composables/useAccountGlobalConfirm'
 import {
@@ -111,13 +111,13 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
       toast.warning('没有可刷新的账号')
       return
     }
-    const ok = await confirm.ask({
+    const res = await confirm.ask({
       action: 'refresh',
       scope,
       count,
       channelLabel: channelLabel.value,
     })
-    if (!ok) return
+    if (!res.confirmed) return
     if (scope === 'all') {
       await refreshAllAccounts()
       return
@@ -141,13 +141,13 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
       toast.warning('没有可删除的账号')
       return
     }
-    const ok = await confirm.ask({
+    const res = await confirm.ask({
       action: 'delete',
       scope,
       count,
       channelLabel: channelLabel.value,
     })
-    if (!ok) return
+    if (!res.confirmed) return
 
     let tokens: string[] | null
     try {
@@ -219,19 +219,19 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
       return
     }
 
-    // 读策略开关用于确认框展示（只读，改开关去设置）
-    let autoInvalid: boolean | null = null
-    let autoLimited: boolean | null = null
-    try {
-      const settings = await settingsApi.get()
-      autoInvalid = Boolean(settings.auto_remove_invalid_accounts)
-      autoLimited = Boolean(settings.auto_remove_rate_limited_accounts)
-    } catch {
-      autoInvalid = null
-      autoLimited = null
+    // 读策略开关（确认框默认值，来自设置页；真联动，勾选即写回）
+    const settingsStore = useSettingsStore()
+    if (!settingsStore.settings) {
+      try {
+        await settingsStore.loadSettings()
+      } catch {
+        // 读取失败时用 null 兜底，确认框按「以设置页为准」
+      }
     }
+    const autoInvalid = settingsStore.settings ? Boolean(settingsStore.settings.auto_remove_invalid_accounts) : null
+    const autoLimited = settingsStore.settings ? Boolean(settingsStore.settings.auto_remove_rate_limited_accounts) : null
 
-    const ok = await confirm.ask({
+    const res = await confirm.ask({
       action: 'inspect',
       scope,
       count,
@@ -239,7 +239,20 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
       autoRemoveInvalid: autoInvalid,
       autoRemoveRateLimited: autoLimited,
     })
-    if (!ok) return
+    if (!res.confirmed) return
+
+    // 真联动：勾选结果写回全局设置（部分更新，日常跑图/后续巡检同步生效）
+    if (res.policyInvalid != null || res.policyLimited != null) {
+      try {
+        await settingsStore.updateSettingsPatch({
+          auto_remove_invalid_accounts: Boolean(res.policyInvalid),
+          auto_remove_rate_limited_accounts: Boolean(res.policyLimited),
+        })
+      } catch (error) {
+        setError('保存巡检策略失败', error)
+        return
+      }
+    }
 
     const title = `巡检${scopeLabelText(scope)}账号`
     openBulkProgress(title, count, 'inspect')
@@ -382,7 +395,7 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
       toast.warning(`没有可重登的账号${reasons ? `（${reasons}）` : ''}`)
       return
     }
-    const ok = await confirm.ask({
+    const res = await confirm.ask({
       action: 'relogin',
       scope: 'selected',
       count: precheck.can,
@@ -391,7 +404,7 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
       reloginSkip: precheck.skip,
       skipReasons: precheck.skip_reasons,
     })
-    if (!ok) return
+    if (!res.confirmed) return
 
     const title = '批量重新登录账号'
     batchBusy.value = true

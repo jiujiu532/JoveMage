@@ -17,27 +17,31 @@ export type ConfirmMuteStore = Record<string, ConfirmMuteEntry>
 export const CONFIRM_MUTE_STORAGE_KEY = 'jovemage.confirmMute'
 const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000
 
-export function muteKey(action: AccountGlobalAction, scope: AccountGlobalScope): string {
+export function muteKey(action: AccountGlobalAction, scope: AccountGlobalScope, policyLimited?: boolean): string {
+  // 巡检勾了「删额度尽」是高危，单独成 key，策略变了就当新组合重新确认
+  if (action === 'inspect') return `${action}:${scope}:limited=${policyLimited ? 1 : 0}`
   return `${action}:${scope}`
 }
 
-export function getConfirmLevel(action: AccountGlobalAction, scope: AccountGlobalScope): ConfirmLevel {
+export function getConfirmLevel(action: AccountGlobalAction, scope: AccountGlobalScope, policyLimited?: boolean): ConfirmLevel {
   if (action === 'delete' && (scope === 'channel' || scope === 'all')) return 'critical'
   if (action === 'delete') return 'high'
   if (action === 'relogin') return 'high'
+  // 巡检含「删额度尽」→ 高危（可误删能恢复的号），只允许 3 天免
+  if (action === 'inspect' && policyLimited) return 'high'
   if (action === 'inspect') return 'medium'
   if (action === 'refresh' && (scope === 'channel' || scope === 'all')) return 'medium'
   return 'low'
 }
 
 /** 是否允许「3 天内不再提醒」 */
-export function canMuteThreeDays(action: AccountGlobalAction, scope: AccountGlobalScope): boolean {
-  return getConfirmLevel(action, scope) !== 'critical'
+export function canMuteThreeDays(action: AccountGlobalAction, scope: AccountGlobalScope, policyLimited?: boolean): boolean {
+  return getConfirmLevel(action, scope, policyLimited) !== 'critical'
 }
 
 /** 是否允许「不再提醒此项」 */
-export function canMuteForever(action: AccountGlobalAction, scope: AccountGlobalScope): boolean {
-  const level = getConfirmLevel(action, scope)
+export function canMuteForever(action: AccountGlobalAction, scope: AccountGlobalScope, policyLimited?: boolean): boolean {
+  const level = getConfirmLevel(action, scope, policyLimited)
   return level === 'low'
 }
 
@@ -67,11 +71,11 @@ function writeStore(store: ConfirmMuteStore) {
   }
 }
 
-export function isConfirmMuted(action: AccountGlobalAction, scope: AccountGlobalScope): boolean {
-  if (getConfirmLevel(action, scope) === 'critical') return false
-  const entry = readStore()[muteKey(action, scope)]
+export function isConfirmMuted(action: AccountGlobalAction, scope: AccountGlobalScope, policyLimited?: boolean): boolean {
+  if (getConfirmLevel(action, scope, policyLimited) === 'critical') return false
+  const entry = readStore()[muteKey(action, scope, policyLimited)]
   if (!entry) return false
-  if (entry.mode === 'forever') return canMuteForever(action, scope)
+  if (entry.mode === 'forever') return canMuteForever(action, scope, policyLimited)
   const until = Number(entry.until || 0)
   return Number.isFinite(until) && until > Date.now() / 1000
 }
@@ -80,16 +84,17 @@ export function setConfirmMute(
   action: AccountGlobalAction,
   scope: AccountGlobalScope,
   mode: ConfirmMuteMode,
+  policyLimited?: boolean,
 ) {
   if (mode === 'always') {
-    clearConfirmMute(action, scope)
+    clearConfirmMute(action, scope, policyLimited)
     return
   }
-  if (mode === 'forever' && !canMuteForever(action, scope)) return
-  if (mode === '3days' && !canMuteThreeDays(action, scope)) return
+  if (mode === 'forever' && !canMuteForever(action, scope, policyLimited)) return
+  if (mode === '3days' && !canMuteThreeDays(action, scope, policyLimited)) return
 
   const store = readStore()
-  const key = muteKey(action, scope)
+  const key = muteKey(action, scope, policyLimited)
   if (mode === 'forever') {
     store[key] = { mode: 'forever' }
   } else {
@@ -98,13 +103,13 @@ export function setConfirmMute(
   writeStore(store)
 }
 
-export function clearConfirmMute(action?: AccountGlobalAction, scope?: AccountGlobalScope) {
+export function clearConfirmMute(action?: AccountGlobalAction, scope?: AccountGlobalScope, policyLimited?: boolean) {
   if (!action || !scope) {
     writeStore({})
     return
   }
   const store = readStore()
-  delete store[muteKey(action, scope)]
+  delete store[muteKey(action, scope, policyLimited)]
   writeStore(store)
 }
 

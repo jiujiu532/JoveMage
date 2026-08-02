@@ -981,6 +981,9 @@
       :confirm-text="globalActions.confirm.state.value.confirmText"
       :cancel-text="globalActions.confirm.state.value.cancelText"
       :mute-options="globalActions.confirm.state.value.muteOptions"
+      :show-policy="globalActions.confirm.state.value.showPolicy"
+      :policy-invalid="globalActions.confirm.state.value.policyInvalid"
+      :policy-limited="globalActions.confirm.state.value.policyLimited"
       @confirm="globalActions.confirm.confirm($event)"
       @cancel="globalActions.confirm.cancel()"
     />

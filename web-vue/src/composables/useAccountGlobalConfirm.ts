@@ -38,6 +38,12 @@ export type GlobalConfirmAskOptions = {
   force?: boolean
 }
 
+export type GlobalConfirmResult = {
+  confirmed: boolean
+  policyInvalid?: boolean
+  policyLimited?: boolean
+}
+
 export type GlobalConfirmState = {
   open: boolean
   title: string
@@ -51,9 +57,12 @@ export type GlobalConfirmState = {
   confirmText: string
   cancelText: string
   muteOptions: Array<{ value: ConfirmMuteMode; label: string }>
+  showPolicy: boolean
+  policyInvalid: boolean
+  policyLimited: boolean
 }
 
-type Resolver = (value: boolean) => void
+type Resolver = (value: GlobalConfirmResult) => void
 
 const state = ref<GlobalConfirmState>({
   open: false,
@@ -68,6 +77,9 @@ const state = ref<GlobalConfirmState>({
   confirmText: '确认',
   cancelText: '取消',
   muteOptions: [],
+  showPolicy: false,
+  policyInvalid: false,
+  policyLimited: false,
 })
 
 let pendingAction: AccountGlobalAction | null = null
@@ -75,14 +87,14 @@ let pendingScope: AccountGlobalScope | null = null
 let resolver: Resolver | null = null
 let askQueue: Promise<unknown> = Promise.resolve()
 
-function buildMuteOptions(action: AccountGlobalAction, scope: AccountGlobalScope) {
+function buildMuteOptions(action: AccountGlobalAction, scope: AccountGlobalScope, policyLimited?: boolean) {
   const options: Array<{ value: ConfirmMuteMode; label: string }> = [
     { value: 'always', label: '每次都提醒（默认）' },
   ]
-  if (canMuteThreeDays(action, scope)) {
+  if (canMuteThreeDays(action, scope, policyLimited)) {
     options.push({ value: '3days', label: '3 天内不再提醒此项' })
   }
-  if (canMuteForever(action, scope)) {
+  if (canMuteForever(action, scope, policyLimited)) {
     options.push({ value: 'forever', label: '不再提醒此项' })
   }
   return options
@@ -97,8 +109,8 @@ function defaultConfirmText(action: AccountGlobalAction, danger: boolean) {
 }
 
 export function useAccountGlobalConfirm() {
-  function ask(options: GlobalConfirmAskOptions): Promise<boolean> {
-    const run = () => new Promise<boolean>((resolve) => {
+  function ask(options: GlobalConfirmAskOptions): Promise<GlobalConfirmResult> {
+    const run = () => new Promise<GlobalConfirmResult>((resolve) => {
       const {
         action,
         scope,
@@ -107,8 +119,15 @@ export function useAccountGlobalConfirm() {
         force = false,
       } = options
 
-      if (!force && isConfirmMuted(action, scope)) {
-        resolve(true)
+      const isInspect = action === 'inspect'
+      const policyLimited = isInspect ? Boolean(options.autoRemoveRateLimited) : undefined
+
+      if (!force && isConfirmMuted(action, scope, policyLimited)) {
+        resolve({
+          confirmed: true,
+          policyInvalid: options.autoRemoveInvalid ?? undefined,
+          policyLimited: options.autoRemoveRateLimited ?? undefined,
+        })
         return
       }
 
@@ -131,13 +150,16 @@ export function useAccountGlobalConfirm() {
         channelLabel,
         scopeText: options.scopeText || scopeLabel(scope),
         count: Math.max(0, Number(count) || 0),
-        consequence,
+        consequence: isInspect ? '' : consequence,
         policyLines: options.policyLines || [],
         requireTypedConfirm: requireTyped,
         danger,
         confirmText: options.confirmText || defaultConfirmText(action, danger),
         cancelText: options.cancelText || '取消',
-        muteOptions: requireTyped ? [] : buildMuteOptions(action, scope),
+        muteOptions: requireTyped ? [] : buildMuteOptions(action, scope, policyLimited),
+        showPolicy: isInspect,
+        policyInvalid: isInspect ? Boolean(options.autoRemoveInvalid) : false,
+        policyLimited: isInspect ? Boolean(options.autoRemoveRateLimited) : false,
       }
     })
 
@@ -149,19 +171,26 @@ export function useAccountGlobalConfirm() {
     return result
   }
 
-  function confirm(payload?: { muteMode?: ConfirmMuteMode }) {
+  function confirm(payload?: { muteMode?: ConfirmMuteMode; policyInvalid?: boolean; policyLimited?: boolean }): GlobalConfirmResult {
     const action = pendingAction
     const scope = pendingScope
     const muteMode = payload?.muteMode || 'always'
+    const policyLimited = action === 'inspect' ? payload?.policyLimited : undefined
     if (action && scope && muteMode !== 'always' && !requiresDeleteTypedConfirm(action, scope)) {
-      setConfirmMute(action, scope, muteMode)
+      setConfirmMute(action, scope, muteMode, policyLimited)
     }
     state.value = { ...state.value, open: false }
     const resolve = resolver
     resolver = null
     pendingAction = null
     pendingScope = null
-    resolve?.(true)
+    const result: GlobalConfirmResult = {
+      confirmed: true,
+      policyInvalid: payload?.policyInvalid,
+      policyLimited: payload?.policyLimited,
+    }
+    resolve?.(result)
+    return result
   }
 
   function cancel() {
@@ -170,7 +199,7 @@ export function useAccountGlobalConfirm() {
     resolver = null
     pendingAction = null
     pendingScope = null
-    resolve?.(false)
+    resolve?.({ confirmed: false })
   }
 
   return {
