@@ -5,10 +5,11 @@
       `form-section--density-${density}`,
       muted ? 'form-section--surface-muted' : `form-section--surface-${surface}`,
       collapsible && collapsed ? 'form-section--collapsed' : '',
+      icon ? 'form-section--has-icon' : '',
     ]"
   >
     <div
-      v-if="title || subtitle || $slots.actions"
+      v-if="title || subtitle || icon || $slots.actions"
       class="form-section__header"
       :class="{ 'form-section__header--toggle': collapsible }"
       :role="collapsible ? 'button' : undefined"
@@ -17,9 +18,14 @@
       @click="onHeaderClick"
       @keydown="onHeaderKeydown"
     >
-      <div class="min-w-0">
-        <p v-if="title" class="form-section__title">{{ title }}</p>
-        <p v-if="subtitle" class="form-section__subtitle">{{ subtitle }}</p>
+      <div class="form-section__identity">
+        <span v-if="icon" class="form-section__icon" aria-hidden="true">
+          <Icon :icon="icon" class="form-section__icon-svg" />
+        </span>
+        <div class="min-w-0">
+          <p v-if="title" class="form-section__title">{{ title }}</p>
+          <p v-if="subtitle" class="form-section__subtitle">{{ subtitle }}</p>
+        </div>
       </div>
       <div class="form-section__header-end">
         <div v-if="$slots.actions" class="form-section__actions" @click.stop>
@@ -35,12 +41,15 @@
 </template>
 
 <script setup lang="ts">
+import { Icon } from '@iconify/vue'
 import { ref } from 'vue'
 import CollapseCaret from '@/components/ai/CollapseCaret.vue'
 
 const props = withDefaults(defineProps<{
   title?: string
   subtitle?: string
+  /** iconify 图标名，如 mdi:cog-outline；有值时标题前显示色块图标 */
+  icon?: string
   density?: 'compact' | 'normal' | 'roomy'
   surface?: 'card' | 'background' | 'muted' | 'plain'
   muted?: boolean
@@ -49,6 +58,7 @@ const props = withDefaults(defineProps<{
 }>(), {
   title: '',
   subtitle: '',
+  icon: '',
   density: 'normal',
   surface: 'card',
   muted: false,
@@ -128,6 +138,39 @@ function onHeaderKeydown(e: KeyboardEvent) {
   margin-bottom: 12px;
   padding-bottom: 10px;
   border-bottom: 1px solid hsl(var(--border) / 0.75);
+}
+
+.form-section__identity {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: flex-start;
+  gap: 0.7rem;
+}
+
+.form-section__icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 2rem;
+  height: 2rem;
+  border: 2px solid var(--bauhaus-ink, #2d2d2d);
+  border-radius: var(--radius);
+  background: hsl(var(--tone-info-bg, 214 70% 94%));
+  color: var(--bauhaus-blue, #2d5da1);
+  box-shadow: 2px 2px 0 0 var(--bauhaus-ink, #2d2d2d);
+}
+
+html[data-theme='dark'] .form-section__icon {
+  border-color: hsl(var(--border));
+  background: color-mix(in srgb, var(--bauhaus-blue, #2d5da1) 18%, transparent);
+  color: hsl(var(--foreground));
+  box-shadow: none;
+}
+
+.form-section__icon-svg {
+  width: 1rem;
+  height: 1rem;
 }
 
 .form-section__header--toggle {
@@ -251,6 +294,11 @@ html[data-theme='dark'] .form-section__header--toggle:hover .form-section__chevr
     margin-bottom: 10px;
     padding-bottom: 8px;
     flex-wrap: wrap;
+  }
+
+  .form-section__icon {
+    width: 1.75rem;
+    height: 1.75rem;
   }
 
   .form-section__title {

@@ -2,7 +2,7 @@
   <div class="ff-panel">
     <FormSection
       collapsible
-      title="Adobe Firefly"
+      icon="mdi:fire" title="Adobe Firefly"
       subtitle="独立于 ChatGPT 的代理 / Cloudflare 配置，仅影响 firefly-* 生图 / 视频渠道。"
     >
       <div class="ff-stack">

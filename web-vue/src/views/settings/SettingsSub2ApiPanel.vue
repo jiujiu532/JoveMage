@@ -1,11 +1,14 @@
 <template>
   <PagePanel class="space-y-4">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <p class="ui-section-title">Sub2API</p>
-        <p class="mt-1 text-xs text-muted-foreground">
-          账号管理页的远程导入会读取这里保存的连接。
-        </p>
+    <div class="settings-page-head">
+      <div class="settings-page-head__main">
+        <span class="settings-page-head__icon" aria-hidden="true"><Icon icon="mdi:transit-connection-variant" /></span>
+        <div class="min-w-0">
+          <p class="ui-section-title">Sub2API</p>
+          <p class="mt-1 text-xs text-muted-foreground">
+            账号管理页的远程导入会读取这里保存的连接。
+          </p>
+        </div>
       </div>
       <Button size="sm" variant="outline" :disabled="sub2apiLoading" @click="loadSub2APIServers">
         {{ sub2apiLoading ? '刷新中...' : '刷新连接' }}
@@ -13,10 +16,13 @@
     </div>
 
     <div class="settings-panel-card">
-      <div class="flex items-center justify-between gap-3">
-        <div>
-          <p class="text-sm font-semibold text-foreground">Sub2API 连接管理</p>
-          <p class="mt-1 text-xs text-muted-foreground">保存 Sub2API 服务器，用于读取 OpenAI OAuth 账号并导入本地号池。</p>
+      <div class="settings-panel-card__head">
+        <div class="settings-panel-card__identity">
+          <span class="settings-panel-card__icon" aria-hidden="true"><Icon icon="mdi:cloud-download-outline" /></span>
+          <div class="min-w-0">
+            <p class="text-sm font-semibold text-foreground">Sub2API 连接管理</p>
+            <p class="mt-1 text-xs text-muted-foreground">保存 Sub2API 服务器，用于读取 OpenAI OAuth 账号并导入本地号池。</p>
+          </div>
         </div>
         <div class="flex shrink-0 items-center gap-2">
           <span class="text-xs text-muted-foreground">{{ sub2apiServers.length }} 个连接</span>
@@ -148,6 +154,7 @@
 
 <script setup lang="ts">
 import { defineAsyncComponent, onMounted, ref } from 'vue'
+import { Icon } from '@iconify/vue'
 import { Button, FormField, Input } from 'nanocat-ui'
 import { accountImportsApi, type Sub2APIRemoteGroup, type Sub2APIServer } from '@/api/accountImports'
 import ModalBody from '@/components/ai/ModalBody.vue'

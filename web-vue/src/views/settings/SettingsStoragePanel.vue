@@ -1,12 +1,15 @@
 <template>
   <div class="grid gap-4 xl:grid-cols-3">
     <div class="xl:col-span-2">
-      <FormSection collapsible title="图片存储" subtitle="WebDAV 远端存储与公开访问前缀。">
+      <FormSection collapsible icon="mdi:cloud-upload-outline" title="图片存储" subtitle="WebDAV 远端存储与公开访问前缀。">
         <div class="settings-block-stack">
           <section class="settings-block">
             <header class="settings-block__header">
-              <p class="settings-block__title">开关与模式</p>
-              <p class="settings-block__desc">是否启用远端存储，以及写入策略。</p>
+              <span class="settings-block__icon" aria-hidden="true"><Icon icon="mdi:toggle-switch-outline" /></span>
+              <div class="settings-block__headtext">
+                <p class="settings-block__title">开关与模式</p>
+                <p class="settings-block__desc">是否启用远端存储，以及写入策略。</p>
+              </div>
             </header>
             <div class="settings-check-grid settings-check-grid--single">
               <div class="settings-check-item">
@@ -32,8 +35,11 @@
 
           <section class="settings-block">
             <header class="settings-block__header">
-              <p class="settings-block__title">连接信息</p>
-              <p class="settings-block__desc">WebDAV 地址、账号与路径。</p>
+              <span class="settings-block__icon" aria-hidden="true"><Icon icon="mdi:server-network" /></span>
+              <div class="settings-block__headtext">
+                <p class="settings-block__title">连接信息</p>
+                <p class="settings-block__desc">WebDAV 地址、账号与路径。</p>
+              </div>
             </header>
             <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
               <FormField label="WebDAV URL" class="md:col-span-2">
@@ -56,8 +62,11 @@
 
           <section class="settings-block">
             <header class="settings-block__header">
-              <p class="settings-block__title">连通性</p>
-              <p class="settings-block__desc">测试连接或触发全量同步。</p>
+              <span class="settings-block__icon" aria-hidden="true"><Icon icon="mdi:lan-check" /></span>
+              <div class="settings-block__headtext">
+                <p class="settings-block__title">连通性</p>
+                <p class="settings-block__desc">测试连接或触发全量同步。</p>
+              </div>
             </header>
             <div class="flex flex-wrap items-center gap-2">
               <Button size="xs" variant="outline" :disabled="imageStorageBusy === 'test'" @click="testImageStorageConnection">
@@ -79,12 +88,15 @@
       </FormSection>
     </div>
 
-    <FormSection collapsible title="AI 审核" subtitle="请求前的内容审核接入。">
+    <FormSection collapsible icon="mdi:shield-check-outline" title="AI 审核" subtitle="请求前的内容审核接入。">
       <div class="settings-block-stack">
         <section class="settings-block">
           <header class="settings-block__header">
-            <p class="settings-block__title">开关</p>
-            <p class="settings-block__desc">关闭时跳过请求前内容审核。</p>
+            <span class="settings-block__icon" aria-hidden="true"><Icon icon="mdi:toggle-switch-outline" /></span>
+            <div class="settings-block__headtext">
+              <p class="settings-block__title">开关</p>
+              <p class="settings-block__desc">关闭时跳过请求前内容审核。</p>
+            </div>
           </header>
           <div class="settings-check-grid settings-check-grid--single">
             <div class="settings-check-item">
@@ -96,8 +108,11 @@
         </section>
         <section class="settings-block">
           <header class="settings-block__header">
-            <p class="settings-block__title">模型接入</p>
-            <p class="settings-block__desc">兼容 OpenAI Chat Completions 的审核模型。</p>
+            <span class="settings-block__icon" aria-hidden="true"><Icon icon="mdi:robot-outline" /></span>
+            <div class="settings-block__headtext">
+              <p class="settings-block__title">模型接入</p>
+              <p class="settings-block__desc">兼容 OpenAI Chat Completions 的审核模型。</p>
+            </div>
           </header>
           <div class="grid grid-cols-1 gap-3">
             <FormField label="Base URL">
@@ -126,6 +141,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { Icon } from '@iconify/vue'
 import { Button, Checkbox, FormField, Input } from 'nanocat-ui'
 import FormSection from '@/components/ai/FormSection.vue'
 import GroupedSelectMenu from '@/components/ui/GroupedSelectMenu.vue'

@@ -1,6 +1,6 @@
 <template>
   <div class="space-y-4">
-    <FormSection collapsible title="自动拉黑规则" subtitle="内置规则始终生效；自定义规则随右上角保存设置写入。">
+    <FormSection collapsible icon="mdi:shield-lock-outline" title="自动拉黑规则" subtitle="内置规则始终生效；自定义规则随右上角保存设置写入。">
       <SurfaceBox density="compact">
         <p class="text-xs leading-5 text-muted-foreground">
           内置规则始终生效且只读；自定义规则随右上角「保存设置」写入配置。黑名单条目本身点操作即调 API 生效。
@@ -69,7 +69,7 @@
       </div>
     </FormSection>
 
-    <FormSection collapsible title="黑名单列表" subtitle="按域名管理拉黑条目，操作即时生效。">
+    <FormSection collapsible icon="mdi:format-list-bulleted" title="黑名单列表" subtitle="按域名管理拉黑条目，操作即时生效。">
       <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <Input
           v-model.trim="searchQuery"

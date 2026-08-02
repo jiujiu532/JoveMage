@@ -32,12 +32,15 @@
 
         <div class="grid gap-4 xl:grid-cols-3">
           <div class="space-y-4 xl:col-span-2">
-            <FormSection collapsible title="基础配置" subtitle="按连接、清理、生图超时拆开，先改常用项。">
+            <FormSection collapsible icon="mdi:cog-outline" title="基础配置" subtitle="按连接、清理、生图超时拆开，先改常用项。">
               <div class="settings-block-stack">
                 <section class="settings-block">
                   <header class="settings-block__header">
-                    <p class="settings-block__title">连接与访问</p>
-                    <p class="settings-block__desc">账号刷新、图片访问前缀与默认出站。</p>
+                    <span class="settings-block__icon" aria-hidden="true"><Icon icon="mdi:lan-connect" /></span>
+                    <div class="settings-block__headtext">
+                      <p class="settings-block__title">连接与访问</p>
+                      <p class="settings-block__desc">账号刷新、图片访问前缀与默认出站。</p>
+                    </div>
                   </header>
                   <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
                     <FormField label="账号刷新间隔">
@@ -97,8 +100,11 @@
 
                 <section class="settings-block">
                   <header class="settings-block__header">
-                    <p class="settings-block__title">自动清理</p>
-                    <p class="settings-block__desc">按天数清理本地图片与调用日志。</p>
+                    <span class="settings-block__icon" aria-hidden="true"><Icon icon="mdi:broom" /></span>
+                    <div class="settings-block__headtext">
+                      <p class="settings-block__title">自动清理</p>
+                      <p class="settings-block__desc">按天数清理本地图片与调用日志。</p>
+                    </div>
                   </header>
                   <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
                     <FormField label="图片自动清理">
@@ -131,8 +137,11 @@
 
                 <section class="settings-block">
                   <header class="settings-block__header">
-                    <p class="settings-block__title">图片任务超时</p>
-                    <p class="settings-block__desc">轮询、SSE 流与超时后的额外等待。</p>
+                    <span class="settings-block__icon" aria-hidden="true"><Icon icon="mdi:timer-sand" /></span>
+                    <div class="settings-block__headtext">
+                      <p class="settings-block__title">图片任务超时</p>
+                      <p class="settings-block__desc">轮询、SSE 流与超时后的额外等待。</p>
+                    </div>
                   </header>
                   <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
                     <FormField label="图片轮询超时">
@@ -191,12 +200,15 @@
               </div>
             </FormSection>
 
-            <FormSection collapsible title="稳定代理 / Cloudflare 清障" subtitle="先看运行状态，再改开关与出站参数。">
+            <FormSection collapsible icon="mdi:shield-link-variant-outline" title="稳定代理 / Cloudflare 清障" subtitle="先看运行状态，再改开关与出站参数。">
               <div class="settings-block-stack">
                 <section class="settings-block settings-block--status">
                   <header class="settings-block__header">
-                    <p class="settings-block__title">运行状态</p>
-                    <p class="settings-block__desc">只读摘要，保存配置后会刷新。</p>
+                    <span class="settings-block__icon" aria-hidden="true"><Icon icon="mdi:heart-pulse" /></span>
+                    <div class="settings-block__headtext">
+                      <p class="settings-block__title">运行状态</p>
+                      <p class="settings-block__desc">只读摘要，保存配置后会刷新。</p>
+                    </div>
                   </header>
                   <div class="settings-status-grid">
                     <div
@@ -215,8 +227,11 @@
 
                 <section class="settings-block">
                   <header class="settings-block__header">
-                    <p class="settings-block__title">开关</p>
-                    <p class="settings-block__desc">运行时、清障与启动预热。</p>
+                    <span class="settings-block__icon" aria-hidden="true"><Icon icon="mdi:toggle-switch-outline" /></span>
+                    <div class="settings-block__headtext">
+                      <p class="settings-block__title">开关</p>
+                      <p class="settings-block__desc">运行时、清障与启动预热。</p>
+                    </div>
                   </header>
                   <div class="settings-check-grid">
                     <div class="settings-check-item">
@@ -248,8 +263,11 @@
 
                 <section class="settings-block">
                   <header class="settings-block__header">
-                    <p class="settings-block__title">出站与清障</p>
-                    <p class="settings-block__desc">代理地址、清障方式与超时。</p>
+                    <span class="settings-block__icon" aria-hidden="true"><Icon icon="mdi:transit-connection-variant" /></span>
+                    <div class="settings-block__headtext">
+                      <p class="settings-block__title">出站与清障</p>
+                      <p class="settings-block__desc">代理地址、清障方式与超时。</p>
+                    </div>
                   </header>
                   <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
                     <FormField label="出站方式">
@@ -371,8 +389,11 @@
 
                 <section class="settings-block">
                   <header class="settings-block__header">
-                    <p class="settings-block__title">连通性测试</p>
-                    <p class="settings-block__desc">不改配置，仅探测当前清障是否可用。</p>
+                    <span class="settings-block__icon" aria-hidden="true"><Icon icon="mdi:network-outline" /></span>
+                    <div class="settings-block__headtext">
+                      <p class="settings-block__title">连通性测试</p>
+                      <p class="settings-block__desc">不改配置，仅探测当前清障是否可用。</p>
+                    </div>
                   </header>
                   <FormField label="测试目标">
                     <div class="flex flex-col gap-2 sm:flex-row">
@@ -414,12 +435,15 @@
               </div>
             </FormSection>
 
-            <FormSection collapsible title="全局附加指令" subtitle="注入到每次请求的系统提示与敏感词拦截。">
+            <FormSection collapsible icon="mdi:script-text-outline" title="全局附加指令" subtitle="注入到每次请求的系统提示与敏感词拦截。">
               <div class="settings-block-stack">
                 <section class="settings-block">
                   <header class="settings-block__header">
-                    <p class="settings-block__title">系统提示词</p>
-                    <p class="settings-block__desc">每次请求都会作为 system 消息注入。</p>
+                    <span class="settings-block__icon" aria-hidden="true"><Icon icon="mdi:message-text-outline" /></span>
+                    <div class="settings-block__headtext">
+                      <p class="settings-block__title">系统提示词</p>
+                      <p class="settings-block__desc">每次请求都会作为 system 消息注入。</p>
+                    </div>
                   </header>
                   <FormField label="全局系统提示词">
                     <textarea
@@ -432,8 +456,11 @@
                 </section>
                 <section class="settings-block">
                   <header class="settings-block__header">
-                    <p class="settings-block__title">敏感词</p>
-                    <p class="settings-block__desc">一行一个，命中即拒绝。</p>
+                    <span class="settings-block__icon" aria-hidden="true"><Icon icon="mdi:shield-alert-outline" /></span>
+                    <div class="settings-block__headtext">
+                      <p class="settings-block__title">敏感词</p>
+                      <p class="settings-block__desc">一行一个，命中即拒绝。</p>
+                    </div>
                   </header>
                   <FormField label="敏感词列表">
                     <textarea
@@ -449,7 +476,7 @@
           </div>
 
           <div class="space-y-4">
-            <FormSection collapsible title="账号策略" subtitle="异常与额度耗尽后的账号处理。">
+            <FormSection collapsible icon="mdi:account-cog-outline" title="账号策略" subtitle="异常与额度耗尽后的账号处理。">
               <div class="settings-check-grid settings-check-grid--single">
                 <div class="settings-check-item">
                   <div class="settings-check-control">
@@ -466,7 +493,7 @@
               </div>
             </FormSection>
 
-            <FormSection collapsible title="图片确认" subtitle="结果稳定后再返回，可选清理官网会话。">
+            <FormSection collapsible icon="mdi:image-check-outline" title="图片确认" subtitle="结果稳定后再返回，可选清理官网会话。">
               <div class="settings-check-grid settings-check-grid--single">
                 <div class="settings-check-item">
                   <div class="settings-check-control">
@@ -495,7 +522,7 @@
               </div>
             </FormSection>
 
-            <FormSection collapsible title="控制台日志级别" subtitle="至少保留一类级别；全不选时回落默认 info / warning / error。">
+            <FormSection collapsible icon="mdi:console" title="控制台日志级别" subtitle="至少保留一类级别；全不选时回落默认 info / warning / error。">
               <div class="settings-check-grid settings-check-grid--single">
                 <div
                   v-for="level in logLevelOptions"
@@ -590,6 +617,7 @@ import { computed, defineAsyncComponent, onActivated, onMounted, ref, watch } fr
 import { onBeforeRouteLeave } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { Button, Checkbox, FormField, HelpTip, Input } from 'nanocat-ui'
+import { Icon } from '@iconify/vue'
 import FormSection from '@/components/ai/FormSection.vue'
 import GroupedSelectMenu from '@/components/ui/GroupedSelectMenu.vue'
 import {

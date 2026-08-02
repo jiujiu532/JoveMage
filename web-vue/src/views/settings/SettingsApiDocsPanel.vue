@@ -1,6 +1,6 @@
 <template>
   <div class="space-y-4">
-    <FormSection collapsible title="接口接入" subtitle="第三方应用按 OpenAI 兼容接口接入，使用同一套 Bearer 鉴权。">
+    <FormSection collapsible icon="mdi:api" title="接口接入" subtitle="第三方应用按 OpenAI 兼容接口接入，使用同一套 Bearer 鉴权。">
       <div class="settings-kv-grid">
         <div class="settings-kv-item">
           <p class="settings-kv-label">服务地址</p>
@@ -21,7 +21,7 @@
       </div>
     </FormSection>
 
-    <FormSection collapsible title="常用接口" subtitle="点击展开查看说明与示例请求。">
+    <FormSection collapsible icon="mdi:book-open-page-variant-outline" title="常用接口" subtitle="点击展开查看说明与示例请求。">
       <div class="settings-doc-list">
         <details
           v-for="item in apiDocItems"

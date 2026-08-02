@@ -1,11 +1,14 @@
 <template>
   <PagePanel class="space-y-4">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <p class="ui-section-title">CPA</p>
-        <p class="mt-1 text-xs text-muted-foreground">
-          账号管理页的远程导入会读取这里保存的连接。
-        </p>
+    <div class="settings-page-head">
+      <div class="settings-page-head__main">
+        <span class="settings-page-head__icon" aria-hidden="true"><Icon icon="mdi:server-network" /></span>
+        <div class="min-w-0">
+          <p class="ui-section-title">CPA</p>
+          <p class="mt-1 text-xs text-muted-foreground">
+            账号管理页的远程导入会读取这里保存的连接。
+          </p>
+        </div>
       </div>
       <Button size="sm" variant="outline" :disabled="cpaLoading" @click="loadCPAPools">
         {{ cpaLoading ? '刷新中...' : '刷新连接' }}
@@ -13,10 +16,13 @@
     </div>
 
     <div class="settings-panel-card">
-      <div class="flex items-center justify-between gap-3">
-        <div>
-          <p class="text-sm font-semibold text-foreground">CPA 连接管理</p>
-          <p class="mt-1 text-xs text-muted-foreground">保存 CLIProxyAPI 地址和管理密钥，供远程 CPA 导入使用。</p>
+      <div class="settings-panel-card__head">
+        <div class="settings-panel-card__identity">
+          <span class="settings-panel-card__icon" aria-hidden="true"><Icon icon="mdi:lan-connect" /></span>
+          <div class="min-w-0">
+            <p class="text-sm font-semibold text-foreground">CPA 连接管理</p>
+            <p class="mt-1 text-xs text-muted-foreground">保存 CLIProxyAPI 地址和管理密钥，供远程 CPA 导入使用。</p>
+          </div>
         </div>
         <div class="flex shrink-0 items-center gap-2">
           <span class="text-xs text-muted-foreground">{{ cpaPools.length }} 个连接</span>
@@ -119,6 +125,7 @@
 
 <script setup lang="ts">
 import { defineAsyncComponent, onMounted, ref } from 'vue'
+import { Icon } from '@iconify/vue'
 import { Button, FormField, Input } from 'nanocat-ui'
 import { accountImportsApi, type CPAPool } from '@/api/accountImports'
 import ModalBody from '@/components/ai/ModalBody.vue'

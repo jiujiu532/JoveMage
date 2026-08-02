@@ -1,11 +1,14 @@
 <template>
   <div class="settings-prompt-sources">
     <div class="settings-prompt-sources-head">
-      <div>
-        <p class="ui-section-title">提示词源</p>
-        <p class="mt-1 text-xs text-muted-foreground">
-          Studio 从本地快照读取提示词；这里仅负责启用词源并手动同步到本地。
-        </p>
+      <div class="settings-page-head__main">
+        <span class="settings-page-head__icon" aria-hidden="true"><Icon icon="mdi:text-box-multiple-outline" /></span>
+        <div class="min-w-0">
+          <p class="ui-section-title">提示词源</p>
+          <p class="mt-1 text-xs text-muted-foreground">
+            Studio 从本地快照读取提示词；这里仅负责启用词源并手动同步到本地。
+          </p>
+        </div>
       </div>
       <div class="settings-prompt-sources-actions">
         <Button size="sm" variant="primary" :disabled="refreshing === 'all' || loading" @click="refreshAll">
@@ -91,6 +94,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { Icon } from '@iconify/vue'
 import { Button, Checkbox } from 'nanocat-ui'
 import { promptsApi, type PromptSource } from '@/api/prompts'
 import MetaChip from '@/components/ai/MetaChip.vue'

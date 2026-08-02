@@ -1,10 +1,13 @@
 <template>
-  <FormSection collapsible title="R2 备份管理" subtitle="定时备份到 Cloudflare R2，可加密与轮转。">
+  <FormSection collapsible icon="mdi:cloud-sync-outline" title="R2 备份管理" subtitle="定时备份到 Cloudflare R2，可加密与轮转。">
     <div class="settings-block-stack">
       <section class="settings-block">
         <header class="settings-block__header">
-          <p class="settings-block__title">开关</p>
-          <p class="settings-block__desc">定时任务与加密是否生效。</p>
+          <span class="settings-block__icon" aria-hidden="true"><Icon icon="mdi:toggle-switch-outline" /></span>
+          <div class="settings-block__headtext">
+            <p class="settings-block__title">开关</p>
+            <p class="settings-block__desc">定时任务与加密是否生效。</p>
+          </div>
         </header>
         <div class="settings-check-grid">
           <div class="settings-check-item">
@@ -22,8 +25,11 @@
 
       <section class="settings-block">
         <header class="settings-block__header">
-          <p class="settings-block__title">R2 连接</p>
-          <p class="settings-block__desc">账号、桶与访问密钥。</p>
+          <span class="settings-block__icon" aria-hidden="true"><Icon icon="mdi:cloud-outline" /></span>
+          <div class="settings-block__headtext">
+            <p class="settings-block__title">R2 连接</p>
+            <p class="settings-block__desc">账号、桶与访问密钥。</p>
+          </div>
         </header>
         <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
           <FormField label="Cloudflare Account ID">
@@ -65,8 +71,11 @@
 
       <section class="settings-block">
         <header class="settings-block__header">
-          <p class="settings-block__title">备份内容</p>
-          <p class="settings-block__desc">勾选要打进备份包的数据。</p>
+          <span class="settings-block__icon" aria-hidden="true"><Icon icon="mdi:checkbox-multiple-marked-outline" /></span>
+          <div class="settings-block__headtext">
+            <p class="settings-block__title">备份内容</p>
+            <p class="settings-block__desc">勾选要打进备份包的数据。</p>
+          </div>
         </header>
         <div class="settings-check-grid">
           <div
@@ -83,7 +92,11 @@
 
       <section class="settings-block">
         <header class="settings-block__header">
-          <p class="settings-block__title">操作与状态</p>
+          <span class="settings-block__icon" aria-hidden="true"><Icon icon="mdi:play-circle-outline" /></span>
+          <div class="settings-block__headtext">
+            <p class="settings-block__title">操作与状态</p>
+            <p class="settings-block__desc">测试连接、立即备份与最近结果。</p>
+          </div>
         </header>
 
         <div class="flex flex-wrap items-center gap-2">
@@ -143,6 +156,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { Icon } from '@iconify/vue'
 import { Button, Checkbox, FormField, Input } from 'nanocat-ui'
 import {
   settingsApi,

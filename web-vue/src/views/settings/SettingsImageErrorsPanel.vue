@@ -1,11 +1,14 @@
 <template>
   <div class="space-y-4">
-    <FormSection collapsible title="图片错误提示" subtitle="先决定是否友好化，再按场景改文案。">
+    <FormSection collapsible icon="mdi:alert-circle-outline" title="图片错误提示" subtitle="先决定是否友好化，再按场景改文案。">
       <div class="settings-block-stack">
         <section class="settings-block">
           <header class="settings-block__header">
-            <p class="settings-block__title">开关</p>
-            <p class="settings-block__desc">关闭时继续返回上游原始错误。</p>
+            <span class="settings-block__icon" aria-hidden="true"><Icon icon="mdi:toggle-switch-outline" /></span>
+            <div class="settings-block__headtext">
+              <p class="settings-block__title">开关</p>
+              <p class="settings-block__desc">关闭时继续返回上游原始错误。</p>
+            </div>
           </header>
           <div class="settings-check-grid settings-check-grid--single">
             <div class="settings-check-item">
@@ -19,8 +22,11 @@
 
         <section class="settings-block">
           <header class="settings-block__header">
-            <p class="settings-block__title">自定义错误文案</p>
-            <p class="settings-block__desc">按错误类型覆盖默认提示。</p>
+            <span class="settings-block__icon" aria-hidden="true"><Icon icon="mdi:text-box-edit-outline" /></span>
+            <div class="settings-block__headtext">
+              <p class="settings-block__title">自定义错误文案</p>
+              <p class="settings-block__desc">按错误类型覆盖默认提示。</p>
+            </div>
           </header>
           <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
             <FormField
@@ -48,6 +54,7 @@
 
 <script setup lang="ts">
 import { Checkbox, FormField, HelpTip } from 'nanocat-ui'
+import { Icon } from '@iconify/vue'
 import FormSection from '@/components/ai/FormSection.vue'
 import type { Settings } from '@/types/api'
 

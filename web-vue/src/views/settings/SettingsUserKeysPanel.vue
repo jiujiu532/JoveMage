@@ -1,11 +1,14 @@
 <template>
   <PagePanel class="space-y-4">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <p class="ui-section-title">用户密钥管理</p>
-        <p class="mt-1 text-xs text-muted-foreground">
-          创建给普通用户使用的调用密钥；普通用户登录后只进入对话画图页。
-        </p>
+    <div class="settings-page-head">
+      <div class="settings-page-head__main">
+        <span class="settings-page-head__icon" aria-hidden="true"><Icon icon="mdi:key-variant" /></span>
+        <div class="min-w-0">
+          <p class="ui-section-title">用户密钥管理</p>
+          <p class="mt-1 text-xs text-muted-foreground">
+            创建给普通用户使用的调用密钥；普通用户登录后只进入对话画图页。
+          </p>
+        </div>
       </div>
       <div class="flex flex-wrap items-center gap-2">
         <Button size="sm" variant="outline" :disabled="userKeysLoading" @click="loadUserKeys">
@@ -153,6 +156,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { Icon } from '@iconify/vue'
 import { Button, FormField, Input } from 'nanocat-ui'
 import { userKeysApi, type UserKey } from '@/api/userKeys'
 import ModalBody from '@/components/ai/ModalBody.vue'
