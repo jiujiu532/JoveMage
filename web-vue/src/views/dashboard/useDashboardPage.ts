@@ -364,6 +364,7 @@ export function useDashboardPage() {
     dashboardDataReady.value = false
     stats.value = createDefaultStats()
     chartData.value = createEmptyChartData()
+    imageQuota.value = createDefaultImageQuota()
     overviewCache.clear()
     disposeCharts()
     clearChartBootstrapTimer()

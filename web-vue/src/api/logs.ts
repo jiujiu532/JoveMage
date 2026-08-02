@@ -217,7 +217,7 @@ function isImageChatLog(endpoint: string, model: string): boolean {
   return endpoint.includes('/v1/chat') && isImageModelId(model)
 }
 
-function isImageEndpointLog(endpoint: string, model = ''): boolean {
+export function isImageEndpointLog(endpoint: string, model = ''): boolean {
   return endpoint.includes('/images/') || isImageChatLog(endpoint, model)
 }
 

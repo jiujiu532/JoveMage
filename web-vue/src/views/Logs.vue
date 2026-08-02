@@ -534,6 +534,7 @@ import { resolveGalleryFileUrl, type GalleryFile } from '@/api/gallery'
 import type { RuntimeLog, RuntimeLogsResponse, SystemLogRow, SystemLogsResponse } from '@/api/logs'
 import {
   formatLogDuration as formatDuration,
+  isImageEndpointLog,
   isSystemLogFailed as isFailed,
   isSystemLogLimited as isLimited,
   isSystemLogSuccess as isSuccess,
@@ -774,23 +775,25 @@ const runtimeStats = computed(() => {
   return counts
 })
 
-/** 本页派生指标：成功率 / 平均耗时 / 文本调用 / 渠道拆分 */
+/** 本页派生指标：成功率 / 平均耗时 / 文本调用 / 渠道拆分。
+ *  统一从当前 logs.value（已含渠道过滤的页内行）派生，与服务端 logStats 解耦，
+ *  避免「页条数 − 全量图片数」等跨口径混算。 */
 const pageDerivedStats = computed(() => {
   const pageItems = logs.value
   const pageCount = pageItems.length
-  const success = Number(logStats.value.success || 0)
-  const failed = Number(logStats.value.failed || 0)
-  const image = Number(logStats.value.image || 0)
-  const decided = success + failed
-  const successRate = decided > 0
-    ? `${((success / decided) * 100).toFixed(1)}%`
-    : (pageCount > 0 ? '—' : '0%')
-
+  let success = 0
+  let failed = 0
+  let limited = 0
+  let image = 0
   let durationSum = 0
   let durationCount = 0
   let chatgpt = 0
   let firefly = 0
   for (const item of pageItems) {
+    if (isSuccess(item)) success += 1
+    if (isFailed(item)) failed += 1
+    if (isLimited(item)) limited += 1
+    if (isImageEndpointLog(item.endpoint, item.model)) image += 1
     const ms = Number(item.durationMs)
     if (Number.isFinite(ms) && ms >= 0) {
       durationSum += ms
@@ -800,13 +803,20 @@ const pageDerivedStats = computed(() => {
     if (channel === 'firefly') firefly += 1
     else if (channel) chatgpt += 1
   }
+  const decided = success + failed
+  const successRate = decided > 0
+    ? `${((success / decided) * 100).toFixed(1)}%`
+    : (pageCount > 0 ? '—' : '0%')
   const avgDuration = durationCount > 0
     ? (formatDuration(String(Math.round(durationSum / durationCount))) || `${Math.round(durationSum / durationCount)}ms`)
     : '—'
-  // 文本 = 本页条数 − 图片接口；本页为空时回落 0
   const textCalls = Math.max(0, pageCount - image)
 
   return {
+    success,
+    failed,
+    limited,
+    image,
     successRate,
     avgDuration,
     textCalls,
@@ -817,18 +827,17 @@ const pageDerivedStats = computed(() => {
 })
 
 const systemMetricItems = computed(() => {
-  const pageScoped = logMeta.stats_scope === 'page'
-  const pageLabel = (base: string) => (pageScoped ? `本页${base}` : base)
   const derived = pageDerivedStats.value
+  // 总数仍用服务端 logStats.total（全量匹配集）；成功/失败/限流/图片/文本/成功率/均耗时按本页行派生
   return [
     { key: 'total', label: '总数', value: logStats.value.total, class: 'text-foreground' },
-    { key: 'success', label: pageLabel('成功'), value: logStats.value.success, class: 'text-emerald-600' },
-    { key: 'failed', label: pageLabel('失败'), value: logStats.value.failed, class: 'text-rose-600' },
-    { key: 'limited', label: pageLabel('限流'), value: logStats.value.limited, class: 'text-amber-600' },
-    { key: 'image', label: pageLabel('图片'), value: logStats.value.image, class: 'text-cyan-600' },
-    { key: 'text', label: pageLabel('文本'), value: derived.textCalls, class: 'text-foreground' },
-    { key: 'success-rate', label: pageLabel('成功率'), value: derived.successRate, class: 'text-emerald-600' },
-    { key: 'avg-duration', label: pageLabel('均耗时'), value: derived.avgDuration, class: 'text-foreground' },
+    { key: 'success', label: '本页成功', value: derived.success, class: 'text-emerald-600' },
+    { key: 'failed', label: '本页失败', value: derived.failed, class: 'text-rose-600' },
+    { key: 'limited', label: '本页限流', value: derived.limited, class: 'text-amber-600' },
+    { key: 'image', label: '本页图片', value: derived.image, class: 'text-cyan-600' },
+    { key: 'text', label: '本页文本', value: derived.textCalls, class: 'text-foreground' },
+    { key: 'success-rate', label: '本页成功率', value: derived.successRate, class: 'text-emerald-600' },
+    { key: 'avg-duration', label: '本页均耗时', value: derived.avgDuration, class: 'text-foreground' },
   ]
 })
 
