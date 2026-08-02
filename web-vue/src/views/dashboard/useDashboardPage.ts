@@ -115,19 +115,25 @@ export function useDashboardPage() {
         iconBg: `${iconBox} bg-[var(--bauhaus-paper-2)]`,
         iconColor: 'text-[var(--bauhaus-grey)]',
       },
-      {
-        // 主数字 = ChatGPT 图片额度；Firefly Credits 放 meta，避免两种计量混加
-        label: '图片额度',
-        value: '0',
-        meta: '',
-        icon: 'lucide:coins',
-        iconBg: `${iconBox} bg-[hsl(var(--tone-info-bg))]`,
-        iconColor: 'text-[var(--bauhaus-blue)]',
-      },
     ]
   }
 
+  type ImageQuotaView = {
+    chatgptValue: string
+    fireflyValue: string
+    note: string
+  }
+
+  function createDefaultImageQuota(): ImageQuotaView {
+    return {
+      chatgptValue: '0',
+      fireflyValue: '0',
+      note: '',
+    }
+  }
+
   const stats = ref(createDefaultStats())
+  const imageQuota = ref(createDefaultImageQuota())
 
   // 每个图表独立的数据状态
   function createEmptyChartData() {
@@ -560,14 +566,18 @@ export function useDashboardPage() {
     stats.value[2].value = formatStatNumber(overview.rate_limited_accounts)
     stats.value[3].value = formatStatNumber(overview.abnormal_accounts)
     stats.value[4].value = formatStatNumber(overview.disabled_accounts)
+
+    // 两种计量不可相加：ChatGPT=图片张数(quota)，Firefly=Credits；始终分行展示
     const totalQuota = Number(overview.total_quota || 0)
     const totalCredits = Number(overview.total_credits || 0)
     const unlimited = Number(overview.unlimited_quota_count || 0)
-    stats.value[5].value = formatStatNumber(totalQuota)
-    const metaParts: string[] = []
-    if (totalCredits > 0) metaParts.push(`Credits ${formatStatNumber(totalCredits)}`)
-    if (unlimited > 0) metaParts.push(`${formatStatNumber(unlimited)} 无限额`)
-    stats.value[5].meta = metaParts.join(' · ')
+    imageQuota.value = {
+      chatgptValue: unlimited > 0
+        ? (totalQuota > 0 ? `${formatStatNumber(totalQuota)}+∞` : '∞')
+        : formatStatNumber(totalQuota),
+      fireflyValue: formatStatNumber(totalCredits),
+      note: unlimited > 0 ? `含 ${formatStatNumber(unlimited)} 个无限额账号` : '',
+    }
   }
 
   function getTrendPayload(overview: OverviewPayload) {
@@ -1125,6 +1135,7 @@ export function useDashboardPage() {
 
   return {
     stats,
+    imageQuota,
     channelCards,
     dashboardDataReady,
     timeRangeHourlyRequests,
