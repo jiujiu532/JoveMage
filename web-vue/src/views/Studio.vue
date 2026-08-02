@@ -988,6 +988,139 @@ function errorMessage(error: unknown, fallback: string) {
   return fallback
 }
 
+function isImageFile(file: File) {
+  return file.type.startsWith('image/') || /\.(avif|bmp|gif|heic|heif|ico|jpe?g|png|svg|tiff?|webp)$/i.test(file.name)
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(new Error('读取参考图失败'))
+    reader.readAsDataURL(file)
+  })
+}
+
+async function appendFiles(files: File[]) {
+  const imageFiles = files.filter(isImageFile).slice(0, Math.max(0, 8 - selectedFiles.value.length))
+  if (!imageFiles.length) return
+  for (const file of imageFiles) {
+    selectedFiles.value.push(file)
+    referencePreviews.value.push({
+      id: createId('source'),
+      name: file.name || '参考图',
+      type: file.type || 'image/png',
+      size: file.size,
+      dataUrl: await readFileAsDataUrl(file),
+    })
+  }
+  composeMode.value = 'image'
+}
+
+function removeReference(index: number) {
+  selectedFiles.value.splice(index, 1)
+  referencePreviews.value.splice(index, 1)
+}
+
+function clearReferences() {
+  selectedFiles.value = []
+  referencePreviews.value = []
+}
+
+function previewReference(reference: StudioReference) {
+  if (!reference.dataUrl) return
+  previewImage.value = {
+    src: reference.dataUrl,
+    name: reference.name,
+  }
+}
+
+function openPreview(src: string, name: string, localPath = '') {
+  if (!src) return
+  previewImage.value = { src, name, localPath }
+}
+
+function openPromptPicker() {
+  isPromptPickerOpen.value = true
+}
+
+function applyPromptTemplate(prompt: PromptLibraryItem) {
+  composerText.value = prompt.prompt
+  if (composeMode.value === 'image') {
+    if (prompt.image_model) imageForm.model = prompt.image_model
+    if (prompt.image_size) imageForm.size = prompt.image_size
+    if (prompt.image_count && prompt.image_count > 0) imageForm.n = prompt.image_count
+  }
+  isPromptPickerOpen.value = false
+}
+
+function openImageCompare(before: StudioPreviewImage, after: StudioPreviewImage) {
+  if (!before?.src || !after?.src) return
+  comparePreview.value = { before, after }
+}
+
+async function copyText(value: string) {
+  if (!value) return
+  try {
+    await navigator.clipboard.writeText(value)
+    toast.success('已复制')
+  } catch {
+    toast.error('复制失败')
+  }
+}
+
+async function downloadPreviewImage() {
+  if (!previewImage.value) return
+  try {
+    await downloadUrlAsFile(previewImage.value.src, previewImage.value.name || 'image.png', { localPath: previewImage.value.localPath })
+    toast.success('已开始下载')
+  } catch (error: any) {
+    toast.error(`下载失败：${error.message || '无法读取图片文件'}`)
+  }
+}
+
+function scrollToBottom() {
+  void messageListRef.value?.scrollToBottom()
+}
+
+function scheduleScrollToBottom() {
+  if (!isStudioActive) return
+  if (scrollScheduled) return
+  const requestToken = ++scrollRequestToken
+  scrollScheduled = true
+  void nextTick(() => {
+    if (scrollFrameId !== null) return
+    scrollFrameId = window.requestAnimationFrame(() => {
+      scrollFrameId = null
+      scrollScheduled = false
+      if (requestToken !== scrollRequestToken || !isStudioActive) return
+      scrollToBottom()
+    })
+  })
+}
+
+function startSidebarResize(event: PointerEvent) {
+  event.preventDefault()
+  ;(event.currentTarget as HTMLElement | null)?.setPointerCapture?.(event.pointerId)
+  sidebarResizeStartX = event.clientX
+  sidebarResizeStartWidth = sidebarWidth.value
+  document.body.classList.add('studio-resizing')
+  window.addEventListener('pointermove', handleSidebarResize)
+  window.addEventListener('pointerup', stopSidebarResize, { once: true })
+  window.addEventListener('pointercancel', stopSidebarResize, { once: true })
+}
+
+function handleSidebarResize(event: PointerEvent) {
+  const nextWidth = sidebarResizeStartWidth + event.clientX - sidebarResizeStartX
+  sidebarWidth.value = Math.min(380, Math.max(220, Math.round(nextWidth)))
+}
+
+function stopSidebarResize() {
+  document.body.classList.remove('studio-resizing')
+  window.removeEventListener('pointermove', handleSidebarResize)
+  window.removeEventListener('pointerup', stopSidebarResize)
+  window.removeEventListener('pointercancel', stopSidebarResize)
+}
 
 function cancelScheduledScroll() {
   scrollRequestToken += 1
