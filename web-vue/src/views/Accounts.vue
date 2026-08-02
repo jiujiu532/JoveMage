@@ -1705,6 +1705,8 @@ html[data-theme='dark'] .account-card-tile__metrics {
 .accounts-channel-nav {
   min-width: 0;
   width: 100%;
+  /* 与下方筛选行拉开一点呼吸距离 */
+  margin-bottom: 6px;
 }
 
 .accounts-channel-tabs {
