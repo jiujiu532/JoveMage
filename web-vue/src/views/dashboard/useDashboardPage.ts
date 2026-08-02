@@ -116,7 +116,8 @@ export function useDashboardPage() {
         iconColor: 'text-[var(--bauhaus-grey)]',
       },
       {
-        label: '剩余额度',
+        // 主数字 = ChatGPT 图片额度；Firefly Credits 放 meta，避免两种计量混加
+        label: '图片额度',
         value: '0',
         meta: '',
         icon: 'lucide:coins',
@@ -560,8 +561,13 @@ export function useDashboardPage() {
     stats.value[3].value = formatStatNumber(overview.abnormal_accounts)
     stats.value[4].value = formatStatNumber(overview.disabled_accounts)
     const totalQuota = Number(overview.total_quota || 0)
+    const totalCredits = Number(overview.total_credits || 0)
+    const unlimited = Number(overview.unlimited_quota_count || 0)
     stats.value[5].value = formatStatNumber(totalQuota)
-    stats.value[5].meta = ''
+    const metaParts: string[] = []
+    if (totalCredits > 0) metaParts.push(`Credits ${formatStatNumber(totalCredits)}`)
+    if (unlimited > 0) metaParts.push(`${formatStatNumber(unlimited)} 无限额`)
+    stats.value[5].meta = metaParts.join(' · ')
   }
 
   function getTrendPayload(overview: OverviewPayload) {

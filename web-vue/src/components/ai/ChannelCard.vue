@@ -53,7 +53,7 @@
         </div>
         <div class="channel-card__metric">
           <span class="channel-card__metric-label">正常</span>
-          <strong class="channel-card__metric-value">{{ healthyCount }}</strong>
+          <strong class="channel-card__metric-value">{{ normalCount }}</strong>
         </div>
         <div class="channel-card__metric">
           <span class="channel-card__metric-label">{{ meterIsCredits ? 'Credits' : '健康度' }}</span>
@@ -67,7 +67,7 @@
         <div class="channel-card__meter">
           <div class="channel-card__meter-head">
             <span>健康度</span>
-            <span class="channel-card__meter-num">{{ healthyCount }}/{{ accountCount }}</span>
+            <span class="channel-card__meter-num">{{ normalCount }}/{{ accountCount }}</span>
           </div>
           <div
             class="channel-card__bar"
@@ -153,6 +153,13 @@ const titleText = computed(() => {
 })
 const subtitleText = computed(() => props.subtitle || '并行上游 · 号池摘要')
 const accountCount = computed(() => Math.max(0, Number(props.descriptor.account_count ?? 0) || 0))
+/** 展示用「正常」：优先 normal_count（不卡新鲜度），回落 healthy_count */
+const normalCount = computed(() => {
+  const n = Number(props.descriptor.normal_count)
+  if (Number.isFinite(n) && n >= 0) return Math.trunc(n)
+  return Math.max(0, Number(props.descriptor.healthy_count ?? 0) || 0)
+})
+/** 调度新鲜可用数（健康度条用） */
 const healthyCount = computed(() => Math.max(0, Number(props.descriptor.healthy_count ?? 0) || 0))
 const creditsTotal = computed(() => Math.max(0, Number(props.descriptor.credits_total ?? 0) || 0))
 const meterIsCredits = computed(() => props.descriptor.meter_kind === 'credits')
@@ -161,7 +168,9 @@ const isEmpty = computed(() => accountCount.value <= 0)
 
 const healthPercent = computed(() => {
   if (accountCount.value <= 0) return 0
-  return Math.min(100, Math.round((healthyCount.value / accountCount.value) * 100))
+  // 条用 normal/总数，避免「正常 3 但健康度 0%」的视觉矛盾；新鲜未确认时 secondary 可提示
+  const base = Math.max(normalCount.value, healthyCount.value)
+  return Math.min(100, Math.round((base / accountCount.value) * 100))
 })
 
 /** credits 无总额上限时用对数压缩条，仅作视觉饱满度，不代表真实占比 */

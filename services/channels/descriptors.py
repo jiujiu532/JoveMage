@@ -102,8 +102,10 @@ def build_channel_descriptor(
     payload["enabled"] = _resolve_enabled(entry)
     payload["account_count"] = len(channel_accounts)
     # healthy_count：与 evaluate_account_pool 的 current_available 同口径（新鲜 + 正常）
-    # 不另造「status==正常」简易统计；仅标注该渠道新鲜度口径来源
+    # normal_count：status==正常 的账号数（不卡新鲜度），概览卡「正常」列用它，避免陈旧检查时间显示 0
+    # 不另造调度口径；调度仍以 healthy_count / evaluate_account_pool 为准
     payload["healthy_count"] = int(metrics.get("current_available") or 0)
+    payload["normal_count"] = int(metrics.get("estimated_available") or 0)
     payload["freshness_kind"] = _freshness_kind_for_channel(entry)
     # 渠道熔断状态（P1-B）：概览卡可直接展示 open/until/fail_count；主航道恒为关闭态
     try:

@@ -347,7 +347,10 @@ export interface AdminStats {
   failed_accounts: number
   rate_limited_accounts: number
   idle_accounts: number
+  /** ChatGPT 图片额度剩余（quota 计量） */
   total_quota: number
+  /** Firefly Credits 剩余汇总（credits 计量） */
+  total_credits?: number
   unlimited_quota_count?: number
   unknown_quota_count?: number
   success_count?: number
@@ -445,7 +448,10 @@ export interface DashboardAccountStats {
   limited: number
   abnormal: number
   disabled: number
+  /** ChatGPT 等 quota 计量渠道的剩余图片额度（不含 Firefly） */
   total_quota: number
+  /** Firefly 等 credits 计量渠道的剩余 Credits 汇总 */
+  total_credits?: number
   unlimited_quota_count?: number
   unknown_quota_count?: number
   total_success?: number

@@ -28,7 +28,10 @@ export interface ChannelDescriptor {
   meter_kind: ChannelMeterKind
   /** 运行时字段：来自 /api/channels，本地表可无 */
   account_count?: number
+  /** 新鲜 + 正常（调度口径） */
   healthy_count?: number
+  /** status==正常（展示口径，不卡新鲜度） */
+  normal_count?: number
   credits_total?: number
 }
 
@@ -145,6 +148,7 @@ function normalizeDescriptor(raw: Partial<ChannelDescriptor> & { id: string }): 
     meter_kind: (raw.meter_kind || fromDefault?.meter_kind || 'quota') as ChannelMeterKind,
     account_count: raw.account_count,
     healthy_count: raw.healthy_count,
+    normal_count: raw.normal_count,
     credits_total: raw.credits_total,
   }
 }
@@ -322,24 +326,23 @@ export function shouldBadgeChannel(channel: ChannelDescriptor | string | null | 
  * counts 可从本地统计或将来 /api/channels.account_count 注入。
  */
 export function buildChannelTabOptions(counts?: Record<string, number>): Array<{ label: string; value: string; count?: number }> {
-  const allCount = counts?.all
+  // 数字只走 count 角标，label 不再嵌套「· N」，避免双重计数
   const tabs: Array<{ label: string; value: string; count?: number }> = [
     {
-      label: allCount == null ? '全部' : `全部 · ${allCount}`,
+      label: '全部',
       value: 'all',
-      count: allCount,
+      count: counts?.all,
     },
   ]
   for (const channel of listChannels()) {
     // 渠道关掉则 Tab 不出现（空状态原则：不出现而非灰掉）
     if (!channel.enabled) continue
-    const count = counts?.[channel.id]
     // Tab 展示短名：Adobe Firefly → Firefly
     const shortName = channel.id === 'firefly' ? 'Firefly' : channel.name
     tabs.push({
-      label: count == null ? shortName : `${shortName} · ${count}`,
+      label: shortName,
       value: channel.id,
-      count,
+      count: counts?.[channel.id],
     })
   }
   return tabs

@@ -2089,21 +2089,63 @@ class AccountService:
             items = list(self._accounts.values())
         total = len(items)
         active = sum(1 for a in items if a.get("status") == "正常")
-        limited = sum(1 for a in items if a.get("status") == "限流")
+        limited = sum(1 for a in items if a.get("status") in ("限流", "受限"))
         abnormal = sum(1 for a in items if a.get("status") == "异常")
         disabled = sum(1 for a in items if a.get("status") == "禁用")
         normal_items = [a for a in items if a.get("status") == "正常"]
-        total_quota = sum(max(0, int(a.get("quota") or 0)) for a in normal_items)
-        unlimited = sum(1 for a in normal_items if self._is_unlimited_image_quota_account(a))
+
+        def _is_firefly(account: dict) -> bool:
+            return self._normalize_source_type(account.get("source_type")) == "firefly"
+
+        # 图片额度：仅 ChatGPT 等 quota 计量渠道；Firefly 走 credits，不混进 total_quota
+        chatgpt_normal = [a for a in normal_items if not _is_firefly(a)]
+        total_quota = sum(max(0, int(a.get("quota") or 0)) for a in chatgpt_normal)
+        unlimited = sum(1 for a in chatgpt_normal if self._is_unlimited_image_quota_account(a))
         unknown_quota = sum(
             1
-            for a in normal_items
+            for a in chatgpt_normal
             if (
                 bool(a.get("image_quota_unknown"))
                 or (not bool(a.get("image_quota_unknown")) and max(0, int(a.get("quota") or 0)) <= 0)
             )
             and not self._is_unlimited_image_quota_account(a)
         )
+
+        # Firefly Credits 剩余：优先 credits.available，回落 total-used / quota
+        total_credits = 0
+        for account in items:
+            if not _is_firefly(account):
+                continue
+            if account.get("status") == "禁用":
+                continue
+            credits = account.get("credits")
+            if not isinstance(credits, dict):
+                credits = account.get("credits_balance")
+            amount = None
+            if isinstance(credits, dict):
+                for key in ("available", "remaining"):
+                    raw = credits.get(key)
+                    if raw is None or raw == "":
+                        continue
+                    try:
+                        amount = max(0, int(float(raw)))
+                        break
+                    except (OverflowError, TypeError, ValueError):
+                        amount = None
+                if amount is None:
+                    try:
+                        total_c = int(float(credits.get("total") or 0))
+                        used_c = int(float(credits.get("used") or 0))
+                        amount = max(0, total_c - used_c)
+                    except (OverflowError, TypeError, ValueError):
+                        amount = None
+            if amount is None:
+                try:
+                    amount = max(0, int(float(account.get("quota") or 0)))
+                except (OverflowError, TypeError, ValueError):
+                    amount = 0
+            total_credits += amount
+
         total_success = sum(int(a.get("success") or 0) for a in items)
         total_fail = sum(int(a.get("fail") or 0) for a in items)
         by_type = {}
@@ -2118,6 +2160,7 @@ class AccountService:
             "abnormal": abnormal,
             "disabled": disabled,
             "total_quota": total_quota,
+            "total_credits": total_credits,
             "unlimited_quota_count": unlimited,
             "unknown_quota_count": unknown_quota,
             "total_success": total_success,

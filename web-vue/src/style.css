@@ -537,11 +537,11 @@ html[data-theme="dark"] .ui-chip {
   color: hsl(var(--foreground)) !important;
 }
 
-/* ========== Tab / Segmented：激活态 = 纯色色块 ========== */
+/* ========== Tab / Segmented：激活态 = 纯蓝块 + 白字（非便签黄） ========== */
 .ui-segmented {
   padding: 0 !important;
   gap: 0 !important;
-  border: 1px solid hsl(var(--border)) !important;
+  border: 2px solid var(--bauhaus-ink, #2d2d2d) !important;
   border-radius: var(--radius) !important;
   background: hsl(var(--card)) !important;
   overflow: hidden;
@@ -572,10 +572,10 @@ html[data-theme="dark"] .ui-chip {
 }
 
 .ui-segmented-btn-active {
-  background: var(--bauhaus-postit, #fff9c4) !important;
-  color: var(--bauhaus-ink) !important;
-  box-shadow: 2px 2px 0 0 var(--bauhaus-ink) !important;
-  border-color: var(--bauhaus-ink) !important;
+  background: var(--bauhaus-blue, #2d5da1) !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+  border-color: transparent !important;
   font-weight: 700 !important;
 }
 
@@ -587,9 +587,9 @@ html[data-theme="dark"] .ui-segmented-btn-active {
 }
 
 .ui-segmented-btn-active .ui-segmented-count {
-  background: color-mix(in srgb, var(--bauhaus-ink) 12%, transparent) !important;
-  color: var(--bauhaus-ink) !important;
-  border-radius: var(--radius) !important;
+  background: rgba(255, 255, 255, 0.22) !important;
+  color: #ffffff !important;
+  border-radius: 999px !important;
 }
 
 html[data-theme="dark"] .ui-segmented-btn-active .ui-segmented-count {
@@ -598,8 +598,9 @@ html[data-theme="dark"] .ui-segmented-btn-active .ui-segmented-count {
 }
 
 .ui-segmented-count {
-  border-radius: var(--radius) !important;
+  border-radius: 999px !important;
   font-family: var(--font-display) !important;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ========== 面板 / 卡片：锐边 + 实线，无阴影 ========== */

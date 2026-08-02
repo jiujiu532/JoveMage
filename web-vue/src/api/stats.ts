@@ -58,6 +58,7 @@ function adaptDashboardToStats(dashboard: DashboardResponse): AdminStats {
     rate_limited_accounts: limited,
     idle_accounts: idleAccounts,
     total_quota: Number(accounts.total_quota || 0),
+    total_credits: Number(accounts.total_credits || 0),
     unlimited_quota_count: Number(accounts.unlimited_quota_count || 0),
     unknown_quota_count: Number(accounts.unknown_quota_count || 0),
     success_count: successCount,
