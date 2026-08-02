@@ -72,48 +72,47 @@ export function useDashboardPage() {
   watch(timeRangeResponseTime, createChartWatcher('responseTime', updateResponseTimeChart))
 
   function createDefaultStats() {
-    // StatCard 图标块：直边 + 2px ink 描边 + 硬阴影，底色/字色走 --bauhaus-* / --tone-* 令牌
-    const iconBox = 'dashboard-stat-icon'
+    // tone 驱动顶边色条 + 图标底色；与图片额度卡共用 dashboard-metric-card
     return [
       {
+        key: 'total',
         label: '账号总数',
         value: '0',
         meta: '',
         icon: 'lucide:users',
-        iconBg: `${iconBox} bg-[hsl(var(--tone-info-bg))]`,
-        iconColor: 'text-[var(--bauhaus-blue)]',
+        tone: 'blue',
       },
       {
+        key: 'active',
         label: '正常账号',
         value: '0',
         meta: '',
         icon: 'lucide:check-circle',
-        iconBg: `${iconBox} bg-[hsl(var(--tone-success-bg))]`,
-        iconColor: 'text-[hsl(var(--tone-success-strong))]',
+        tone: 'green',
       },
       {
+        key: 'limited',
         label: '限流账号',
         value: '0',
         meta: '',
         icon: 'lucide:clock',
-        iconBg: `${iconBox} bg-[var(--bauhaus-postit)]`,
-        iconColor: 'text-[var(--bauhaus-ink)]',
+        tone: 'yellow',
       },
       {
+        key: 'abnormal',
         label: '异常账号',
         value: '0',
         meta: '',
         icon: 'lucide:alert-circle',
-        iconBg: `${iconBox} bg-[hsl(var(--tone-error-bg))]`,
-        iconColor: 'text-[hsl(var(--tone-error-strong))]',
+        tone: 'red',
       },
       {
+        key: 'disabled',
         label: '禁用账号',
         value: '0',
         meta: '',
         icon: 'lucide:ban',
-        iconBg: `${iconBox} bg-[var(--bauhaus-paper-2)]`,
-        iconColor: 'text-[var(--bauhaus-grey)]',
+        tone: 'ink',
       },
     ]
   }
