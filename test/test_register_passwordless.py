@@ -485,11 +485,61 @@ class PasswordlessReloginTests(unittest.TestCase):
         password_login.assert_not_called()
         self.assertEqual(result["access_token"], "rotated-access")
 
-    def test_stalwart_relogin_remains_rejected(self) -> None:
-        mailbox = {"provider": "stalwart", "address": "new@example.test"}
-        with mock.patch.object(openai_register, "_reconstruct_mailbox", return_value=mailbox):
-            with self.assertRaisesRegex(RuntimeError, "Stalwart"):
-                openai_register.relogin("new@example.test", "")
+    def test_reconstruct_mailbox_ahem_empty_domain_allows_any_suffix(self) -> None:
+        mail_cfg = {
+            "providers": [
+                {
+                    "type": "ahem",
+                    "enable": True,
+                    "api_base": "https://ahem.example/api",
+                    "domain": [],
+                }
+            ]
+        }
+        previous = openai_register.config.get("mail")
+        try:
+            openai_register.config["mail"] = mail_cfg
+            mailbox = openai_register._reconstruct_mailbox("user@baidu.jojoy.bond")
+        finally:
+            openai_register.config["mail"] = previous
+        self.assertEqual(mailbox.get("provider"), "ahem")
+        self.assertEqual(mailbox.get("api_base"), "https://ahem.example/api")
+        self.assertEqual(mailbox.get("domain"), "baidu.jojoy.bond")
+
+    def test_reconstruct_mailbox_ahem_configured_domain_filters(self) -> None:
+        mail_cfg = {
+            "providers": [
+                {
+                    "type": "ahem",
+                    "enable": True,
+                    "api_base": "https://ahem.example/api",
+                    "domain": ["allowed.test"],
+                }
+            ]
+        }
+        previous = openai_register.config.get("mail")
+        try:
+            openai_register.config["mail"] = mail_cfg
+            self.assertEqual(openai_register._reconstruct_mailbox("user@other.test"), {})
+            hit = openai_register._reconstruct_mailbox("user@allowed.test")
+        finally:
+            openai_register.config["mail"] = previous
+        self.assertEqual(hit.get("provider"), "ahem")
+        self.assertEqual(hit.get("domain"), "allowed.test")
+
+    def test_reconstruct_mailbox_ignores_non_ahem_providers(self) -> None:
+        mail_cfg = {
+            "providers": [
+                {"type": "cloudflare_temp_email", "enable": True, "api_base": "https://cf.example", "domain": ["x.test"]},
+                {"type": "stalwart", "enable": True, "domain": ["x.test"]},
+            ]
+        }
+        previous = openai_register.config.get("mail")
+        try:
+            openai_register.config["mail"] = mail_cfg
+            self.assertEqual(openai_register._reconstruct_mailbox("user@x.test"), {})
+        finally:
+            openai_register.config["mail"] = previous
 
 
 if __name__ == "__main__":

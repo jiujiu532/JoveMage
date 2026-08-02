@@ -1755,8 +1755,21 @@ def worker(index: int) -> dict:
         registrar.close()
 
 
+def _ahem_domains_from_entry(entry: dict) -> list[str]:
+    raw = entry.get("domain") or []
+    if isinstance(raw, list):
+        return [str(item).strip().lower() for item in raw if str(item).strip()]
+    text = str(raw).strip().lower()
+    return [text] if text else []
+
+
 def _reconstruct_mailbox(email: str) -> dict:
-    """从 email 重建 relogin 所需 mailbox；当前只支持不会被删除的 AHEM。"""
+    """从 email 重建 relogin 所需 mailbox；仅支持 AHEM。
+
+    域名规则与注册对齐：
+    - 配置了「允许域名」→ 邮箱后缀必须命中列表
+    - 留空 → 不校验后缀，只要该 AHEM 条目已启用且有 api_base（收信只靠 api_base + 完整地址）
+    """
     if "@" not in email:
         return {}
     local_part, _, domain = email.partition("@")
@@ -1777,25 +1790,22 @@ def _reconstruct_mailbox(email: str) -> dict:
         if not entry.get("enable") and not entry.get("schedule_enable") and not entry.get("enable_scheduled"):
             continue
         provider_type = str(entry.get("type") or "").strip().lower()
-        if provider_type == "ahem":
-            configured_domains = [str(item).strip().lower() for item in (entry.get("domain") or [])]
-            if domain in configured_domains:
-                return {
-                    "provider": "ahem",
-                    "provider_ref": f"ahem#{index}",
-                    "address": email,
-                    "prefix": local_part,
-                    "domain": domain,
-                    "api_base": str(entry.get("api_base") or "").rstrip("/"),
-                }
-        if provider_type == "stalwart":
-            configured_domains = [str(item).strip().lower() for item in (entry.get("domain") or [])]
-            if domain in configured_domains:
-                return {
-                    "provider": "stalwart",
-                    "provider_ref": f"stalwart#{index}",
-                    "address": email,
-                }
+        if provider_type != "ahem":
+            continue
+        api_base = str(entry.get("api_base") or "").rstrip("/")
+        if not api_base:
+            continue
+        configured_domains = _ahem_domains_from_entry(entry)
+        if configured_domains and domain not in configured_domains:
+            continue
+        return {
+            "provider": "ahem",
+            "provider_ref": f"ahem#{index}",
+            "address": email,
+            "prefix": local_part,
+            "domain": domain,
+            "api_base": api_base,
+        }
     return {}
 
 
@@ -1804,8 +1814,6 @@ def relogin(email: str, password: str, proxy: str = "", fp: dict | None = None) 
     mailbox = _reconstruct_mailbox(email)
     if not mailbox:
         raise RuntimeError(f"无法为 {email} 重建收件箱，该邮箱的 provider 不支持 relogin")
-    if str(mailbox.get("provider") or "") == "stalwart":
-        raise RuntimeError("Stalwart 邮箱注册后已删除，无法接收 relogin 验证码")
     registrar = PlatformRegistrar(proxy=proxy, fingerprint=fp if isinstance(fp, dict) else None)
     try:
         if password:
