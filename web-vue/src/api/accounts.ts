@@ -206,6 +206,41 @@ export interface TaskStatus {
   updated_at?: number
 }
 
+/** 全局操作范围：selected / filter / channel / all */
+export type AccountGlobalScope = 'selected' | 'filter' | 'channel' | 'all'
+
+export type AccountInspectScope = 'filter' | 'channel' | 'all'
+
+export interface AccountInspectRequest {
+  scope: AccountInspectScope
+  keyword?: string
+  status?: string
+  group_id?: string
+  source_type?: string
+}
+
+/** 一键巡检结果（见 04-inspection.md） */
+export interface AccountInspectResult {
+  total?: number
+  processed?: number
+  ok?: number
+  removed_invalid?: number
+  removed_quota_exhausted?: number
+  marked_invalid?: number
+  marked_rate_limited?: number
+  refresh_failed?: number
+  stopped?: boolean
+  errors?: string[]
+}
+
+export interface AccountReloginPrecheckResult {
+  can: number
+  skip: number
+  skip_reasons: Record<string, number>
+  /** 可重登的 token 列表；预检后只对这些执行 */
+  can_tokens?: string[]
+}
+
 type BackendAccount = Record<string, any>
 
 type BackendAccountsResponse = {
@@ -900,6 +935,61 @@ export const accountsApi = {
     }, {
       responseType: 'blob',
     }),
+
+  /** 按筛选返回全部账号 token（无分页上限），供全局批量操作拉 id */
+  fetchAccountIds: async (params?: AccountListParams) => {
+    const response = await apiClient.get<never, { tokens?: string[]; total?: number }>('/api/accounts/ids', {
+      params: {
+        keyword: params?.keyword || undefined,
+        status: params?.status || undefined,
+        group_id: params?.group_id || undefined,
+        source_type: params?.source_type || undefined,
+      },
+    })
+    const tokens = Array.isArray(response?.tokens)
+      ? response.tokens.map((token) => cleanString(token)).filter(Boolean)
+      : []
+    return {
+      tokens: Array.from(new Set(tokens)),
+      total: Number.isFinite(Number(response?.total)) ? Number(response.total) : tokens.length,
+    }
+  },
+
+  /** 一键巡检：scope + 筛选 → task_id，进度复用 fetchTaskStatus */
+  inspectAccounts: (payload: AccountInspectRequest) =>
+    apiClient.post<AccountInspectRequest, { task_id: string }>('/api/accounts/inspect', {
+      scope: payload.scope,
+      keyword: payload.keyword ?? '',
+      status: payload.status ?? 'all',
+      group_id: payload.group_id ?? 'all',
+      source_type: payload.source_type ?? 'all',
+    }),
+
+  /** 批量重登预检：可重登 N / 跳过 M + 原因汇总；只对 can_tokens 执行 */
+  reloginPrecheck: async (accountIdsOrTokens: string[]): Promise<AccountReloginPrecheckResult> => {
+    const tokens = Array.from(new Set(accountIdsOrTokens.map(resolveToken).filter(Boolean)))
+    if (!tokens.length) {
+      return { can: 0, skip: 0, skip_reasons: {}, can_tokens: [] }
+    }
+    const response = await apiClient.post<
+      { tokens: string[] },
+      { can?: number; skip?: number; skip_reasons?: Record<string, number>; can_tokens?: string[] }
+    >('/api/accounts/relogin/precheck', { tokens })
+    const skipReasons = response?.skip_reasons && typeof response.skip_reasons === 'object'
+      ? Object.fromEntries(
+        Object.entries(response.skip_reasons).map(([key, value]) => [String(key), Number(value) || 0]),
+      )
+      : {}
+    const canTokens = Array.isArray(response?.can_tokens)
+      ? response.can_tokens.map((token) => cleanString(token)).filter(Boolean)
+      : []
+    return {
+      can: Math.max(0, Number(response?.can || 0)),
+      skip: Math.max(0, Number(response?.skip || 0)),
+      skip_reasons: skipReasons,
+      can_tokens: Array.from(new Set(canTokens)),
+    }
+  },
 
   resetAccountState: async (accountId: string) => {
     return updateStatus(accountId, STATUS_NORMAL)

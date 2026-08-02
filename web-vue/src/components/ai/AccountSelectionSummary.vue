@@ -4,7 +4,7 @@
       :model-value="allSelected"
       @update:model-value="emit('toggle-all', $event)"
     >
-      全选当前结果
+      全选本页
     </Checkbox>
     <MetaChip>
       账号总数 {{ totalCount }}

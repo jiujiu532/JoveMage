@@ -29,6 +29,7 @@ import { useAccountListQuery } from './useAccountListQuery'
 import { useAccountGroups } from './useAccountGroups'
 import { useAccountBulkActions } from './useAccountBulkActions'
 import { useAccountImport, type AccountImportMode } from './useAccountImport'
+import { useAccountGlobalActions } from './useAccountGlobalActions'
 
 export type AccountsViewMode = 'cards' | 'compact' | 'single' | 'double'
 export type { AccountImportMode }
@@ -167,10 +168,34 @@ export function useAccountsPage() {
     openBulkProgress,
     requestStopRefreshProgress,
     closeRefreshProgress,
+    refreshAccountsWithProgress,
     refreshAllAccounts,
     refreshSelectedAccounts,
     runBulkAction,
   } = bulk
+
+  // ── 顶栏全局批量操作（巡检 / 刷新 / 清理 / 导出四档 / 重登预检）────
+  // exportAccounts 定义在下方，用闭包延迟引用，避免暂时性死区。
+  const globalActions = useAccountGlobalActions({
+    setError,
+    loadData,
+    keyword,
+    statusFilter,
+    groupFilter,
+    sourceFilter,
+    accountListTotal,
+    accountAllTotal,
+    selectedIds,
+    clearSelection,
+    openBulkProgress,
+    refreshProgress,
+    batchBusy,
+    batchActionLabel,
+    bulkStopRequested,
+    refreshAccountsWithProgress,
+    refreshAllAccounts,
+    exportAccounts: (scope) => exportAccounts(scope),
+  })
 
   // ── 导入 ────────────────────────────────────────────────────────
   const accountImport = useAccountImport({
@@ -730,6 +755,19 @@ export function useAccountsPage() {
     }
   }
 
+  /** 批量动作拦截：reset 走全局本地重置；relogin 走预检；其余交给 bulk.runBulkAction */
+  async function runBulkActionGuarded(action: string) {
+    if (action === 'reset') {
+      await globalActions.runResetSelected()
+      return
+    }
+    if (action === 'relogin') {
+      await globalActions.runReloginSelected()
+      return
+    }
+    await runBulkAction(action as 'refresh' | 'enable' | 'disable' | 'delete')
+  }
+
   // ── watchers / lifecycle ────────────────────────────────────────
   watch(
     [keyword, statusFilter, groupFilter, sourceFilter],
@@ -897,8 +935,9 @@ export function useAccountsPage() {
     reloginAccount,
     resetAccountState,
     removeAccount,
-    runBulkAction,
+    runBulkAction: runBulkActionGuarded,
     bindSelectedAccountsToGroup,
     exportAccounts,
+    globalActions,
   }
 }

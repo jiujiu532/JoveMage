@@ -1,7 +1,9 @@
 import type { AccountBackendStatus } from '@/api/accounts'
 
 export type BulkAction = 'refresh' | 'relogin' | 'reset' | 'enable' | 'disable' | 'delete'
-export type BulkProgressKind = 'refresh' | 'mutation'
+export type BulkProgressKind = 'refresh' | 'mutation' | 'inspect'
+export type AccountGlobalAction = 'refresh' | 'inspect' | 'delete' | 'relogin'
+export type AccountGlobalScope = 'selected' | 'filter' | 'channel' | 'all'
 export type AccountProxyMode = 'global' | 'direct' | 'group' | 'custom'
 
 export type AccountGroupForm = {

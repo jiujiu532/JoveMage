@@ -81,6 +81,33 @@
                 @select="handleExportAction"
               />
             </FilterToolbar>
+
+            <FilterToolbar class="accounts-toolbar-group accounts-toolbar-group-global" :bordered="false" gap="tight">
+              <FloatingActionMenu
+                label="一键巡检"
+                :items="inspectMenuItems"
+                :disabled="batchBusy || isFireflyChannel"
+                align="left"
+                :trigger-class="accountToolbarMenuClass"
+                @select="handleInspectAction"
+              />
+              <FloatingActionMenu
+                label="刷新额度"
+                :items="refreshMenuItems"
+                :disabled="batchBusy"
+                align="left"
+                :trigger-class="accountToolbarMenuClass"
+                @select="handleRefreshGlobalAction"
+              />
+              <FloatingActionMenu
+                label="清理"
+                :items="cleanupMenuItems"
+                :disabled="batchBusy"
+                align="left"
+                :trigger-class="accountToolbarMenuClass"
+                @select="handleCleanupAction"
+              />
+            </FilterToolbar>
           </div>
 
           <FilterToolbar class="accounts-toolbar-group accounts-toolbar-group-refresh" :bordered="false" gap="tight">
@@ -937,6 +964,41 @@
       </template>
     </OperationProgressModal>
 
+    <AccountGlobalActionConfirm
+      :open="globalActions.confirm.state.value.open"
+      :title="globalActions.confirm.state.value.title"
+      :channel-label="globalActions.confirm.state.value.channelLabel"
+      :scope-text="globalActions.confirm.state.value.scopeText"
+      :count="globalActions.confirm.state.value.count"
+      :consequence="globalActions.confirm.state.value.consequence"
+      :policy-lines="globalActions.confirm.state.value.policyLines"
+      :require-typed-confirm="globalActions.confirm.state.value.requireTypedConfirm"
+      :danger="globalActions.confirm.state.value.danger"
+      :confirm-text="globalActions.confirm.state.value.confirmText"
+      :cancel-text="globalActions.confirm.state.value.cancelText"
+      :mute-options="globalActions.confirm.state.value.muteOptions"
+      @confirm="globalActions.confirm.confirm($event)"
+      @cancel="globalActions.confirm.cancel()"
+    />
+
+    <ModalShell :open="globalActions.showInspectSummary.value" max-width="26rem" :z-index="150">
+      <ModalHeader title="巡检完成" :bordered="false" compact @close="globalActions.closeInspectSummary()" />
+      <ModalBody density="compact" class="space-y-2 text-sm">
+        <template v-if="globalActions.inspectSummary.value">
+          <div class="flex justify-between"><span class="text-muted-foreground">范围</span><span>{{ globalActions.inspectSummary.value.scopeText }}</span></div>
+          <div class="flex justify-between"><span class="text-muted-foreground">处理</span><span class="tabular-nums">{{ globalActions.inspectSummary.value.processed ?? globalActions.inspectSummary.value.total ?? 0 }}</span></div>
+          <div class="flex justify-between"><span class="text-muted-foreground">仍正常</span><span class="tabular-nums">{{ globalActions.inspectSummary.value.ok ?? 0 }}</span></div>
+          <div class="flex justify-between"><span class="text-muted-foreground">已删除-异常</span><span class="tabular-nums text-rose-600">{{ globalActions.inspectSummary.value.removed_invalid ?? 0 }}</span></div>
+          <div class="flex justify-between"><span class="text-muted-foreground">已删除-额度尽</span><span class="tabular-nums text-rose-600">{{ globalActions.inspectSummary.value.removed_quota_exhausted ?? 0 }}</span></div>
+          <div class="flex justify-between"><span class="text-muted-foreground">标记未删</span><span class="tabular-nums">{{ (globalActions.inspectSummary.value.marked_invalid ?? 0) + (globalActions.inspectSummary.value.marked_rate_limited ?? 0) }}</span></div>
+          <div class="flex justify-between"><span class="text-muted-foreground">刷新失败</span><span class="tabular-nums">{{ globalActions.inspectSummary.value.refresh_failed ?? 0 }}</span></div>
+        </template>
+      </ModalBody>
+      <ModalFooter compact>
+        <Button size="sm" variant="primary" @click="globalActions.closeInspectSummary()">知道了</Button>
+      </ModalFooter>
+    </ModalShell>
+
     <input ref="manualTokenFileInputRef" type="file" accept=".txt,text/plain" class="hidden" @change="handleManualTokenFileChange" />
     <input ref="cpaFileInputRef" type="file" accept=".json,application/json" multiple class="hidden" @change="handleCPAFileChange" />
     <input ref="fireflyCookieFileInputRef" type="file" accept=".txt,text/plain" class="hidden" @change="handleFireflyCookieFileChange" />
@@ -949,6 +1011,7 @@ import { Button, Checkbox, EmptyState, Input, StatusDetailPill, StatusPill } fro
 import type { ActionMenuItem } from 'nanocat-ui'
 import AccountActionButtons from '@/components/ai/AccountActionButtons.vue'
 import AccountBulkBar from '@/components/ai/AccountBulkBar.vue'
+import AccountGlobalActionConfirm from '@/components/ai/AccountGlobalActionConfirm.vue'
 import AccountSelectionSummary from '@/components/ai/AccountSelectionSummary.vue'
 import AccountStreamCard from '@/components/ai/AccountStreamCard.vue'
 import AccountUsageProfilePanel from '@/components/ai/AccountUsageProfilePanel.vue'
@@ -975,6 +1038,7 @@ import TableShell from '@/components/ai/TableShell.vue'
 import { actionMenuGroups } from '@/components/ai/menuItems'
 import GroupedSelectMenu from '@/components/ui/GroupedSelectMenu.vue'
 import type { Account } from '@/api/accounts'
+import type { AccountGlobalScope } from '@/views/accounts/accountPageShared'
 import { parseProxyReference } from '@/api/proxy'
 import { channelShortName, getChannel } from '@/config/channels'
 import { useAccountsPage, type AccountImportMode } from './accounts/useAccountsPage'
@@ -1127,7 +1191,7 @@ const {
   removeAccount,
   runBulkAction,
   bindSelectedAccountsToGroup,
-  exportAccounts,
+  globalActions,
 } = useAccountsPage()
 
 function openCreateModal(options?: { source_type?: string }) {
@@ -1327,23 +1391,84 @@ const exportMenuItems = computed<ActionMenuItem[]>(() => actionMenuGroups(
   [
     {
       key: 'selected',
-      label: `导出选中${selectedCount.value ? ` (${selectedCount.value})` : ''}`,
+      label: `导出已勾选${selectedCount.value ? ` (${selectedCount.value})` : ''}`,
       disabled: selectedCount.value === 0,
     },
   ],
   [
     {
+      key: 'filter',
+      label: `导出当前筛选 (${accountListTotal.value})`,
+      disabled: accountListTotal.value === 0,
+    },
+    {
+      key: 'channel',
+      label: `导出当前渠道 (${accountAllTotal.value})`,
+      disabled: accountAllTotal.value === 0,
+    },
+    {
       key: 'all',
-      label: '导出全部',
+      label: `导出全部 (${accountAllTotal.value})`,
       disabled: accountAllTotal.value === 0,
     },
   ],
 ))
 
+// ── 顶栏全局批量菜单（一键巡检 / 刷新额度 / 清理）───────────────────
+const filterCount = computed(() => accountListTotal.value)
+const channelCount = computed(() => accountAllTotal.value || accountListTotal.value)
+const isFireflyChannel = computed(() => sourceFilter.value === 'firefly')
+
+const inspectMenuItems = computed<ActionMenuItem[]>(() => actionMenuGroups(
+  [
+    { key: 'filter', label: `巡检当前筛选 (${filterCount.value})`, disabled: filterCount.value === 0 },
+    { key: 'channel', label: `巡检当前渠道 (${channelCount.value})`, disabled: channelCount.value === 0 },
+    { key: 'all', label: `巡检全部渠道 (${channelCount.value})`, disabled: channelCount.value === 0 },
+  ],
+))
+
+const refreshMenuItems = computed<ActionMenuItem[]>(() => actionMenuGroups(
+  [
+    { key: 'filter', label: `刷新当前筛选 (${filterCount.value})`, disabled: filterCount.value === 0 },
+    { key: 'channel', label: `刷新当前渠道 (${channelCount.value})`, disabled: channelCount.value === 0 },
+    { key: 'all', label: `刷新全部渠道 (${channelCount.value})`, disabled: channelCount.value === 0 },
+  ],
+  [
+    { key: 'selected', label: `刷新已勾选 (${selectedCount.value})`, disabled: selectedCount.value === 0 },
+  ],
+))
+
+const cleanupMenuItems = computed<ActionMenuItem[]>(() => actionMenuGroups(
+  [
+    { key: 'filter', label: `删除当前筛选 (${filterCount.value})`, disabled: filterCount.value === 0, danger: true },
+    { key: 'channel', label: `删除当前渠道 (${channelCount.value})`, disabled: channelCount.value === 0, danger: true },
+    { key: 'all', label: `删除全部渠道 (${channelCount.value})`, disabled: channelCount.value === 0, danger: true },
+  ],
+  [
+    { key: 'selected', label: `删除已勾选 (${selectedCount.value})`, disabled: selectedCount.value === 0, danger: true },
+  ],
+))
+
+async function handleInspectAction(key: string) {
+  await globalActions.runInspect(key as 'filter' | 'channel' | 'all')
+}
+
+async function handleRefreshGlobalAction(key: string) {
+  await globalActions.runGlobalRefresh(key as AccountGlobalScope)
+}
+
+async function handleCleanupAction(key: string) {
+  await globalActions.runGlobalDelete(key as AccountGlobalScope)
+}
+
+async function handleExportGlobalAction(key: string) {
+  await globalActions.runExport(key as AccountGlobalScope)
+}
+
 const batchMenuItems = computed<AccountActionMenuItem[]>(() => actionMenuGroups<AccountActionMenuItem>(
   [
     { key: 'refresh', label: '批量刷新账号信息和额度' },
-    { key: 'relogin', label: '批量重新登录' },
+    { key: 'relogin', label: '批量重新登录', disabled: isFireflyChannel.value },
     { key: 'reset', label: '批量重置' },
   ],
   bindAccountGroupBatchItems.value,
@@ -1378,21 +1503,7 @@ function handleAccountEntryAction(key: string) {
 }
 
 async function handleExportAction(key: string) {
-  if (key === 'selected') {
-    await handleExportSelected()
-    return
-  }
-  if (key === 'all') {
-    await handleExportAll()
-  }
-}
-
-async function handleExportSelected() {
-  await exportAccounts('selected')
-}
-
-async function handleExportAll() {
-  await exportAccounts('all')
+  await handleExportGlobalAction(key)
 }
 
 function openManualTokenFile() {
