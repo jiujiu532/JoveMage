@@ -1,16 +1,16 @@
 <p align="center">
-  <img src="web-vue/public/logo.svg?v=0.6.0" width="96" alt="JoveMage logo">
+  <img src="web-vue/public/logo.svg?v=0.7.0" width="96" alt="JoveMage logo">
 </p>
 
 <h1 align="center">JoveMage</h1>
 
 <p align="center">
-  Self-hosted console that turns ChatGPT web into OpenAI / Anthropic compatible APIs
+  Multi-channel self-hosted console: ChatGPT web + Adobe Firefly as OpenAI / Anthropic compatible APIs
 </p>
 
 <p align="center">
   <a href="https://github.com/jiujiu532/JoveMage/stargazers"><img src="https://img.shields.io/github/stars/jiujiu532/JoveMage?style=flat-square&logo=github" alt="GitHub stars"></a>
-  <a href="VERSION"><img src="https://img.shields.io/badge/version-v0.6.0-2563eb?style=flat-square" alt="Version"></a>
+  <a href="VERSION"><img src="https://img.shields.io/badge/version-v0.7.0-2563eb?style=flat-square" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-f97316?style=flat-square" alt="License"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-≥3.13-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python"></a>
   <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/FastAPI-0.136-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI"></a>
@@ -27,20 +27,28 @@
 
 ---
 
-JoveMage is a **self-hosted** service that reverse-engineers ChatGPT web (chatgpt.com) into **OpenAI / Anthropic compatible APIs**, with a Vue admin console for multi-account pools, auto registration, proxy anti-ban, image pipelines, and ops dashboards. One FastAPI process serves both API and console.
+JoveMage is a **multi-channel AI gateway + ops console** for self-hosters:
+
+- **ChatGPT channel**: reverse-engineers chatgpt.com for chat, search, image generate/edit — OpenAI / Anthropic compatible
+- **Adobe Firefly channel**: Express Cookie pools; image / image-to-image / video (e.g. Sora family) on the same `/v1` surface
+- **Unified pool & governance**: per-channel routing, dual meters (quota + credits), reconcile, usage profiles, request traces
+- **Vue console**: dashboard, accounts, logs, gallery, monitor, register, settings, Studio
+
+One FastAPI process serves both API and console.
 
 > **Image**: `ghcr.io/jiujiu532/jovemage`  
-> **Version**: `v0.6.0`  
+> **Version**: `v0.7.0`  
 > **Env compatibility**: `CHATGPT2API_*` variables still work
 
 ## Features
 
-- **API compatibility**: OpenAI-style `/v1/chat/completions`, Anthropic-style `/v1/messages`, images, models
-- **Account pool**: freshness metrics, round-robin, token refresh / failover, image quota checks
-- **Registration**: passwordless signup, many mail providers, proxy pool binding
-- **Images**: generate / edit, task polling, storage, structured failure accounting
+- **API compatibility**: `/v1/chat/completions`, `/v1/messages`, `/v1/images/*`, `/v1/videos/generations`, `/v1/models`, …
+- **Channel registry**: ChatGPT + Firefly as first-class channels; capabilities (`chat` / `image` / `edit` / `video`) drive Studio & UI
+- **Account pool**: freshness metrics, round-robin, token refresh / failover; Firefly identity dedupe by `account_id` and cookie→IMS exchange
+- **Registration** (ChatGPT): passwordless signup, many mail providers, proxy pool binding
+- **Image / video pipelines**: generate · edit · video task polling, storage, structured failure accounting
 - **Anti-ban proxies**: WARP 1–6 instances, `proxy_pool`, optional FlareSolverr
-- **Vue console**: dashboard, accounts, logs, gallery, monitor, register, settings, Studio
+- **Vue console**: channel-aware dashboard / accounts / logs / gallery / monitor / register / settings / Studio
 - **Pluggable storage**: `json` / `sqlite` / `postgres` / `git` for accounts & auth keys
 
 ## Quick start
@@ -142,8 +150,10 @@ Login password = `auth-key` in `config.json` (or `CHATGPT2API_AUTH_KEY`).
 | `image_retention_days` | Image retention | `15` |
 | `image_max_retries` | Image failover retries | `3` |
 | `auto_remove_invalid_accounts` | Drop auth-invalid accounts | `true` |
+| `firefly_enabled` | Enable Adobe Firefly channel | `false` |
+| `firefly_video_enabled` | Enable Firefly video capability | `false` |
 
-Full reference: `config.example.yaml`.
+Full reference: `config.example.yaml`. Firefly needs Express Cookie accounts imported in the console (Settings → Firefly).
 
 ## Upgrade
 
@@ -157,12 +167,12 @@ cd /opt/jovemage && docker compose pull && docker compose up -d
 
 - On push to `main` or tags `v*`, GitHub Actions builds multi-arch images to GHCR
 - Image: `ghcr.io/jiujiu532/jovemage` (`linux/amd64` + `linux/arm64`)
-- Tags: `latest` (main), `v0.6.0`, `0.6`, `sha-...`
+- Tags: `latest` (main), `v0.7.0`, `0.7`, `sha-...`
 - Workflow: `.github/workflows/docker-publish.yml`
 
 ## Disclaimer
 
-This project is for **personal learning and non-commercial research only**. Do not use it for commercial abuse, bulk automation that violates OpenAI ToS, or illegal content. You assume all risks including account bans and legal liability.
+This project reverse-engineers ChatGPT web and Adobe Firefly / Express related surfaces for **personal learning and non-commercial research only**. Do not use it for commercial abuse, bulk automation that violates OpenAI / Adobe ToS, or illegal content. You assume all risks including account bans and legal liability.
 
 ---
 
