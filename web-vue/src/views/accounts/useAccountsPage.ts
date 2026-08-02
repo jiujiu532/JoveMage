@@ -538,6 +538,11 @@ export function useAccountsPage() {
   }
 
   async function refreshToken(accountId: string) {
+    const target = accounts.value.find(item => item.id === accountId)
+    if (target && isFireflySourceType(target.source_type)) {
+      toast.warning('Firefly 账号不支持 ChatGPT 刷新')
+      return
+    }
     const confirmed = await confirmDialog.ask({
       title: '确认刷新账号',
       message: `即将刷新账号 ${accountId} 的远端信息和额度，可能触发外部 ChatGPT 请求。是否继续？`,
@@ -564,6 +569,10 @@ export function useAccountsPage() {
     if (reloginAccountId.value) return
     const account = accounts.value.find(item => item.id === accountId)
     if (!account) return
+    if (isFireflySourceType(account.source_type)) {
+      toast.warning('Firefly 账号不支持重新登录（Express Cookie 自动刷新 IMS token）')
+      return
+    }
     const confirmed = await confirmDialog.ask({
       title: '重新登录账号',
       message: `确认重新登录 ${account.email || account.name || account.id} 吗？`,

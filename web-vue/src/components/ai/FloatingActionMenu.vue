@@ -1,5 +1,5 @@
 <template>
-  <div ref="rootRef" class="floating-action-menu" :style="rootStyle">
+  <div ref="rootRef" class="floating-action-menu" :style="rootStyle" :title="disabled && disabledTip ? disabledTip : undefined">
     <Button
       variant="outline"
       :size="size === 'xs' ? 'xs' : 'sm'"
@@ -151,6 +151,8 @@ const props = withDefaults(defineProps<{
   label: string
   items: FloatingActionMenuItem[]
   disabled?: boolean
+  /** 禁用时 hover 提示（如「仅 ChatGPT 渠道可用」） */
+  disabledTip?: string
   align?: 'left' | 'right'
   placement?: FloatingMenuPlacement
   size?: UiSize
@@ -161,6 +163,7 @@ const props = withDefaults(defineProps<{
   triggerWidth?: number
 }>(), {
   disabled: false,
+  disabledTip: '',
   align: 'right',
   placement: 'auto',
   size: 'sm',

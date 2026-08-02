@@ -87,6 +87,7 @@
                 label="一键巡检"
                 :items="inspectMenuItems"
                 :disabled="batchBusy || isFireflyChannel"
+                :disabled-tip="isFireflyChannel ? '仅 ChatGPT 渠道可用' : ''"
                 align="left"
                 :trigger-class="accountToolbarMenuClass"
                 @select="handleInspectAction"
@@ -94,7 +95,8 @@
               <FloatingActionMenu
                 label="刷新额度"
                 :items="refreshMenuItems"
-                :disabled="batchBusy"
+                :disabled="batchBusy || isFireflyChannel"
+                :disabled-tip="isFireflyChannel ? '仅 ChatGPT 渠道可用' : ''"
                 align="left"
                 :trigger-class="accountToolbarMenuClass"
                 @select="handleRefreshGlobalAction"
@@ -268,6 +270,7 @@
                   :refreshing="refreshingAccountId === item.id"
                   :resetting="resettingAccountId === item.id"
                   :relogin-busy="reloginAccountId === item.id"
+                  :is-firefly="isFireflySourceType(item.source_type)"
                   align="end"
                   @edit="openEditModal(item)"
                   @toggle-enabled="toggleEnabled(item)"
@@ -393,6 +396,7 @@
               :refreshing="refreshingAccountId === item.id"
               :resetting="resettingAccountId === item.id"
               :relogin-busy="reloginAccountId === item.id"
+              :is-firefly="isFireflySourceType(item.source_type)"
               align="end"
               @edit="openEditModal(item)"
               @toggle-enabled="toggleEnabled(item)"
@@ -1039,6 +1043,7 @@ import { actionMenuGroups } from '@/components/ai/menuItems'
 import GroupedSelectMenu from '@/components/ui/GroupedSelectMenu.vue'
 import type { Account } from '@/api/accounts'
 import type { AccountGlobalScope } from '@/views/accounts/accountPageShared'
+import { isFireflySourceType } from '@/views/accounts/accountPageShared'
 import { parseProxyReference } from '@/api/proxy'
 import { channelShortName, getChannel } from '@/config/channels'
 import { useAccountsPage, type AccountImportMode } from './accounts/useAccountsPage'
@@ -1469,7 +1474,7 @@ async function handleExportGlobalAction(key: string) {
 const batchMenuItems = computed<AccountActionMenuItem[]>(() => actionMenuGroups<AccountActionMenuItem>(
   [
     { key: 'refresh', label: '批量刷新账号信息和额度' },
-    { key: 'relogin', label: '批量重新登录', disabled: isFireflyChannel.value },
+    { key: 'relogin', label: isFireflyChannel.value ? '批量重新登录（仅 ChatGPT）' : '批量重新登录', disabled: isFireflyChannel.value },
     { key: 'reset', label: '批量重置' },
   ],
   bindAccountGroupBatchItems.value,

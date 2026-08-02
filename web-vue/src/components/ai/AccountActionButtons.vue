@@ -35,11 +35,14 @@ const props = withDefaults(defineProps<{
   refreshing?: boolean
   resetting?: boolean
   reloginBusy?: boolean
+  /** Firefly 账号：刷新/重登为 ChatGPT 专属，禁用并标注 */
+  isFirefly?: boolean
   align?: 'start' | 'end'
 }>(), {
   refreshing: false,
   resetting: false,
   reloginBusy: false,
+  isFirefly: false,
   align: 'start',
 })
 
@@ -60,13 +63,21 @@ const menuItems = computed<ActionMenuItem[]>(() => actionMenuGroups(
   [
     {
       key: 'refresh-token',
-      label: props.refreshing ? '刷新中...' : '刷新账号信息和额度',
-      disabled: props.refreshing,
+      label: props.refreshing
+        ? '刷新中...'
+        : props.isFirefly
+          ? '刷新账号信息和额度（仅 ChatGPT）'
+          : '刷新账号信息和额度',
+      disabled: props.refreshing || props.isFirefly,
     },
     {
       key: 'relogin',
-      label: props.reloginBusy ? '重登中...' : '重新登录账号',
-      disabled: props.reloginBusy,
+      label: props.reloginBusy
+        ? '重登中...'
+        : props.isFirefly
+          ? '重新登录账号（仅 ChatGPT）'
+          : '重新登录账号',
+      disabled: props.reloginBusy || props.isFirefly,
     },
     {
       key: 'reset-state',
