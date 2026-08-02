@@ -1160,10 +1160,10 @@ watch(showModal, (open) => {
   if (!open) accountModalTab.value = 'edit'
 })
 
-/** 窄屏渠道下拉选项（与 Tab 同源） */
+/** 窄屏渠道下拉选项（与 Tab 同源）。移动端无角标位，label 直接带计数。 */
 const channelTabSelectOptions = computed(() =>
   channelTabOptions.value.map((item) => ({
-    label: item.label,
+    label: typeof item.count === 'number' ? `${item.label} · ${item.count}` : item.label,
     value: item.value,
   })),
 )
