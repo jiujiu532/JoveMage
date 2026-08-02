@@ -228,7 +228,6 @@
 
                 <section class="settings-block">
                   <header class="settings-block__header">
-                    <span class="settings-block__icon" aria-hidden="true"><Icon icon="mdi:toggle-switch-outline" /></span>
                     <div class="settings-block__headtext">
                       <p class="settings-block__title">开关</p>
                       <p class="settings-block__desc">运行时、清障与启动预热。</p>

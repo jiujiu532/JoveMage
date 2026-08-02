@@ -5,7 +5,6 @@
         <div class="settings-block-stack">
           <section class="settings-block">
             <header class="settings-block__header">
-              <span class="settings-block__icon" aria-hidden="true"><Icon icon="mdi:toggle-switch-outline" /></span>
               <div class="settings-block__headtext">
                 <p class="settings-block__title">开关与模式</p>
                 <p class="settings-block__desc">是否启用远端存储，以及写入策略。</p>
@@ -92,7 +91,6 @@
       <div class="settings-block-stack">
         <section class="settings-block">
           <header class="settings-block__header">
-            <span class="settings-block__icon" aria-hidden="true"><Icon icon="mdi:toggle-switch-outline" /></span>
             <div class="settings-block__headtext">
               <p class="settings-block__title">开关</p>
               <p class="settings-block__desc">关闭时跳过请求前内容审核。</p>

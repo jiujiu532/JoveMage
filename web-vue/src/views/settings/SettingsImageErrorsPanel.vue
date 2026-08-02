@@ -4,7 +4,6 @@
       <div class="settings-block-stack">
         <section class="settings-block">
           <header class="settings-block__header">
-            <span class="settings-block__icon" aria-hidden="true"><Icon icon="mdi:toggle-switch-outline" /></span>
             <div class="settings-block__headtext">
               <p class="settings-block__title">开关</p>
               <p class="settings-block__desc">关闭时继续返回上游原始错误。</p>
