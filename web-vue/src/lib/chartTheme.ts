@@ -301,6 +301,8 @@ export function getLineChartTheme(isDark = isDarkTheme()) {
 export function getPieChartTheme(isMobile = false, isDark = isDarkTheme()) {
   const tokens = getChartSurfaceTokens(isDark)
   const textStyle = getTextStyle(isDark)
+  // 桌面：左侧图例 + 右侧环图；移动：环图上、横向滚动图例
+  // 扇区不画长模型名标签——firefly 全名极易重叠，名称交给 legend/tooltip
   const legendPosition = isMobile
     ? {
       left: 'center',
@@ -311,10 +313,11 @@ export function getPieChartTheme(isMobile = false, isDark = isDarkTheme()) {
       left: 0,
       top: 'middle',
       orient: 'vertical' as const,
+      width: '34%',
     }
 
-  const pieCenter = isMobile ? ['50%', '42%'] : ['60%', '50%']
-  const pieRadius = isMobile ? ['35%', '55%'] : ['45%', '70%']
+  const pieCenter = isMobile ? ['50%', '40%'] : ['68%', '50%']
+  const pieRadius = isMobile ? ['34%', '52%'] : ['42%', '68%']
 
   return {
     animation: true,
@@ -329,8 +332,20 @@ export function getPieChartTheme(isMobile = false, isDark = isDarkTheme()) {
     legend: {
       ...getLegendConfig(isDark),
       ...legendPosition,
-      type: isMobile ? 'scroll' : 'plain',
+      // 模型一多 plain 会溢出裁切；统一 scroll，少模型时也无副作用
+      type: 'scroll',
       pageIconSize: 10,
+      pageButtonItemGap: 4,
+      pageTextStyle: {
+        color: textStyle.color,
+        fontSize: 10,
+      },
+      // 长模型名截断，完整名靠 tooltip
+      formatter: (name: string) =>
+        name.length > 22 ? `${name.slice(0, 20)}…` : name,
+      tooltip: {
+        show: true,
+      },
     },
     series: {
       type: 'pie',
@@ -340,18 +355,12 @@ export function getPieChartTheme(isMobile = false, isDark = isDarkTheme()) {
       animationType: 'scale',
       animationEasing: 'cubicOut',
       avoidLabelOverlap: true,
+      minShowLabelAngle: 12,
       label: {
-        show: true,
-        fontSize: 11,
-        color: textStyle.color,
+        show: false,
       },
       labelLine: {
-        show: true,
-        length: 12,
-        length2: 10,
-        lineStyle: {
-          color: tokens.lineSoft,
-        },
+        show: false,
       },
       itemStyle: {
         borderWidth: 2,
@@ -359,10 +368,18 @@ export function getPieChartTheme(isMobile = false, isDark = isDarkTheme()) {
         borderRadius: 2,
       },
       emphasis: {
+        scale: true,
+        scaleSize: 6,
         label: {
           show: true,
-          fontSize: 13,
-          fontWeight: 'bold',
+          fontSize: 12,
+          fontWeight: 600,
+          color: textStyle.color,
+          // hover 时只显示占比，避免再把长模型名挤进环上
+          formatter: '{d}%',
+        },
+        labelLine: {
+          show: false,
         },
       },
     },

@@ -480,7 +480,7 @@ export function useDashboardPage() {
       series: [
         {
           ...theme.series,
-          center: ['50%', '50%'],
+          // 沿用主题 center（桌面给左侧图例留位）；勿强制 50%/50% 把图例挤没
           data: modelData,
         },
       ],
