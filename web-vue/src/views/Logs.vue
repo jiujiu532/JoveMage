@@ -38,7 +38,7 @@
 
       <MetricStrip
         :items="activeMetricItems"
-        :columns-class="activeLogView === 'runtime' ? 'grid-cols-2 md:grid-cols-3 xl:grid-cols-5' : 'grid-cols-2 md:grid-cols-3 xl:grid-cols-6'"
+        :columns-class="activeLogView === 'runtime' ? 'grid-cols-2 md:grid-cols-4 xl:grid-cols-6' : 'grid-cols-2 md:grid-cols-4 xl:grid-cols-8'"
         density="compact"
       />
 
@@ -774,20 +774,76 @@ const runtimeStats = computed(() => {
   return counts
 })
 
-const systemMetricItems = computed(() => [
-  { label: '总数', value: logStats.value.total, class: 'text-foreground' },
-  { label: logMeta.stats_scope === 'page' ? '本页成功' : '成功', value: logStats.value.success, class: 'text-emerald-600' },
-  { label: logMeta.stats_scope === 'page' ? '本页失败' : '失败', value: logStats.value.failed, class: 'text-rose-600' },
-  { label: logMeta.stats_scope === 'page' ? '本页限流' : '限流', value: logStats.value.limited, class: 'text-amber-600' },
-  { label: logMeta.stats_scope === 'page' ? '本页图片' : '图片接口', value: logStats.value.image, class: 'text-cyan-600' },
-])
+/** 本页派生指标：成功率 / 平均耗时 / 文本调用 / 渠道拆分 */
+const pageDerivedStats = computed(() => {
+  const pageItems = logs.value
+  const pageCount = pageItems.length
+  const success = Number(logStats.value.success || 0)
+  const failed = Number(logStats.value.failed || 0)
+  const image = Number(logStats.value.image || 0)
+  const decided = success + failed
+  const successRate = decided > 0
+    ? `${((success / decided) * 100).toFixed(1)}%`
+    : (pageCount > 0 ? '—' : '0%')
+
+  let durationSum = 0
+  let durationCount = 0
+  let chatgpt = 0
+  let firefly = 0
+  for (const item of pageItems) {
+    const ms = Number(item.durationMs)
+    if (Number.isFinite(ms) && ms >= 0) {
+      durationSum += ms
+      durationCount += 1
+    }
+    const channel = cleanString(item.channel).toLowerCase()
+    if (channel === 'firefly') firefly += 1
+    else if (channel) chatgpt += 1
+  }
+  const avgDuration = durationCount > 0
+    ? (formatDuration(String(Math.round(durationSum / durationCount))) || `${Math.round(durationSum / durationCount)}ms`)
+    : '—'
+  // 文本 = 本页条数 − 图片接口；本页为空时回落 0
+  const textCalls = Math.max(0, pageCount - image)
+
+  return {
+    successRate,
+    avgDuration,
+    textCalls,
+    chatgpt,
+    firefly,
+    pageCount,
+  }
+})
+
+const systemMetricItems = computed(() => {
+  const pageScoped = logMeta.stats_scope === 'page'
+  const pageLabel = (base: string) => (pageScoped ? `本页${base}` : base)
+  const derived = pageDerivedStats.value
+  return [
+    { key: 'total', label: '总数', value: logStats.value.total, class: 'text-foreground' },
+    { key: 'success', label: pageLabel('成功'), value: logStats.value.success, class: 'text-emerald-600' },
+    { key: 'failed', label: pageLabel('失败'), value: logStats.value.failed, class: 'text-rose-600' },
+    { key: 'limited', label: pageLabel('限流'), value: logStats.value.limited, class: 'text-amber-600' },
+    { key: 'image', label: pageLabel('图片'), value: logStats.value.image, class: 'text-cyan-600' },
+    { key: 'text', label: pageLabel('文本'), value: derived.textCalls, class: 'text-foreground' },
+    { key: 'success-rate', label: pageLabel('成功率'), value: derived.successRate, class: 'text-emerald-600' },
+    { key: 'avg-duration', label: pageLabel('均耗时'), value: derived.avgDuration, class: 'text-foreground' },
+  ]
+})
 
 const runtimeMetricItems = computed(() => [
-  { label: '运行日志', value: runtimeStats.value.total, class: 'text-foreground' },
-  { label: 'Warning', value: runtimeStats.value.warning, class: 'text-amber-600' },
-  { label: 'Error', value: runtimeStats.value.error, class: 'text-rose-600' },
-  { label: '内存', value: runtimeStats.value.memory, class: 'text-cyan-600' },
-  { label: '文件', value: runtimeStats.value.file, class: 'text-violet-600' },
+  { key: 'runtime-total', label: '运行日志', value: runtimeStats.value.total, class: 'text-foreground' },
+  { key: 'runtime-warning', label: 'Warning', value: runtimeStats.value.warning, class: 'text-amber-600' },
+  { key: 'runtime-error', label: 'Error', value: runtimeStats.value.error, class: 'text-rose-600' },
+  { key: 'runtime-memory', label: '内存', value: runtimeStats.value.memory, class: 'text-cyan-600' },
+  { key: 'runtime-file', label: '文件', value: runtimeStats.value.file, class: 'text-violet-600' },
+  {
+    key: 'runtime-ok',
+    label: '其它级别',
+    value: Math.max(0, runtimeStats.value.total - runtimeStats.value.warning - runtimeStats.value.error),
+    class: 'text-foreground',
+  },
 ])
 
 const activeMetricItems = computed(() => activeLogView.value === 'runtime' ? runtimeMetricItems.value : systemMetricItems.value)
