@@ -157,11 +157,11 @@ function onHeaderKeydown(e: KeyboardEvent) {
 }
 
 .form-section__title {
-  font-family: var(--font-display);
-  font-size: 15px;
-  font-weight: 700;
-  line-height: 1.3;
-  letter-spacing: -0.02em;
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0;
   text-transform: none;
   color: hsl(var(--foreground));
   transition: color 0.12s ease;
@@ -170,11 +170,12 @@ function onHeaderKeydown(e: KeyboardEvent) {
 .form-section__subtitle {
   margin-top: 5px;
   max-width: 62ch;
-  font-size: 11.5px;
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
   font-weight: 400;
   line-height: 1.5;
-  letter-spacing: 0.01em;
-  color: hsl(var(--muted-foreground) / 0.92);
+  letter-spacing: 0;
+  color: hsl(var(--muted-foreground));
 }
 
 .form-section__header-end {
@@ -253,13 +254,13 @@ html[data-theme='dark'] .form-section__header--toggle:hover .form-section__chevr
   }
 
   .form-section__title {
-    font-size: 14px;
-    letter-spacing: -0.01em;
+    font-size: 0.875rem;
+    letter-spacing: 0;
   }
 
   .form-section__subtitle {
     margin-top: 4px;
-    font-size: 11px;
+    font-size: 0.75rem;
   }
 
   .form-section__actions {
