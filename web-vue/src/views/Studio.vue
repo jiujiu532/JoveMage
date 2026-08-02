@@ -340,12 +340,12 @@ const conversationBadges = computed<Record<string, StudioConversationBadge>>(() 
 const chatModelOptions = computed(() => uniqueStrings(['auto', ...chatModels.value]))
 const imageModelOptions = computed(() => uniqueStrings([imageForm.model, DEFAULT_IMAGE_MODEL, ...imageModels.value]))
 const videoModelOptions = computed(() => {
-  // 有运行时视频模型时带上当前选择；完全没有时仍保留当前/默认，避免下拉空
+  // 有运行时视频模型时带上当前选择；一个都没有则不硬塞默认（视频能力已关闭，避免提交后 503）
   const runtime = videoModels.value
   if (runtime.length > 0) {
     return uniqueStrings([videoModel.value, ...runtime])
   }
-  return uniqueStrings([videoModel.value || DEFAULT_VIDEO_MODEL, DEFAULT_VIDEO_MODEL])
+  return []
 })
 const imageUpscaleEnabled = computed(() => Boolean(catalog.value?.capabilities?.image_upscale))
 

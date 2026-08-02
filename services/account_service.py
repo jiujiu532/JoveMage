@@ -1497,6 +1497,46 @@ class AccountService:
             for access_token, payload in deduped.items():
                 current = self._accounts.get(access_token)
                 if current is None:
+                    # Firefly：同 Adobe 身份按 account_id 钉选已有账号。
+                    # 同 cookie 再导入会换出新 IMS token，与旧 token 不同，不能直接按 token 判重；
+                    # 命中已有 account_id 则走既有 token 轮转更新（保留额度/状态），而不是新增重复号。
+                    if self._normalize_source_type(payload.get("source_type")) == "firefly":
+                        account_id = (
+                            str(payload.get("account_id") or "").strip()
+                            or str(payload.get("user_id") or "").strip()
+                        )
+                        if account_id:
+                            existing_token = next(
+                                (
+                                    token
+                                    for token, acc in self._accounts.items()
+                                    if self._normalize_source_type(acc.get("source_type")) == "firefly"
+                                    and (
+                                        str(acc.get("account_id") or "").strip() == account_id
+                                        or str(acc.get("user_id") or "").strip() == account_id
+                                    )
+                                ),
+                                None,
+                            )
+                            if existing_token is not None:
+                                existing = self._accounts[existing_token]
+                                if existing_token != access_token:
+                                    # 换 cookie 得到新 token：把旧账号键轮转到新 token，保留历史字段
+                                    merged = {**existing, **payload, "access_token": access_token}
+                                    merged.pop("created_at", None)
+                                    rotated_account = self._normalize_account({**merged, "created_at": existing.get("created_at") or self._now()})
+                                    if rotated_account is not None:
+                                        self._accounts.pop(existing_token, None)
+                                        self._token_aliases[existing_token] = access_token
+                                        self._accounts[access_token] = rotated_account
+                                else:
+                                    merged = {**existing, **payload, "access_token": access_token}
+                                    merged.pop("created_at", None)
+                                    updated = self._normalize_account({**merged, "created_at": existing.get("created_at") or self._now()})
+                                    if updated is not None:
+                                        self._accounts[access_token] = updated
+                                skipped += 1
+                                continue
                     added += 1
                     self._cumulative_total += 1
                     self._save_cumulative_total()

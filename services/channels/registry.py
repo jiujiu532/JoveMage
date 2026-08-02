@@ -105,6 +105,16 @@ def _with_live_enabled(entry: ChannelEntry) -> ChannelEntry:
     """返回带最新 enabled 的 entry 副本（capabilities 浅拷贝防外泄修改）。"""
     enabled = _read_enabled(entry.id, entry.enabled)
     caps = list(entry.capabilities)
+    # Firefly 视频能力跟随独立开关：firefly_video_enabled 关闭时不对外暴露 video，
+    # 避免 Studio 仍出现视频模式并在提交时被后端 503。
+    if entry.id == "firefly" and "video" in caps:
+        try:
+            from services.config import config
+
+            if not bool(config.firefly_video_enabled):
+                caps.remove("video")
+        except Exception:
+            caps.remove("video")
     rate = deepcopy(entry.rate_budget) if entry.rate_budget is not None else None
     return replace(entry, enabled=enabled, capabilities=caps, rate_budget=rate)
 

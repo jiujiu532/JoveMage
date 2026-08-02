@@ -241,7 +241,7 @@ export function useAccountImport(options: UseAccountImportOptions) {
 
     const confirmed = await confirmDialog.ask({
       title,
-      message: `即将导入 ${normalizedCookies.length} 个 Firefly 账号。Cookie 会在服务端换取 access_token；已存在账号会按 token 去重跳过。是否继续？`,
+      message: `即将导入 ${normalizedCookies.length} 个 Firefly 账号。Cookie 会在服务端换取 access_token；同一 Adobe 账号（按 account_id）已存在时会跳过并复用原账号。是否继续？`,
       confirmText: '确认导入',
       cancelText: '取消',
     })

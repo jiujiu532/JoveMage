@@ -575,22 +575,23 @@ def create_router() -> APIRouter:
     async def create_accounts(body: AccountCreateRequest, authorization: str | None = Header(default=None)):
         require_admin(authorization)
         account_payloads: list[dict[str, Any]] = []
+        # 规范化阶段的逐条错误（如单条 Firefly cookie 换 token 失败）。
+        # 仅当全部失败、无可入库账号时才 400；否则记入返回 errors，让其余账号正常入库。
+        normalize_errors: list[str] = []
         for item in body.accounts:
             if not isinstance(item, dict):
                 continue
             try:
                 account_payloads.append(_normalize_create_account_payload(item))
             except ValueError as exc:
-                raise HTTPException(status_code=400, detail={"error": str(exc)}) from exc
+                normalize_errors.append(str(exc))
             except RuntimeError as exc:
-                raise HTTPException(
-                    status_code=400,
-                    detail={"error": redact_auth_diagnostic(str(exc))},
-                ) from exc
+                normalize_errors.append(redact_auth_diagnostic(str(exc)))
         payload_tokens = [_account_payload_token(item) for item in account_payloads]
         tokens = _unique_tokens([*body.tokens, *payload_tokens])
         if not tokens:
-            raise HTTPException(status_code=400, detail={"error": "tokens is required"})
+            detail = normalize_errors[0] if normalize_errors else "tokens is required"
+            raise HTTPException(status_code=400, detail={"error": detail, "errors": normalize_errors})
         if account_payloads:
             result = account_service.add_account_items(account_payloads, return_items=body.return_items)
             payload_token_set = set(_unique_tokens(payload_tokens))
@@ -613,7 +614,7 @@ def create_router() -> APIRouter:
             return {
                 **result,
                 "refreshed": 0,
-                "errors": [],
+                "errors": normalize_errors,
                 "items": result.get("items", []) if body.return_items else [],
             }
         refresh_result = account_service.refresh_accounts(
@@ -623,7 +624,7 @@ def create_router() -> APIRouter:
         return {
             **result,
             "refreshed": refresh_result.get("refreshed", 0),
-            "errors": refresh_result.get("errors", []),
+            "errors": [*normalize_errors, *(refresh_result.get("errors", []) or [])],
             "items": refresh_result.get("items", result.get("items", [])) if body.return_items else [],
         }
 
