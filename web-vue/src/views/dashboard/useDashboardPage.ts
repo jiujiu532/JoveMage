@@ -272,8 +272,9 @@ export function useDashboardPage() {
     if (activeMode === 'range') {
       chart.clear?.()
     }
+    // model 饼图必须整表替换：否则旧 label/labelLine 会在 merge 里残留
     chart.setOption(optionWithAnimation, {
-      notMerge: activeMode === 'range',
+      notMerge: activeMode === 'range' || key === 'model',
       lazyUpdate: profile.lazyUpdate,
       replaceMerge: ['series', 'xAxis', 'yAxis', 'legend'],
     })
@@ -465,6 +466,8 @@ export function useDashboardPage() {
     const modelData = getModelTotals().map(item => item.data)
     const modelColors = modelData.map(item => String(item?.itemStyle?.color || getModelColor(String(item?.name || ''))))
 
+    // 模型名一多，扇区 label 必然重叠；名称只走 legend + tooltip。
+    // 这里再显式关掉 label，避免 setOption 合并残留旧 label 配置。
     applyAnimatedOption('model', {
       ...theme,
       color: modelColors,
@@ -480,7 +483,18 @@ export function useDashboardPage() {
       series: [
         {
           ...theme.series,
-          // 沿用主题 center（桌面给左侧图例留位）；勿强制 50%/50% 把图例挤没
+          label: { show: false },
+          labelLine: { show: false },
+          emphasis: {
+            ...(theme.series as { emphasis?: Record<string, unknown> }).emphasis,
+            label: {
+              show: true,
+              formatter: '{d}%',
+              fontSize: 12,
+              fontWeight: 600,
+            },
+            labelLine: { show: false },
+          },
           data: modelData,
         },
       ],
