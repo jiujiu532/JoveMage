@@ -6,6 +6,7 @@ import json
 import re
 import uuid
 import zipfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Any, Literal
 
@@ -28,8 +29,12 @@ from services.backends.firefly_auth import decode_jwt_account_id, refresh_access
 from services.channel_usage_service import channel_usage_service
 from services.config import config
 from services.cpa_service import cpa_config, cpa_import_service, list_remote_files
+from services.log_service import LOG_TYPE_ACCOUNT, log_service
 from services.task_manager import task_manager
-from services.register.openai_register import relogin as _openai_relogin
+from services.register.openai_register import (
+    _reconstruct_mailbox as _openai_reconstruct_mailbox,
+    relogin as _openai_relogin,
+)
 from services.oauth_login_service import OAuthLoginError, oauth_login_service
 from services.sub2api_service import (
     list_remote_accounts as sub2api_list_remote_accounts,
@@ -38,6 +43,10 @@ from services.sub2api_service import (
     sub2api_import_service,
 )
 from utils.diagnostics import redact_auth_diagnostic
+from utils.helper import anonymize_token
+
+# 巡检分批大小：与 refresh_accounts 内部并发上限同量级，便于进度更新
+_INSPECT_BATCH_SIZE = 50
 
 
 
@@ -47,6 +56,20 @@ class ReloginRequest(BaseModel):
 
 class ReloginBatchRequest(BaseModel):
     tokens: list[str] = Field(default_factory=list)
+
+
+class ReloginPrecheckRequest(BaseModel):
+    tokens: list[str] = Field(default_factory=list)
+
+
+class AccountInspectRequest(BaseModel):
+    """一键巡检：scope 决定用哪些筛选字段。"""
+
+    scope: Literal["filter", "channel", "all"] = "filter"
+    keyword: str = ""
+    status: str = "all"
+    group_id: str = "all"
+    source_type: str = "all"
 
 
 class UserKeyCreateRequest(BaseModel):
@@ -382,6 +405,40 @@ def _account_matches_group(account: dict[str, Any], group_id: str) -> bool:
     return current == group_id
 
 
+def _is_demo_account(account: dict[str, Any]) -> bool:
+    return bool(account.get("is_demo"))
+
+
+def _filter_accounts(
+        *,
+        keyword: str = "",
+        status: str = "all",
+        group_id: str = "all",
+        source_type: str = "all",
+        exclude_demo: bool = False,
+        exclude_firefly: bool = False,
+        items: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """与 `_accounts_page` 同款筛选；可选排除 demo / Firefly。"""
+    source = items if items is not None else account_service.list_accounts()
+    filtered: list[dict[str, Any]] = []
+    for item in source:
+        if exclude_demo and _is_demo_account(item):
+            continue
+        if exclude_firefly and _account_matches_source_type(item, "firefly"):
+            continue
+        if not _account_matches_keyword(item, keyword):
+            continue
+        if not _status_matches_filter(item, status):
+            continue
+        if not _account_matches_group(item, group_id):
+            continue
+        if not _account_matches_source_type(item, source_type):
+            continue
+        filtered.append(item)
+    return filtered
+
+
 def _accounts_page(
         *,
         page: int,
@@ -392,13 +449,13 @@ def _accounts_page(
         source_type: str = "all",
 ) -> dict[str, Any]:
     items = account_service.list_accounts()
-    filtered = [
-        item for item in items
-        if _account_matches_keyword(item, keyword)
-        and _status_matches_filter(item, status)
-        and _account_matches_group(item, group_id)
-        and _account_matches_source_type(item, source_type)
-    ]
+    filtered = _filter_accounts(
+        keyword=keyword,
+        status=status,
+        group_id=group_id,
+        source_type=source_type,
+        items=items,
+    )
     safe_page = max(1, page)
     safe_page_size = max(1, min(page_size, 500))
     start = (safe_page - 1) * safe_page_size
@@ -409,6 +466,269 @@ def _accounts_page(
         "all_total": len(items),
         "page": safe_page,
         "page_size": safe_page_size,
+    }
+
+
+def _resolve_inspect_filter_params(
+        scope: str,
+        *,
+        keyword: str = "",
+        status: str = "all",
+        group_id: str = "all",
+        source_type: str = "all",
+) -> dict[str, str]:
+    """按 scope 收敛筛选参数。
+
+    - filter：全部筛选参数
+    - channel：仅 source_type（=all 时等价 all）
+    - all：无过滤
+    """
+    normalized = (scope or "filter").strip().lower()
+    if normalized == "all":
+        return {"keyword": "", "status": "all", "group_id": "all", "source_type": "all"}
+    if normalized == "channel":
+        st = _clean_text(source_type) or "all"
+        return {"keyword": "", "status": "all", "group_id": "all", "source_type": st}
+    return {
+        "keyword": keyword or "",
+        "status": status or "all",
+        "group_id": group_id or "all",
+        "source_type": source_type or "all",
+    }
+
+
+def _classify_removed_account(
+        before_status: str,
+        before_result: str,
+) -> str:
+    """账号消失后的计数口径（简单可解释）。
+
+    - 执行前 status=="异常" → removed_invalid
+    - 执行前 status=="限流" → removed_quota_exhausted
+    - 其它消失看 last_remote_check_result：
+      invalid → removed_invalid；exhausted → removed_quota_exhausted
+    - 无信息 → removed_invalid
+    """
+    status = (before_status or "").strip()
+    if status == "异常":
+        return "removed_invalid"
+    if status == "限流":
+        return "removed_quota_exhausted"
+    result = (before_result or "").strip().lower()
+    if result == "exhausted":
+        return "removed_quota_exhausted"
+    if result == "invalid":
+        return "removed_invalid"
+    return "removed_invalid"
+
+
+def _empty_inspect_stats() -> dict[str, Any]:
+    return {
+        "total": 0,
+        "processed": 0,
+        "ok": 0,
+        "removed_invalid": 0,
+        "removed_quota_exhausted": 0,
+        "marked_invalid": 0,
+        "marked_rate_limited": 0,
+        "refresh_failed": 0,
+        "stopped": False,
+        "errors": [],
+    }
+
+
+def _run_account_inspect(
+        task,
+        tokens: list[str],
+        *,
+        scope: str,
+) -> None:
+    """巡检任务体：分批探活，对比前后状态汇总报告。
+
+    删除动作完全交给 fetch_remote_info(remove_invalid=None) → 配置 auto_remove_*，
+    不写第二套删除规则。分批并发模式对齐 refresh_accounts，但保留原始 token 便于统计。
+
+    注意：InvalidAccessTokenError 会在 handle_invalid_token 之后 re-raise，
+    所以「抛错」不等于网络失败——需结合事后账号状态判定。
+    """
+    stats = _empty_inspect_stats()
+    stats["total"] = len(tokens)
+    errors: list[str] = []
+
+    # 记录执行前快照（status / last_remote_check_result）
+    before_snapshot: dict[str, dict[str, str]] = {}
+    for token in tokens:
+        account = account_service.get_account(token)
+        if account is None:
+            continue
+        before_snapshot[token] = {
+            "status": _clean_text(account.get("status")),
+            "last_remote_check_result": _clean_text(account.get("last_remote_check_result")),
+        }
+
+    log_service.add(
+        LOG_TYPE_ACCOUNT,
+        "一键巡检开始",
+        {
+            "scope": scope,
+            "total": len(tokens),
+            "sample_tokens": [anonymize_token(t) for t in tokens[:5]],
+        },
+    )
+
+    def _tally_one(token: str, *, raised: bool, error_text: str = "") -> None:
+        """按事后状态归类单个账号。
+
+        消失口径（优先执行前 status，再辅以本次是否抛错）：
+        - 执行前 status==异常 → removed_invalid
+        - 执行前 status==限流 → removed_quota_exhausted
+        - 其它：抛错后消失 → removed_invalid（handle_invalid_token 删除）
+                 未抛错却消失 → removed_quota_exhausted（auto_remove 额度尽）
+                 仍看 last_remote_check_result 兜底
+        """
+        stats["processed"] += 1
+        account = account_service.get_account(token)
+        before = before_snapshot.get(token) or {}
+        if account is None:
+            before_status = before.get("status", "")
+            if before_status == "异常":
+                stats["removed_invalid"] += 1
+            elif before_status == "限流":
+                stats["removed_quota_exhausted"] += 1
+            elif raised:
+                # InvalidAccessToken → handle_invalid_token 删除后 re-raise
+                stats["removed_invalid"] += 1
+            else:
+                # 探活成功但账号被 update_account 因额度尽自动移除
+                before_result = before.get("last_remote_check_result", "")
+                if before_result == "invalid":
+                    stats["removed_invalid"] += 1
+                else:
+                    stats["removed_quota_exhausted"] += 1
+            return
+
+        status = _clean_text(account.get("status"))
+        if status == "异常":
+            stats["marked_invalid"] += 1
+            return
+        if status == "限流":
+            stats["marked_rate_limited"] += 1
+            return
+        if raised:
+            # 状态未变却抛错 → 网络/上游类，不删
+            stats["refresh_failed"] += 1
+            if error_text:
+                errors.append(f"{anonymize_token(token)}: {error_text}")
+            return
+        # 正常 / 禁用 / 其它：禁用参与探活但不删，计入 ok
+        stats["ok"] += 1
+
+    try:
+        for batch_start in range(0, len(tokens), _INSPECT_BATCH_SIZE):
+            batch = tokens[batch_start: batch_start + _INSPECT_BATCH_SIZE]
+            max_workers = min(10, len(batch)) or 1
+            executor = ThreadPoolExecutor(max_workers=max_workers)
+            outcomes: dict[str, tuple[bool, str]] = {}
+            try:
+                futures = {
+                    executor.submit(
+                        account_service.fetch_remote_info,
+                        token,
+                        "inspect",
+                        None,  # remove_invalid=None → 读配置
+                    ): token
+                    for token in batch
+                }
+                for future in as_completed(futures):
+                    token = futures[future]
+                    try:
+                        future.result()
+                        outcomes[token] = (False, "")
+                    except Exception as exc:
+                        outcomes[token] = (True, redact_auth_diagnostic(exc))
+            finally:
+                executor.shutdown(wait=True, cancel_futures=False)
+
+            for token in batch:
+                raised, err_text = outcomes.get(token, (True, "missing outcome"))
+                _tally_one(token, raised=raised, error_text=err_text)
+
+            task.bump(
+                progress=stats["processed"],
+                total=stats["total"],
+                ok=stats["ok"],
+                removed_invalid=stats["removed_invalid"],
+                removed_quota_exhausted=stats["removed_quota_exhausted"],
+                marked_invalid=stats["marked_invalid"],
+                marked_rate_limited=stats["marked_rate_limited"],
+                refresh_failed=stats["refresh_failed"],
+                stopped=False,
+            )
+    except Exception as exc:
+        safe = redact_auth_diagnostic(exc)
+        errors.append(safe)
+        stats["errors"] = errors[:50]
+        log_service.add(
+            LOG_TYPE_ACCOUNT,
+            "一键巡检失败",
+            {"scope": scope, "total": stats["total"], "error": safe},
+        )
+        task.fail(safe)
+        return
+
+    stats["errors"] = errors[:50]
+    log_service.add(
+        LOG_TYPE_ACCOUNT,
+        "一键巡检完成",
+        {
+            "scope": scope,
+            "total": stats["total"],
+            "processed": stats["processed"],
+            "ok": stats["ok"],
+            "removed_invalid": stats["removed_invalid"],
+            "removed_quota_exhausted": stats["removed_quota_exhausted"],
+            "marked_invalid": stats["marked_invalid"],
+            "marked_rate_limited": stats["marked_rate_limited"],
+            "refresh_failed": stats["refresh_failed"],
+        },
+    )
+    task.complete(**stats)
+
+
+def _precheck_relogin_tokens(tokens: list[str]) -> dict[str, Any]:
+    """批量重登预检：与 `_reconstruct_mailbox` 同源判定。"""
+    can_tokens: list[str] = []
+    skip_reasons: dict[str, int] = {}
+    unique = _unique_tokens(tokens)
+    for token in unique:
+        account = account_service.get_account(token)
+        if account is None:
+            reason = "无邮箱"
+            skip_reasons[reason] = skip_reasons.get(reason, 0) + 1
+            continue
+        email = _clean_text(account.get("email"))
+        if not email:
+            reason = "无邮箱"
+            skip_reasons[reason] = skip_reasons.get(reason, 0) + 1
+            continue
+        source_type = _clean_text(account.get("source_type")).lower()
+        if source_type == "firefly" or "firefly" in source_type:
+            reason = "Firefly 账号不支持重登"
+            skip_reasons[reason] = skip_reasons.get(reason, 0) + 1
+            continue
+        # 纯函数，只读 config，无网络 IO
+        mailbox = _openai_reconstruct_mailbox(email)
+        if not mailbox:
+            reason = "非 AHEM 邮箱"
+            skip_reasons[reason] = skip_reasons.get(reason, 0) + 1
+            continue
+        can_tokens.append(token)
+    skip = len(unique) - len(can_tokens)
+    return {
+        "can": len(can_tokens),
+        "skip": skip,
+        "skip_reasons": skip_reasons,
+        "can_tokens": can_tokens,
     }
 
 
@@ -516,6 +836,30 @@ def create_router() -> APIRouter:
             group_id=group_id,
             source_type=source_type or "all",
         )
+
+    @router.get("/api/accounts/ids")
+    async def list_account_ids(
+            keyword: str = "",
+            status: str = "all",
+            group_id: str = "all",
+            source_type: str = "all",
+            authorization: str | None = Header(default=None),
+    ):
+        """返回全部匹配筛选条件的 access_token（不分页，排除 demo）。"""
+        require_admin(authorization)
+        filtered = _filter_accounts(
+            keyword=keyword,
+            status=status,
+            group_id=group_id,
+            source_type=source_type or "all",
+            exclude_demo=True,
+        )
+        tokens = [
+            token
+            for item in filtered
+            if (token := _clean_text(item.get("access_token")))
+        ]
+        return {"tokens": tokens, "total": len(tokens)}
 
     @router.get("/api/accounts/{account_id}/usage")
     async def get_account_usage_profile(
@@ -675,6 +1019,49 @@ def create_router() -> APIRouter:
         asyncio.create_task(_do_refresh())
 
         return {"progress_id": progress_id}
+
+    @router.post("/api/accounts/inspect")
+    async def inspect_accounts(body: AccountInspectRequest, authorization: str | None = Header(default=None)):
+        """一键巡检：按 scope 取号 → TaskManager 分批探活 → 结构化报告。
+
+        P0 仅 ChatGPT：目标范围排除 firefly。
+        """
+        require_admin(authorization)
+        scope = (body.scope or "filter").strip().lower()
+        if scope not in ("filter", "channel", "all"):
+            raise HTTPException(status_code=400, detail={"error": "scope must be filter|channel|all"})
+
+        params = _resolve_inspect_filter_params(
+            scope,
+            keyword=body.keyword,
+            status=body.status,
+            group_id=body.group_id,
+            source_type=body.source_type,
+        )
+        # P0 仅 ChatGPT：过滤时排除 firefly
+        filtered = _filter_accounts(
+            keyword=params["keyword"],
+            status=params["status"],
+            group_id=params["group_id"],
+            source_type=params["source_type"],
+            exclude_demo=True,
+            exclude_firefly=True,
+        )
+        tokens = [
+            token
+            for item in filtered
+            if (token := _clean_text(item.get("access_token")))
+        ]
+
+        def _run(task) -> None:
+            _run_account_inspect(task, tokens, scope=scope)
+
+        try:
+            task = task_manager.submit("account_inspect", len(tokens), _run)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail={"error": redact_auth_diagnostic(exc)}) from exc
+
+        return {"task_id": task.task_id, "total": len(tokens)}
 
     @router.get("/api/accounts/refresh/progress/{progress_id}")
     async def get_refresh_progress(progress_id: str, authorization: str | None = Header(default=None)):
@@ -982,6 +1369,16 @@ def create_router() -> APIRouter:
     #  Relogin: 单号 / 批量  重新登录失效账号
     #  依赖一代移植的 openai_register.relogin() 与 TaskManager
     # ============================================================
+
+    @router.post("/api/accounts/relogin/precheck")
+    async def relogin_precheck(body: ReloginPrecheckRequest, authorization: str | None = Header(default=None)):
+        """批量重登预检：可重登 N / 跳过 M + 原因汇总。"""
+        require_admin(authorization)
+        tokens = [t for t in (body.tokens or []) if str(t or "").strip()]
+        if not tokens:
+            raise HTTPException(status_code=400, detail={"error": "tokens list is empty"})
+        # _reconstruct_mailbox 只读 config，无网络 IO
+        return _precheck_relogin_tokens(tokens)
 
     @router.post("/api/accounts/relogin")
     async def relogin_account(body: ReloginRequest, authorization: str | None = Header(default=None)):

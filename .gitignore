@@ -60,6 +60,7 @@ tests/
 !/test/test_domain_blacklist_api.py
 !/test/test_domain_blacklist_failclosed.py
 !/test/test_account_service_fixes.py
+!/test/test_account_inspect.py
 !/test/test_proxy_runtime_promote.py
 !/test/test_config_secrets.py
 !/test/test_mail_provider_fixes.py
