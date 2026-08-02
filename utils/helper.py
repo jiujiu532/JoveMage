@@ -143,10 +143,15 @@ def is_firefly_video_model(model: object) -> bool:
     rest = text[len("firefly-") :]
     if not rest:
         return False
-    # 图像族优先排除（nano-banana-pro / gpt-image-2 等）
+    # 图像族优先排除（nano-banana-pro / nano-banana2 / gpt-image-2 等）
     for marker in _FIREFLY_IMAGE_FAMILY_MARKERS:
         if rest == marker or rest.startswith(f"{marker}-") or rest.startswith(f"{marker}."):
             return False
+        # 族名后直接接数字：firefly-nano-banana2
+        if rest.startswith(marker):
+            next_ch = rest[len(marker) : len(marker) + 1]
+            if not next_ch or not next_ch.isalpha():
+                return False
     for marker in _FIREFLY_VIDEO_FAMILY_MARKERS:
         # sora2 / veo31 / kling（含 kling3、kling-o3）
         if rest == marker or rest.startswith(marker):

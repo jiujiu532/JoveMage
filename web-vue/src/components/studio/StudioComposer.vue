@@ -130,7 +130,12 @@
                   <Icon icon="lucide:chevron-down" class="h-3.5 w-3.5" />
                 </button>
 
-                <div v-if="settingsOpen" class="studio-size-popover" @click.stop>
+                <div
+                  v-if="settingsOpen"
+                  ref="settingsPopoverRef"
+                  class="studio-size-popover"
+                  @click.stop
+                >
                   <div class="studio-size-section">
                     <div class="studio-size-label">模型</div>
                     <GroupedSelectMenu
@@ -335,6 +340,7 @@ const composerShellRef = ref<HTMLElement | null>(null)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const settingsButtonRef = ref<HTMLButtonElement | null>(null)
+const settingsPopoverRef = ref<HTMLElement | null>(null)
 const isDragging = ref(false)
 const settingsOpen = ref(false)
 let textareaResizeFrame = 0
@@ -607,6 +613,9 @@ function handleOutsideClick(event: MouseEvent) {
   if (!settingsOpen.value) return
   const target = event.target as Node
   if (settingsButtonRef.value?.contains(target)) return
+  if (settingsPopoverRef.value?.contains(target)) return
+  // 模型下拉 Teleport 到 body，点选项不应关掉画图参数面板
+  if (target instanceof Element && target.closest('.grouped-select-menu')) return
   settingsOpen.value = false
 }
 

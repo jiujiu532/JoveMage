@@ -79,6 +79,11 @@ class HelperVideoRouteTests(unittest.TestCase):
         )
         self.assertTrue(_is_supported_image_model("firefly-gpt-image-2"))
         self.assertTrue(_is_supported_image_model("firefly-nano-banana"))
+        # 族名后直接接数字：不得误判为非图像
+        self.assertTrue(
+            _is_supported_image_model("firefly-nano-banana2"),
+            "nano-banana2 must be treated as image family",
+        )
 
     def test_image_chat_request_rejects_video_model(self) -> None:
         """is_image_chat_request 对视频模型返回 False。"""

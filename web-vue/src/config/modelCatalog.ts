@@ -59,26 +59,31 @@ function fireflyModelRest(model: string): string | null {
   return null
 }
 
+/**
+ * 族标记匹配：等值 / 连字符 / 点号，以及族名后直接接数字（nano-banana2）。
+ * 禁止把 nano-bananapro 这种无分隔拼写误判为 nano-banana 族。
+ */
+function matchesFireflyFamilyMarker(rest: string, marker: string): boolean {
+  if (rest === marker) return true
+  if (rest.startsWith(`${marker}-`) || rest.startsWith(`${marker}.`)) return true
+  if (!rest.startsWith(marker)) return false
+  const next = rest.charAt(marker.length)
+  return !next || !/[a-z]/i.test(next)
+}
+
 /** Firefly 图像模型：nano-banana / gpt-image 族 */
 export function isFireflyImageModel(model: string): boolean {
   const rest = fireflyModelRest(model)
   if (rest === null || !rest) return false
-  for (const marker of FIREFLY_IMAGE_FAMILY_MARKERS) {
-    if (rest === marker || rest.startsWith(`${marker}-`) || rest.startsWith(`${marker}.`)) {
-      return true
-    }
-  }
-  return false
+  return FIREFLY_IMAGE_FAMILY_MARKERS.some((marker) => matchesFireflyFamilyMarker(rest, marker))
 }
 
 /** Firefly 视频模型：sora2 / veo31 / kling 族（与图像族互斥） */
 export function isFireflyVideoModel(model: string): boolean {
   const rest = fireflyModelRest(model)
   if (rest === null || !rest) return false
-  for (const marker of FIREFLY_IMAGE_FAMILY_MARKERS) {
-    if (rest === marker || rest.startsWith(`${marker}-`) || rest.startsWith(`${marker}.`)) {
-      return false
-    }
+  if (FIREFLY_IMAGE_FAMILY_MARKERS.some((marker) => matchesFireflyFamilyMarker(rest, marker))) {
+    return false
   }
   for (const marker of FIREFLY_VIDEO_FAMILY_MARKERS) {
     if (rest === marker || rest.startsWith(marker)) return true
