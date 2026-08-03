@@ -35,10 +35,18 @@ BUILTIN_BAN_RULES: list[dict[str, Any]] = [
         "match": "Failed to create account. Please try again.",
         "builtin": True,
     },
+    {
+        "id": "email_not_supported",
+        "label": "邮箱不被支持（email not supported）",
+        "description": "错误文案包含 The email you provided is not supported 时绝对拉黑（常见 create_account HTTP 400）",
+        "match": "The email you provided is not supported",
+        "builtin": True,
+    },
 ]
 
 _CANNOT_CREATE_PHRASE = "cannot create your account with the given information"
 _FAILED_CREATE_PHRASE = "failed to create account. please try again."
+_EMAIL_NOT_SUPPORTED_PHRASE = "the email you provided is not supported"
 
 _DOMAIN_RE = re.compile(
     r"^(?=.{1,253}$)(?!-)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
@@ -622,7 +630,7 @@ def should_ban_from_error(
 ) -> tuple[bool, str]:
     """
     返回 (是否应 ban, reason_id_or_label)。
-    内置：cannot-create 短语 / failed-to-create 短语（不依赖 HTTP 状态前缀）。
+    内置：cannot-create / failed-to-create / email-not-supported 短语（不依赖 HTTP 状态前缀）。
     自定义 match 子串包含（忽略大小写），长度 >= 8。
     """
     text = str(error_text or "")
@@ -635,6 +643,8 @@ def should_ban_from_error(
         return True, "create_account_rejected"
     if _FAILED_CREATE_PHRASE in lower:
         return True, "failed_to_create_account"
+    if _EMAIL_NOT_SUPPORTED_PHRASE in lower:
+        return True, "email_not_supported"
 
     for rule in custom_rules or []:
         if not isinstance(rule, dict):

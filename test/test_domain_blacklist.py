@@ -196,6 +196,15 @@ class DomainBlacklistTests(unittest.TestCase):
                 'invalid_request_error: cannot create your account with the given information',
                 "create_account_rejected",
             ),
+            (
+                # create_account HTTP 400 常见：邮箱域名不被 OpenAI 接受
+                'create_account_http400,detail={"error":{"message":"The email you provided is not supported.","type":"invalid_request_error"}}',
+                "email_not_supported",
+            ),
+            (
+                "The email you provided is not supported.",
+                "email_not_supported",
+            ),
         ]
         for text, expected_reason in samples_true:
             ok, reason = db.should_ban_from_error(text)
@@ -298,7 +307,9 @@ class DomainBlacklistTests(unittest.TestCase):
         self.assertEqual(len(item["raw_hint"]), 500)
 
     def test_builtin_rules_metadata(self) -> None:
-        self.assertTrue(len(db.BUILTIN_BAN_RULES) >= 2)
+        self.assertTrue(len(db.BUILTIN_BAN_RULES) >= 3)
+        ids = {str(rule.get("id") or "") for rule in db.BUILTIN_BAN_RULES}
+        self.assertIn("email_not_supported", ids)
         for rule in db.BUILTIN_BAN_RULES:
             self.assertTrue(rule.get("label") or rule.get("description"))
             self.assertNotEqual(rule.get("match"), "invalid_request_error")
