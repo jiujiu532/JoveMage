@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="web-vue/public/logo.svg?v=0.8.2" width="96" alt="JoveMage logo">
+  <img src="web-vue/public/logo.svg?v=0.8.3" width="96" alt="JoveMage logo">
 </p>
 
 <h1 align="center">JoveMage</h1>
@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/jiujiu532/JoveMage/stargazers"><img src="https://img.shields.io/github/stars/jiujiu532/JoveMage?style=flat-square&logo=github" alt="GitHub stars"></a>
-  <a href="VERSION"><img src="https://img.shields.io/badge/version-v0.8.2-2563eb?style=flat-square" alt="Version"></a>
+  <a href="VERSION"><img src="https://img.shields.io/badge/version-v0.8.3-2563eb?style=flat-square" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-f97316?style=flat-square" alt="License"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-≥3.13-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python"></a>
   <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/FastAPI-0.136-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI"></a>
@@ -37,7 +37,7 @@ JoveMage 是面向自托管的 **多渠道 AI 网关 + 运维控制台**：
 同一 FastAPI 进程托管 API 与控制台，无需额外 Nginx。
 
 > **镜像**：`ghcr.io/jiujiu532/jovemage`  
-> **当前版本**：`v0.8.2`  
+> **当前版本**：`v0.8.3`  
 > **环境变量兼容**：`CHATGPT2API_*` 仍可继续使用
 
 ## 核心功能
@@ -174,7 +174,7 @@ docker compose up -d
 
 - 推送 `main` 或 `v*` tag 时，GitHub Actions 自动构建并推送  
   `ghcr.io/jiujiu532/jovemage`（`linux/amd64` + `linux/arm64`）
-- 标签：`latest`（main）、`v0.8.2`、`0.8`、`sha-...`
+- 标签：`latest`（main）、`v0.8.3`、`0.8`、`sha-...`
 - 工作流：`.github/workflows/docker-publish.yml`
 
 ## 免责声明

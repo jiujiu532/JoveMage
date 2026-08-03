@@ -1,6 +1,6 @@
 [project]
 name = "jovemage"
-version = "0.8.2"
+version = "0.8.3"
 description = "JoveMage — multi-channel self-hosted OpenAI/Anthropic compatible API (ChatGPT web + Adobe Firefly)"
 readme = "README.md"
 requires-python = ">=3.13"
