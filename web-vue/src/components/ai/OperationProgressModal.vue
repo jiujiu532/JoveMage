@@ -3,11 +3,23 @@
     <ModalHeader
       :title="title"
       :subtitle="subtitle"
-      :close-disabled="busy"
+      :close-disabled="!canClose"
+      :show-close="canClose"
       :bordered="false"
       flush
       @close="$emit('close')"
-    />
+    >
+      <template #actions>
+        <Button
+          size="xs"
+          variant="outline"
+          root-class="min-w-14 justify-center text-muted-foreground"
+          @click="$emit('minimize')"
+        >
+          最小化
+        </Button>
+      </template>
+    </ModalHeader>
 
     <div class="mt-5 space-y-4">
       <div class="grid grid-cols-2 gap-2">
@@ -23,6 +35,13 @@
 
       <ProgressBar :value="progressValue" :aria-label="title" />
 
+      <div v-if="statusText || batchRemaining > 0" class="operation-progress-status">
+        <span>{{ statusText || (busy ? '运行中' : '—') }}</span>
+        <span v-if="busy && batchRemaining > 0" class="tabular-nums text-muted-foreground">
+          本批剩 {{ batchRemaining }}
+        </span>
+      </div>
+
       <div v-if="$slots.metrics">
         <slot name="metrics" />
       </div>
@@ -31,11 +50,25 @@
       <p v-if="error" class="operation-progress-error">
         {{ error }}
       </p>
+
+      <p v-if="busy && showStopHint" class="operation-progress-hint">
+        {{ stopHint }}
+      </p>
     </div>
 
     <ModalFooter class="mt-6" :bordered="false" flush>
-      <Button v-if="busy && canCancel" size="sm" variant="outline" @click="$emit('cancel')">停止</Button>
-      <Button v-if="!busy" size="sm" variant="primary" @click="$emit('close')">完成</Button>
+      <Button
+        v-if="busy"
+        size="sm"
+        variant="outline"
+        :disabled="!canCancel || cancelRequested"
+        @click="$emit('cancel')"
+      >
+        {{ cancelRequested ? '停止中…' : '停止' }}
+      </Button>
+      <Button v-if="!busy" size="sm" variant="primary" @click="$emit('close')">
+        关闭
+      </Button>
     </ModalFooter>
   </ModalShell>
 </template>
@@ -47,6 +80,7 @@ import ModalFooter from './ModalFooter.vue'
 import ModalHeader from './ModalHeader.vue'
 import ModalShell from './ModalShell.vue'
 import ProgressBar from './ProgressBar.vue'
+import { STOP_HINT_TEXT } from '@/views/accounts/accountTaskLabels'
 
 const props = withDefaults(defineProps<{
   open: boolean
@@ -55,26 +89,40 @@ const props = withDefaults(defineProps<{
   total?: number
   current?: number
   statusLabel?: string
+  statusText?: string
+  batchRemaining?: number
   message?: string
   error?: string
   busy?: boolean
   canCancel?: boolean
+  cancelRequested?: boolean
+  /** 跑中禁止点关闭；终态可关 */
+  canClose?: boolean
+  showStopHint?: boolean
+  stopHint?: string
   zIndex?: number
 }>(), {
   subtitle: '',
   total: 0,
   current: 0,
   statusLabel: '已处理',
+  statusText: '',
+  batchRemaining: 0,
   message: '',
   error: '',
   busy: false,
   canCancel: false,
+  cancelRequested: false,
+  canClose: true,
+  showStopHint: true,
+  stopHint: STOP_HINT_TEXT,
   zIndex: 150,
 })
 
 defineEmits<{
   close: []
   cancel: []
+  minimize: []
 }>()
 
 const progressValue = computed(() => {
@@ -105,6 +153,17 @@ const progressValue = computed(() => {
   font-weight: 700;
 }
 
+.operation-progress-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
 .operation-progress-error {
   border: 1px solid hsl(var(--tone-error-border) / 0.45);
   border-radius: var(--radius);
@@ -112,5 +171,15 @@ const progressValue = computed(() => {
   padding: 8px 12px;
   font-size: 12px;
   color: hsl(var(--tone-error-foreground));
+}
+
+.operation-progress-hint {
+  border: 1px dashed hsl(var(--border));
+  border-radius: var(--radius);
+  background: hsl(var(--muted) / 0.45);
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: hsl(var(--muted-foreground));
 }
 </style>

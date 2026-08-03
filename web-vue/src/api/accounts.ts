@@ -194,16 +194,63 @@ export interface AccountRefreshProgress {
   } | null
 }
 
+/** 账号批量任务档位：底栏 ≤50 light；顶栏范围或 >50 heavy */
+export type AccountTaskTier = 'light' | 'heavy'
+
+/** 统一账号任务类型（与后端 TaskManager.task_type 对齐） */
+export type AccountTaskType =
+  | 'account_refresh'
+  | 'account_inspect'
+  | 'account_delete'
+  | 'account_relogin'
+  | 'relogin_batch'
+  | 'account_enable'
+  | 'account_disable'
+  | 'account_reset'
+  | string
+
 export interface TaskStatus {
   task_id: string
-  task_type: string
-  status: 'running' | 'completed' | 'failed' | string
+  /** 后端主字段；部分接口也回 type */
+  task_type?: string
+  type?: string
+  tier?: AccountTaskTier | string
+  status: 'running' | 'completed' | 'failed' | 'cancelled' | 'stopped' | string
   progress: number
   total: number
+  batch_remaining?: number
+  current_batch_size?: number
+  current_batch_done?: number
+  cancel_requested?: boolean
   result?: Record<string, unknown>
   error?: string | null
-  created_at?: number
-  updated_at?: number
+  created_at?: number | string
+  updated_at?: number | string
+}
+
+/** GET /api/account-tasks/active 单条快照 */
+export interface AccountActiveTask {
+  task_id: string
+  type: string
+  tier: AccountTaskTier | string
+  status: string
+  progress: number
+  total: number
+  batch_remaining?: number
+  cancel_requested?: boolean
+}
+
+export interface AccountActiveTasksResponse {
+  heavy: AccountActiveTask | null
+  light: AccountActiveTask | null
+}
+
+export interface AccountTaskSubmitResult {
+  task_id: string
+  total?: number
+  tier?: AccountTaskTier | string
+  /** 兼容旧刷新接口 */
+  progress_id?: string
 }
 
 /** 全局操作范围：selected / filter / channel / all */
@@ -910,26 +957,87 @@ export const accountsApi = {
     onProgress?: (progress: AccountRefreshProgress) => void,
   ) => refreshAndPollWithProgress([], onProgress, { all: true }),
 
+  /**
+   * 刷新任务化提交：带 tier。
+   * 新后端返回 task_id；旧后端仍可能只回 progress_id（前端走兼容轮询）。
+   */
+  submitRefreshTask: async (
+    accountIdsOrTokens: string[],
+    tier: AccountTaskTier = 'heavy',
+  ): Promise<AccountTaskSubmitResult> => {
+    const accessTokens = Array.from(new Set(accountIdsOrTokens.map(resolveToken).filter(Boolean)))
+    const response = await apiClient.post<
+      { access_tokens: string[]; tier: AccountTaskTier },
+      AccountTaskSubmitResult
+    >('/api/accounts/refresh', { access_tokens: accessTokens, tier })
+    return {
+      task_id: cleanString(response?.task_id),
+      progress_id: cleanString(response?.progress_id),
+      total: Number(response?.total || accessTokens.length) || accessTokens.length,
+      tier: response?.tier || tier,
+    }
+  },
+
+  /** 删除任务化提交（后端分批 + 批边界 cancel） */
+  submitDeleteTask: (
+    accountIdsOrTokens: string[],
+    tier: AccountTaskTier = 'light',
+  ) => {
+    const tokens = Array.from(new Set(accountIdsOrTokens.map(resolveToken).filter(Boolean)))
+    return apiClient.post<{ tokens: string[]; tier: AccountTaskTier }, AccountTaskSubmitResult>(
+      '/api/accounts/delete-batch',
+      { tokens, tier },
+    )
+  },
+
+  /** 启用/禁用/重置任务化提交 */
+  submitStatusTask: (
+    accountIdsOrTokens: string[],
+    action: 'enable' | 'disable' | 'reset',
+    tier: AccountTaskTier = 'light',
+  ) => {
+    const tokens = Array.from(new Set(accountIdsOrTokens.map(resolveToken).filter(Boolean)))
+    return apiClient.post<
+      { tokens: string[]; action: string; tier: AccountTaskTier },
+      AccountTaskSubmitResult
+    >('/api/accounts/status-batch', { tokens, action, tier })
+  },
+
   reloginAccount: (accountIdOrToken: string) =>
     apiClient.post<{ access_token: string }, { ok: boolean; access_token?: string; error?: string }>(
       '/api/accounts/relogin',
       { access_token: resolveToken(accountIdOrToken) || accountIdOrToken },
     ),
 
-  reloginBatch: (accountIdsOrTokens: string[]) =>
-    apiClient.post<{ tokens: string[] }, { task_id: string; total: number }>(
+  reloginBatch: (accountIdsOrTokens: string[], tier: AccountTaskTier = 'light') =>
+    apiClient.post<{ tokens: string[]; tier: AccountTaskTier }, AccountTaskSubmitResult>(
       '/api/accounts/relogin-batch',
-      { tokens: Array.from(new Set(accountIdsOrTokens.map(resolveToken).filter(Boolean))) },
+      {
+        tokens: Array.from(new Set(accountIdsOrTokens.map(resolveToken).filter(Boolean))),
+        tier,
+      },
     ),
 
   fetchTaskStatus: (taskId: string) =>
     apiClient.get<never, TaskStatus>(`/api/tasks/${encodeURIComponent(taskId)}`),
 
-  /** 请求取消后台任务（巡检等；真停止，当前批结束后收尾） */
+  /** 请求取消后台任务（批边界停止；返回含 batch_remaining） */
   cancelTask: (taskId: string) =>
-    apiClient.post<never, { ok: boolean; task_id: string; status: string }>(
-      `/api/tasks/${encodeURIComponent(taskId)}/cancel`,
-    ),
+    apiClient.post<
+      never,
+      {
+        ok: boolean
+        task_id: string
+        status: string
+        cancel_requested?: boolean
+        batch_remaining?: number
+        tier?: string
+      }
+    >(`/api/tasks/${encodeURIComponent(taskId)}/cancel`),
+
+  /** 进账号页恢复：heavy/light 各至多一条进行中任务 */
+  fetchActiveAccountTasks: () =>
+    apiClient.get<never, AccountActiveTasksResponse>('/api/account-tasks/active'),
 
   fetchRunningTasks: () =>
     apiClient.get<never, { tasks: TaskStatus[] }>('/api/tasks'),
@@ -961,14 +1069,18 @@ export const accountsApi = {
     }
   },
 
-  /** 一键巡检：scope + 筛选 → task_id，进度复用 fetchTaskStatus */
-  inspectAccounts: (payload: AccountInspectRequest) =>
-    apiClient.post<AccountInspectRequest, { task_id: string }>('/api/accounts/inspect', {
+  /** 一键巡检：scope + 筛选 → task_id；固定 heavy 档位 */
+  inspectAccounts: (payload: AccountInspectRequest & { tier?: AccountTaskTier }) =>
+    apiClient.post<
+      AccountInspectRequest & { tier?: AccountTaskTier },
+      AccountTaskSubmitResult
+    >('/api/accounts/inspect', {
       scope: payload.scope,
       keyword: payload.keyword ?? '',
       status: payload.status ?? 'all',
       group_id: payload.group_id ?? 'all',
       source_type: payload.source_type ?? 'all',
+      tier: payload.tier ?? 'heavy',
     }),
 
   /** 批量重登预检：可重登 N / 跳过 M + 原因汇总；只对 can_tokens 执行 */

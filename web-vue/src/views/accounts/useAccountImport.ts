@@ -1,6 +1,5 @@
 import { ref, type Ref } from 'vue'
 import { accountsApi } from '@/api/accounts'
-import type { AccountRefreshProgress } from '@/api/accounts'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useToast } from '@/composables/useToast'
 import {
@@ -10,7 +9,6 @@ import {
   parseSessionJsonTokens,
   parseTokenLines,
   uniqueTokens,
-  type BulkProgressKind,
   type SetErrorFn,
 } from './accountPageShared'
 
@@ -25,11 +23,15 @@ export type AccountImportMode =
 export type UseAccountImportOptions = {
   setError: SetErrorFn
   loadData: (options?: { silentErrorToast?: boolean }) => Promise<void>
-  openBulkProgress: (title: string, total: number, kind: BulkProgressKind) => void
-  bulkStopRequested: Ref<boolean>
-  refreshProgress: Ref<AccountRefreshProgress | null>
-  batchBusy: Ref<boolean>
-  batchActionLabel: Ref<string>
+  /** 本地前端分批进度（不占后端档位锁） */
+  openLocalProgress: (title: string, total: number) => void
+  updateLocalProgress: (patch: {
+    processed?: number
+    done?: boolean
+    error?: string | null
+    total?: number
+  }) => void
+  localStopRequested: Ref<boolean>
 }
 
 /**
@@ -39,11 +41,9 @@ export function useAccountImport(options: UseAccountImportOptions) {
   const {
     setError,
     loadData,
-    openBulkProgress,
-    bulkStopRequested,
-    refreshProgress,
-    batchBusy,
-    batchActionLabel,
+    openLocalProgress,
+    updateLocalProgress,
+    localStopRequested,
   } = options
   const toast = useToast()
   const confirmDialog = useConfirmDialog()
@@ -98,7 +98,7 @@ export function useAccountImport(options: UseAccountImportOptions) {
   }
 
   async function promptRemoveImportedAbnormalAccounts(importedTokens: string[], errorCount: number) {
-    if (errorCount <= 0 || bulkStopRequested.value) return
+    if (errorCount <= 0 || localStopRequested.value) return
 
     let preview: Awaited<ReturnType<typeof accountsApi.cleanupImportedAbnormalAccounts>>
     try {
@@ -148,9 +148,7 @@ export function useAccountImport(options: UseAccountImportOptions) {
     if (!confirmed) return
 
     importBusy.value = true
-    batchBusy.value = true
-    batchActionLabel.value = title
-    openBulkProgress(title, normalizedTokens.length, 'mutation')
+    openLocalProgress(title, normalizedTokens.length)
     let addedCount = 0
     let skippedCount = 0
     let refreshedCount = 0
@@ -158,7 +156,7 @@ export function useAccountImport(options: UseAccountImportOptions) {
     const errors: string[] = []
     try {
       for (let index = 0; index < normalizedTokens.length; index += IMPORT_BATCH_SIZE) {
-        if (bulkStopRequested.value) break
+        if (localStopRequested.value) break
         const batch = normalizedTokens.slice(index, index + IMPORT_BATCH_SIZE)
         try {
           const result = await accountsApi.importAccounts(
@@ -178,25 +176,13 @@ export function useAccountImport(options: UseAccountImportOptions) {
           errors.push(`${batch[0]?.slice(0, 6) || '-'}... 等 ${batch.length} 个账号：${normalizeErrorMessage(error)}`)
         } finally {
           processed = Math.min(normalizedTokens.length, processed + batch.length)
-          refreshProgress.value = {
-            ...(refreshProgress.value || { total: normalizedTokens.length }),
-            total: normalizedTokens.length,
-            processed,
-            done: processed >= normalizedTokens.length,
-            total_quota: 0,
-          }
+          updateLocalProgress({ total: normalizedTokens.length, processed, done: processed >= normalizedTokens.length })
         }
       }
 
       await loadData({ silentErrorToast: true })
-      const stopped = bulkStopRequested.value && processed < normalizedTokens.length
-      refreshProgress.value = {
-        ...(refreshProgress.value || { total: normalizedTokens.length, processed }),
-        total: normalizedTokens.length,
-        processed,
-        done: true,
-        total_quota: 0,
-      }
+      const stopped = localStopRequested.value && processed < normalizedTokens.length
+      updateLocalProgress({ total: normalizedTokens.length, processed, done: true })
       if (stopped) {
         toast.warning(`${title}已停止：已处理 ${processed}/${normalizedTokens.length} 个`)
       } else if (errors.length > 0) {
@@ -212,19 +198,10 @@ export function useAccountImport(options: UseAccountImportOptions) {
         await promptRemoveImportedAbnormalAccounts(normalizedTokens, errors.length)
       }
     } catch (error) {
-      refreshProgress.value = {
-        ...(refreshProgress.value || { total: normalizedTokens.length, processed }),
-        total: normalizedTokens.length,
-        processed,
-        done: true,
-        error: normalizeErrorMessage(error),
-        total_quota: 0,
-      }
+      updateLocalProgress({ total: normalizedTokens.length, processed, done: true, error: normalizeErrorMessage(error) })
       setError(`${title}失败`, error)
     } finally {
       importBusy.value = false
-      batchBusy.value = false
-      batchActionLabel.value = ''
     }
   }
 
@@ -248,9 +225,7 @@ export function useAccountImport(options: UseAccountImportOptions) {
     if (!confirmed) return
 
     importBusy.value = true
-    batchBusy.value = true
-    batchActionLabel.value = title
-    openBulkProgress(title, normalizedCookies.length, 'mutation')
+    openLocalProgress(title, normalizedCookies.length)
     let addedCount = 0
     let skippedCount = 0
     let refreshedCount = 0
@@ -258,7 +233,7 @@ export function useAccountImport(options: UseAccountImportOptions) {
     const errors: string[] = []
     try {
       for (let index = 0; index < normalizedCookies.length; index += IMPORT_BATCH_SIZE) {
-        if (bulkStopRequested.value) break
+        if (localStopRequested.value) break
         const batch = normalizedCookies.slice(index, index + IMPORT_BATCH_SIZE)
         try {
           const result = await accountsApi.importAccounts(
@@ -279,25 +254,13 @@ export function useAccountImport(options: UseAccountImportOptions) {
           errors.push(`${batch[0]?.slice(0, 10) || '-'}... 等 ${batch.length} 个：${normalizeErrorMessage(error)}`)
         } finally {
           processed = Math.min(normalizedCookies.length, processed + batch.length)
-          refreshProgress.value = {
-            ...(refreshProgress.value || { total: normalizedCookies.length }),
-            total: normalizedCookies.length,
-            processed,
-            done: processed >= normalizedCookies.length,
-            total_quota: 0,
-          }
+          updateLocalProgress({ total: normalizedCookies.length, processed, done: processed >= normalizedCookies.length })
         }
       }
 
       await loadData({ silentErrorToast: true })
-      const stopped = bulkStopRequested.value && processed < normalizedCookies.length
-      refreshProgress.value = {
-        ...(refreshProgress.value || { total: normalizedCookies.length, processed }),
-        total: normalizedCookies.length,
-        processed,
-        done: true,
-        total_quota: 0,
-      }
+      const stopped = localStopRequested.value && processed < normalizedCookies.length
+      updateLocalProgress({ total: normalizedCookies.length, processed, done: true })
       if (stopped) {
         toast.warning(`${title}已停止：已处理 ${processed}/${normalizedCookies.length} 个`)
       } else if (errors.length > 0) {
@@ -309,19 +272,10 @@ export function useAccountImport(options: UseAccountImportOptions) {
         fireflyCookieText.value = ''
       }
     } catch (error) {
-      refreshProgress.value = {
-        ...(refreshProgress.value || { total: normalizedCookies.length, processed }),
-        total: normalizedCookies.length,
-        processed,
-        done: true,
-        error: normalizeErrorMessage(error),
-        total_quota: 0,
-      }
+      updateLocalProgress({ total: normalizedCookies.length, processed, done: true, error: normalizeErrorMessage(error) })
       setError(`${title}失败`, error)
     } finally {
       importBusy.value = false
-      batchBusy.value = false
-      batchActionLabel.value = ''
     }
   }
 

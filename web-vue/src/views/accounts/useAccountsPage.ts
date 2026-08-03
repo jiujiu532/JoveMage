@@ -30,6 +30,7 @@ import { useAccountGroups } from './useAccountGroups'
 import { useAccountBulkActions } from './useAccountBulkActions'
 import { useAccountImport, type AccountImportMode } from './useAccountImport'
 import { useAccountGlobalActions } from './useAccountGlobalActions'
+import { useAccountTaskProgress } from './useAccountTaskProgress'
 
 export type AccountsViewMode = 'cards' | 'compact' | 'single' | 'double'
 export type { AccountImportMode }
@@ -143,12 +144,20 @@ export function useAccountsPage() {
   })
   pruneSelectionRef = pruneSelection
 
+  // ── 统一任务进度（双档位顶栏条 + 可最小化进度窗）────────────────
+  const taskProgress = useAccountTaskProgress({
+    loadData,
+    clearSelection,
+    setError,
+  })
+
   // ── 批量操作 + 进度 ─────────────────────────────────────────────
   const bulk = useAccountBulkActions({
     setError,
     loadData,
     selectedIds,
     clearSelection,
+    taskProgress,
   })
   const {
     batchBusy,
@@ -192,17 +201,16 @@ export function useAccountsPage() {
     bulkStopRequested,
     refreshAccountsWithProgress,
     exportAccounts: (scope) => exportAccounts(scope),
+    taskProgress,
   })
 
   // ── 导入 ────────────────────────────────────────────────────────
   const accountImport = useAccountImport({
     setError,
     loadData,
-    openBulkProgress,
-    bulkStopRequested,
-    refreshProgress,
-    batchBusy,
-    batchActionLabel,
+    openLocalProgress: taskProgress.openLocalProgress,
+    updateLocalProgress: taskProgress.updateLocalProgress,
+    localStopRequested: taskProgress.localStopRequested,
   })
   const {
     importBusy,
@@ -654,33 +662,17 @@ export function useAccountsPage() {
     if (!confirmed) return
 
     openBulkProgress('批量绑定账号组', targetIds.length, 'mutation')
-    batchBusy.value = true
-    batchActionLabel.value = '批量绑定账号组'
+    taskProgress.setLocalBusy(true, '批量绑定账号组')
     try {
       const result = await accountsApi.bindGroup(targetIds, nextGroupId)
-      refreshProgress.value = {
-        ...(refreshProgress.value || { total: targetIds.length }),
-        total: targetIds.length,
-        processed: targetIds.length,
-        done: true,
-        total_quota: 0,
-      }
       toast.success(`已绑定 ${result.updated || 0} 个账号`)
       applyAccountGroupsPayload({ groups: result.groups, proxy_groups: proxyGroups.value })
       clearSelection()
       await loadData({ silentErrorToast: true })
     } catch (error) {
-      refreshProgress.value = {
-        ...(refreshProgress.value || { total: targetIds.length, processed: 0 }),
-        total: targetIds.length,
-        done: true,
-        error: normalizeErrorMessage(error),
-        total_quota: 0,
-      }
       setError('批量绑定账号组失败', error)
     } finally {
-      batchBusy.value = false
-      batchActionLabel.value = ''
+      taskProgress.setLocalBusy(false)
     }
   }
 
@@ -803,6 +795,7 @@ export function useAccountsPage() {
     await Promise.all([
       loadData({ silentErrorToast: true }),
       loadAccountGroups({ silentErrorToast: true }),
+      taskProgress.restoreActiveTasks(),
     ])
     enableListWatch()
   })
@@ -816,6 +809,7 @@ export function useAccountsPage() {
     if (saving.value || batchBusy.value || importBusy.value || accountGroupsLoading.value || accountGroupSaving.value) return
     void loadData({ silentErrorToast: true })
     void loadAccountGroups({ silentErrorToast: true })
+    void taskProgress.restoreActiveTasks()
   })
 
   return {
@@ -946,5 +940,6 @@ export function useAccountsPage() {
     bindSelectedAccountsToGroup,
     exportAccounts,
     globalActions,
+    taskProgress,
   }
 }

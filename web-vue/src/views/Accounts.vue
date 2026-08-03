@@ -112,17 +112,25 @@
             </FilterToolbar>
           </div>
 
-          <FilterToolbar class="accounts-toolbar-group accounts-toolbar-group-refresh" :bordered="false" gap="tight">
-            <Button
-              size="sm"
-              variant="outline"
-              :root-class="accountToolbarSecondaryClass"
-              :disabled="loading"
-              @click="loadData"
-            >
-              刷新列表
-            </Button>
-          </FilterToolbar>
+          <div class="accounts-toolbar-task-area">
+            <AccountTaskStrip
+              :tasks="taskProgress.visibleStrips.value"
+              @expand="taskProgress.openModalForTier"
+              @stop="taskProgress.requestStop"
+              @dismiss="taskProgress.dismissStrip"
+            />
+            <FilterToolbar class="accounts-toolbar-group accounts-toolbar-group-refresh" :bordered="false" gap="tight">
+              <Button
+                size="sm"
+                variant="outline"
+                :root-class="accountToolbarSecondaryClass"
+                :disabled="loading"
+                @click="loadData"
+              >
+                刷新列表
+              </Button>
+            </FilterToolbar>
+          </div>
         </div>
       </div>
 
@@ -952,19 +960,32 @@
     </ModalShell>
 
     <OperationProgressModal
-      :open="showRefreshProgress"
-      :title="refreshProgressTitle || '刷新账号信息和额度'"
-      :total="refreshProgress?.total || 0"
-      :current="refreshProgress?.processed || 0"
-      :error="refreshProgress?.error || ''"
-      :busy="batchBusy && !refreshProgress?.done"
-      :can-cancel="canStopRefreshProgress && !bulkStopRequested && !globalActions.inspectStopRequested.value"
+      :open="taskProgress.modalOpen.value"
+      :title="taskProgress.modalTask.value?.title || '批量任务进度'"
+      :total="taskProgress.modalTask.value?.total || 0"
+      :current="taskProgress.modalTask.value?.progress || 0"
+      :status-text="taskProgress.modalStatusText.value"
+      :batch-remaining="taskProgress.modalTask.value?.batchRemaining || 0"
+      :error="taskProgress.modalTask.value?.error || ''"
+      :busy="taskProgress.modalBusy.value"
+      :can-cancel="taskProgress.canCancelModal.value"
+      :cancel-requested="Boolean(taskProgress.modalTask.value?.cancelRequested)"
+      :can-close="taskProgress.canCloseModal.value"
       :z-index="140"
-      @close="closeRefreshProgress"
-      @cancel="handleProgressCancel"
+      @close="taskProgress.closeModal()"
+      @cancel="taskProgress.requestStopModal()"
+      @minimize="taskProgress.minimizeModal()"
     >
       <template #metrics>
         <MetricStrip :items="refreshProgressItems" columns-class="grid-cols-2" density="compact" />
+        <div
+          v-if="canShowInspectResult"
+          class="mt-2 flex justify-end"
+        >
+          <Button size="xs" variant="outline" @click="globalActions.openInspectSummaryFromTask()">
+            查看巡检结果
+          </Button>
+        </div>
       </template>
     </OperationProgressModal>
 
@@ -1021,6 +1042,7 @@ import AccountBulkBar from '@/components/ai/AccountBulkBar.vue'
 import AccountGlobalActionConfirm from '@/components/ai/AccountGlobalActionConfirm.vue'
 import AccountSelectionSummary from '@/components/ai/AccountSelectionSummary.vue'
 import AccountStreamCard from '@/components/ai/AccountStreamCard.vue'
+import AccountTaskStrip from '@/components/ai/AccountTaskStrip.vue'
 import AccountUsageProfilePanel from '@/components/ai/AccountUsageProfilePanel.vue'
 import ChannelBadge from '@/components/ai/ChannelBadge.vue'
 import ConsoleSegmentedTabs from '@/components/ai/ConsoleSegmentedTabs.vue'
@@ -1141,15 +1163,6 @@ const {
   accountGroupCustomProxyInput,
   accountProxyPreview,
   accountGroupProxyPreview,
-  showRefreshProgress,
-  refreshProgressTitle,
-  refreshProgress,
-  refreshProgressKind,
-  refreshProgressMetricLabel,
-  refreshProgressMetricValue,
-  refreshProgressStatusText,
-  canStopRefreshProgress,
-  bulkStopRequested,
   accountStatusOptions,
   accountSourceTypeOptions,
   isFireflyForm,
@@ -1186,8 +1199,6 @@ const {
   importLocalCPAFiles,
   importFireflyCookieText,
   importFireflyCookieFile,
-  requestStopRefreshProgress,
-  closeRefreshProgress,
   copyAccountToken,
   openCreateModal: openCreateModalBase,
   openEditModal: openEditModalBase,
@@ -1201,6 +1212,7 @@ const {
   runBulkAction,
   bindSelectedAccountsToGroup,
   globalActions,
+  taskProgress,
 } = useAccountsPage()
 
 function openCreateModal(options?: { source_type?: string }) {
@@ -1322,18 +1334,31 @@ function accountCreditsHint(item: Account) {
   return accountCreditsText(item)
 }
 
-const refreshProgressItems = computed(() => [
-  {
-    key: 'metric',
-    label: refreshProgressMetricLabel.value,
-    value: refreshProgressMetricValue.value,
-  },
-  {
-    key: 'status',
-    label: '状态',
-    value: refreshProgressStatusText.value,
-  },
-])
+const refreshProgressItems = computed(() => {
+  const task = taskProgress.modalTask.value
+  return [
+    {
+      key: 'metric',
+      label: '处理账号',
+      value: task ? `${task.progress} 个` : '-',
+    },
+    {
+      key: 'status',
+      label: '状态',
+      value: taskProgress.modalStatusText.value || '-',
+    },
+  ]
+})
+
+const canShowInspectResult = computed(() => {
+  const task = taskProgress.modalTask.value
+  return Boolean(
+    task
+    && String(task.type) === 'account_inspect'
+    && (task.uiStatus === 'completed' || task.uiStatus === 'stopped')
+    && task.result,
+  )
+})
 
 const bindAccountGroupBatchItems = computed<AccountActionMenuItem[]>(() => {
   const disabled = selectedCount.value === 0 || accountGroupsLoading.value
@@ -1497,15 +1522,6 @@ async function handleBatchAction(action: string) {
   await runBulkAction(action as BatchAction)
 }
 
-/** 进度弹窗「停止」：巡检走后端真取消，其余走前端分批停止 */
-async function handleProgressCancel() {
-  if (refreshProgressKind.value === 'inspect') {
-    await globalActions.requestStopInspect()
-    return
-  }
-  requestStopRefreshProgress()
-}
-
 function handleAccountEntryAction(key: string) {
   if (key === 'create') {
     openCreateModal()
@@ -1623,8 +1639,19 @@ function handleRemoteImportDone() {
 }
 
 .accounts-toolbar-group-refresh {
-  margin-left: auto;
+  margin-left: 0;
   justify-content: flex-end;
+}
+
+.accounts-toolbar-task-area {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
 }
 
 /* 与 md 断点对齐：<768（max-width:767 = mqDown(md)） */
@@ -1658,6 +1685,12 @@ function handleRemoteImportDone() {
   .accounts-toolbar-group-refresh {
     margin-left: 0;
     width: 100%;
+    justify-content: flex-start;
+  }
+
+  .accounts-toolbar-task-area {
+    width: 100%;
+    margin-left: 0;
     justify-content: flex-start;
   }
 }

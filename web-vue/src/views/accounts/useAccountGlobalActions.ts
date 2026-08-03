@@ -1,16 +1,21 @@
 import { computed, ref, type Ref } from 'vue'
-import { accountsApi } from '@/api/accounts'
-import type { AccountInspectResult, AccountRefreshProgress } from '@/api/accounts'
+import {
+  accountsApi,
+  type AccountInspectResult,
+  type AccountTaskTier,
+} from '@/api/accounts'
 import { useSettingsStore } from '@/stores/settings'
 import { useToast } from '@/composables/useToast'
 import { useAccountGlobalConfirm } from '@/composables/useAccountGlobalConfirm'
 import {
   normalizeErrorMessage,
-  REFRESH_BATCH_SIZE,
   type AccountGlobalAction,
   type AccountGlobalScope,
+  type BulkProgressKind,
   type SetErrorFn,
 } from './accountPageShared'
+import { resolveSelectedTier } from './accountTaskLabels'
+import type { UseAccountTaskProgressReturn } from './useAccountTaskProgress'
 
 export type UseAccountGlobalActionsOptions = {
   setError: SetErrorFn
@@ -23,17 +28,19 @@ export type UseAccountGlobalActionsOptions = {
   accountAllTotal: Ref<number>
   selectedIds: Ref<string[]>
   clearSelection: () => void
-  openBulkProgress: (title: string, total: number, kind: 'refresh' | 'mutation' | 'inspect') => void
-  refreshProgress: Ref<AccountRefreshProgress | null>
-  batchBusy: Ref<boolean>
-  batchActionLabel: Ref<string>
-  bulkStopRequested: Ref<boolean>
+  /** 兼容旧签名；统一进度由 taskProgress 接管 */
+  openBulkProgress?: (title: string, total: number, kind: BulkProgressKind) => void
+  refreshProgress?: Ref<unknown>
+  batchBusy?: Ref<boolean>
+  batchActionLabel?: Ref<string>
+  bulkStopRequested?: Ref<boolean>
   refreshAccountsWithProgress: (
     accountIds: string[],
     title: string,
-    options?: { skipConfirm?: boolean },
+    options?: { skipConfirm?: boolean; tier?: AccountTaskTier },
   ) => Promise<void>
   exportAccounts: (scope: 'selected' | 'all' | 'auto') => Promise<void>
+  taskProgress: UseAccountTaskProgressReturn
 }
 
 /** 巡检结果摘要弹层状态 */
@@ -55,13 +62,9 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
     accountAllTotal,
     selectedIds,
     clearSelection,
-    openBulkProgress,
-    refreshProgress,
-    batchBusy,
-    batchActionLabel,
-    bulkStopRequested,
     refreshAccountsWithProgress,
     exportAccounts,
+    taskProgress,
   } = options
   const toast = useToast()
   const confirm = useAccountGlobalConfirm()
@@ -77,10 +80,16 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
 
   const inspectSummary = ref<InspectSummary | null>(null)
   const showInspectSummary = ref(false)
-  /** 巡检运行中的后端任务 id；用于真停止 */
-  const inspectTaskId = ref('')
-  /** 巡检是否已请求停止（用于进度态文案/按钮态） */
-  const inspectStopRequested = ref(false)
+  const pendingInspectScopeText = ref('')
+  /** 兼容旧字段：停止态由 taskProgress 推导 */
+  const inspectStopRequested = computed(() => {
+    const heavy = taskProgress.heavyTask.value
+    return Boolean(
+      heavy
+      && String(heavy.type) === 'account_inspect'
+      && heavy.cancelRequested,
+    )
+  })
 
   function scopeCount(scope: AccountGlobalScope): number {
     if (scope === 'selected') return selectedIds.value.length
@@ -109,6 +118,12 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
     return tokens
   }
 
+  function scopeTier(scope: AccountGlobalScope, count: number): AccountTaskTier {
+    // 顶栏范围任务一律 heavy；仅 selected 按数量判定
+    if (scope === 'selected') return resolveSelectedTier(count)
+    return 'heavy'
+  }
+
   // ── 刷新额度 ─────────────────────────────────────────────────────
   async function runGlobalRefresh(scope: AccountGlobalScope) {
     const count = scopeCount(scope)
@@ -129,11 +144,10 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
         toast.warning('没有可刷新的账号')
         return
       }
-      // 已确认过：跳过 refreshAccountsWithProgress 内二次确认；全部也走 20/批 + 可停止
       await refreshAccountsWithProgress(
         tokens,
         `刷新${scopeLabelText(scope)}账号信息和额度`,
-        { skipConfirm: true },
+        { skipConfirm: true, tier: scopeTier(scope, tokens.length) },
       )
     } catch (error) {
       setError('刷新失败', error)
@@ -155,7 +169,7 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
     })
     if (!res.confirmed) return
 
-    let tokens: string[] | null
+    let tokens: string[]
     try {
       tokens = await resolveTokens(scope)
     } catch (error) {
@@ -168,49 +182,48 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
     }
 
     const title = `删除${scopeLabelText(scope)}账号`
-    openBulkProgress(title, tokens.length, 'mutation')
-    batchBusy.value = true
-    batchActionLabel.value = title
-    let success = 0
-    const errors: string[] = []
-    try {
-      for (let index = 0; index < tokens.length; index += REFRESH_BATCH_SIZE) {
-        if (bulkStopRequested.value) break
-        const batch = tokens.slice(index, index + REFRESH_BATCH_SIZE)
+    const tier = scopeTier(scope, tokens.length)
+    await taskProgress.submitAndTrack({
+      title,
+      tier,
+      type: 'account_delete',
+      submit: async () => {
         try {
-          const result = await accountsApi.bulkDelete(batch)
-          success += Number(result?.success_count ?? (batch.length - (result?.errors?.length || 0)))
-          if (Array.isArray(result?.errors)) errors.push(...result.errors.filter(Boolean))
-        } catch (error) {
-          errors.push(normalizeErrorMessage(error))
-        } finally {
-          refreshProgress.value = {
-            ...(refreshProgress.value || { total: tokens.length }),
-            total: tokens.length,
-            processed: Math.min(tokens.length, index + batch.length),
-            done: index + batch.length >= tokens.length,
-            total_quota: 0,
+          const started = await accountsApi.submitDeleteTask(tokens, tier)
+          return {
+            task_id: started.task_id,
+            total: started.total ?? tokens.length,
+            type: 'account_delete',
           }
+        } catch (error) {
+          // 后端未就绪：同步分批删除（无统一任务条）
+          if (/404|not found|405/i.test(normalizeErrorMessage(error))) {
+            let success = 0
+            const errors: string[] = []
+            const batchSize = 20
+            for (let index = 0; index < tokens.length; index += batchSize) {
+              const batch = tokens.slice(index, index + batchSize)
+              try {
+                const result = await accountsApi.bulkDelete(batch)
+                success += Number(result?.success_count ?? (batch.length - (result?.errors?.length || 0)))
+                if (Array.isArray(result?.errors)) errors.push(...result.errors.filter(Boolean))
+              } catch (batchError) {
+                errors.push(normalizeErrorMessage(batchError))
+              }
+            }
+            await loadData({ silentErrorToast: true })
+            clearSelection()
+            if (errors.length) {
+              toast.warning(`删除完成，成功 ${success} 个，失败 ${errors.length} 个`)
+            } else {
+              toast.success(`已删除 ${success} 个账号`)
+            }
+            return { task_id: '', total: tokens.length, type: 'account_delete' }
+          }
+          throw error
         }
-      }
-      refreshProgress.value = {
-        ...(refreshProgress.value || { total: tokens.length }),
-        total: tokens.length,
-        processed: tokens.length,
-        done: true,
-        total_quota: 0,
-      }
-      await loadData({ silentErrorToast: true })
-      clearSelection()
-      if (errors.length) {
-        toast.warning(`删除完成，成功 ${success} 个，失败 ${errors.length} 个`)
-      } else {
-        toast.success(`已删除 ${success} 个账号`)
-      }
-    } finally {
-      batchBusy.value = false
-      batchActionLabel.value = ''
-    }
+      },
+    })
   }
 
   // ── 一键巡检 ─────────────────────────────────────────────────────
@@ -225,13 +238,12 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
       return
     }
 
-    // 读策略开关（确认框默认值，来自设置页；真联动，勾选即写回）
     const settingsStore = useSettingsStore()
     if (!settingsStore.settings) {
       try {
         await settingsStore.loadSettings()
       } catch {
-        // 读取失败时用 null 兜底，确认框按「以设置页为准」
+        // 读取失败时用 null 兜底
       }
     }
     const autoInvalid = settingsStore.settings ? Boolean(settingsStore.settings.auto_remove_invalid_accounts) : null
@@ -247,7 +259,6 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
     })
     if (!res.confirmed) return
 
-    // 真联动：勾选结果写回全局设置（部分更新，日常跑图/后续巡检同步生效）
     if (res.policyInvalid != null || res.policyLimited != null) {
       try {
         await settingsStore.updateSettingsPatch({
@@ -261,87 +272,64 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
     }
 
     const title = `巡检${scopeLabelText(scope)}账号`
-    openBulkProgress(title, count, 'inspect')
-    batchBusy.value = true
-    batchActionLabel.value = title
-    inspectStopRequested.value = false
-    try {
-      const filter = filterParams(true)
-      const params = scope === 'filter'
-        ? filter
-        : scope === 'channel'
-          ? { keyword: '', status: 'all' as const, group_id: 'all', source_type: sourceFilter.value || 'all' }
-          : { keyword: '', status: 'all' as const, group_id: 'all', source_type: 'all' }
-      const started = await accountsApi.inspectAccounts({
-        scope,
-        keyword: params.keyword || '',
-        status: params.status || 'all',
-        group_id: params.group_id || 'all',
-        source_type: params.source_type || 'all',
-      })
-      inspectTaskId.value = started.task_id
-      let task = await accountsApi.fetchTaskStatus(started.task_id)
-      // running 期间持续轮询；cancelled/completed/failed 均退出循环
-      while (task.status === 'running') {
-        refreshProgress.value = {
-          total: Number(task.total || count),
-          processed: Number(task.progress || 0),
-          done: false,
-          total_quota: 0,
+    const filter = filterParams(true)
+    const params = scope === 'filter'
+      ? filter
+      : scope === 'channel'
+        ? { keyword: '', status: 'all' as const, group_id: 'all', source_type: sourceFilter.value || 'all' }
+        : { keyword: '', status: 'all' as const, group_id: 'all', source_type: 'all' }
+
+    const ok = await taskProgress.submitAndTrack({
+      title,
+      tier: 'heavy',
+      type: 'account_inspect',
+      submit: async () => {
+        const started = await accountsApi.inspectAccounts({
+          scope,
+          keyword: params.keyword || '',
+          status: params.status || 'all',
+          group_id: params.group_id || 'all',
+          source_type: params.source_type || 'all',
+          tier: 'heavy',
+        })
+        return {
+          task_id: started.task_id,
+          total: started.total ?? count,
+          type: 'account_inspect',
         }
-        await new Promise((resolve) => window.setTimeout(resolve, 900))
-        task = await accountsApi.fetchTaskStatus(started.task_id)
-      }
-      const result = (task.result || {}) as AccountInspectResult
-      const wasCancelled = task.status === 'cancelled' || Boolean(result.stopped)
-      refreshProgress.value = {
-        total: Number(result.total ?? count),
-        processed: Number(result.processed ?? task.progress ?? result.total ?? count),
-        done: true,
-        total_quota: 0,
-      }
-      await loadData({ silentErrorToast: true })
-      inspectSummary.value = { ...result, scopeText: scopeLabelText(scope) }
-      showInspectSummary.value = true
-      if (wasCancelled) {
-        toast.warning(`巡检已停止，已处理 ${result.processed ?? task.progress ?? 0}/${result.total ?? count} 个账号`)
-      } else if (task.status === 'failed') {
-        setError('巡检失败', (task.error as string) || '巡检任务失败')
-      }
-    } catch (error) {
-      refreshProgress.value = {
-        ...(refreshProgress.value || { total: count, processed: 0 }),
-        total: count,
-        done: true,
-        error: normalizeErrorMessage(error),
-        total_quota: 0,
-      }
-      setError('巡检失败', error)
-      await loadData({ silentErrorToast: true })
-    } finally {
-      batchBusy.value = false
-      batchActionLabel.value = ''
-      inspectTaskId.value = ''
+      },
+    })
+
+    if (ok) {
+      pendingInspectScopeText.value = scopeLabelText(scope)
     }
   }
 
-  /** 请求停止巡检：调后端 cancel，任务体每批边界真收尾 */
-  async function requestStopInspect() {
-    if (!inspectTaskId.value || inspectStopRequested.value) return
-    try {
-      await accountsApi.cancelTask(inspectTaskId.value)
-      inspectStopRequested.value = true
-      toast.info('已请求停止，当前批次完成后会停止后续批次')
-    } catch (error) {
-      setError('停止巡检失败', error)
+  /** 从当前进度任务打开巡检摘要（终态后） */
+  function openInspectSummaryFromTask() {
+    const task = taskProgress.heavyTask.value
+    if (!task || String(task.type) !== 'account_inspect') return
+    if (task.uiStatus !== 'completed' && task.uiStatus !== 'stopped') return
+    const result = (task.result || {}) as AccountInspectResult
+    inspectSummary.value = {
+      ...result,
+      scopeText: pendingInspectScopeText.value || '巡检',
     }
+    showInspectSummary.value = true
+  }
+
+  /** 请求停止巡检：走统一 cancel */
+  async function requestStopInspect() {
+    const heavy = taskProgress.heavyTask.value
+    if (!heavy || String(heavy.type) !== 'account_inspect') return
+    await taskProgress.requestStop(heavy.tier)
   }
 
   function closeInspectSummary() {
     showInspectSummary.value = false
   }
 
-  // ── 批量重置（selected，本地状态复位，不探活）─────────────────────
+  // ── 批量重置（selected）─────────────────────────────────────────
   async function runResetSelected() {
     const ids = selectedIds.value.filter(Boolean)
     if (!ids.length) {
@@ -349,30 +337,44 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
       return
     }
     const title = '批量重置账号状态'
-    batchBusy.value = true
-    batchActionLabel.value = title
-    let success = 0
-    let failed = 0
-    try {
-      for (const id of ids) {
+    const tier = resolveSelectedTier(ids.length)
+    await taskProgress.submitAndTrack({
+      title,
+      tier,
+      type: 'account_reset',
+      submit: async () => {
         try {
-          await accountsApi.resetAccountState(id)
-          success += 1
-        } catch {
-          failed += 1
+          const started = await accountsApi.submitStatusTask(ids, 'reset', tier)
+          return {
+            task_id: started.task_id,
+            total: started.total ?? ids.length,
+            type: 'account_reset',
+          }
+        } catch (error) {
+          if (/404|not found|405/i.test(normalizeErrorMessage(error))) {
+            let success = 0
+            let failed = 0
+            for (const id of ids) {
+              try {
+                await accountsApi.resetAccountState(id)
+                success += 1
+              } catch {
+                failed += 1
+              }
+            }
+            await loadData({ silentErrorToast: true })
+            clearSelection()
+            if (failed > 0) {
+              toast.warning(`重置完成，成功 ${success} 个，失败 ${failed} 个`)
+            } else {
+              toast.success(`已重置 ${success} 个账号状态`)
+            }
+            return { task_id: '', total: ids.length, type: 'account_reset' }
+          }
+          throw error
         }
-      }
-      await loadData({ silentErrorToast: true })
-      clearSelection()
-      if (failed > 0) {
-        toast.warning(`重置完成，成功 ${success} 个，失败 ${failed} 个`)
-      } else {
-        toast.success(`已重置 ${success} 个账号状态`)
-      }
-    } finally {
-      batchBusy.value = false
-      batchActionLabel.value = ''
-    }
+      },
+    })
   }
 
   // ── 批量重登（selected，带预检）──────────────────────────────────
@@ -413,38 +415,21 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
     if (!res.confirmed) return
 
     const title = '批量重新登录账号'
-    batchBusy.value = true
-    batchActionLabel.value = title
-    try {
-      const canTokens = precheck.can_tokens?.length ? precheck.can_tokens : ids
-      const started = await accountsApi.reloginBatch(canTokens)
-      let task = await accountsApi.fetchTaskStatus(started.task_id)
-      while (task.status === 'running') {
-        refreshProgress.value = {
-          total: Number(task.total || started.total || canTokens.length),
-          processed: Number(task.progress || 0),
-          done: false,
-          total_quota: 0,
+    const canTokens = precheck.can_tokens?.length ? precheck.can_tokens : ids
+    const tier = resolveSelectedTier(canTokens.length)
+    await taskProgress.submitAndTrack({
+      title,
+      tier,
+      type: 'account_relogin',
+      submit: async () => {
+        const started = await accountsApi.reloginBatch(canTokens, tier)
+        return {
+          task_id: started.task_id,
+          total: started.total ?? canTokens.length,
+          type: 'account_relogin',
         }
-        await new Promise((resolve) => window.setTimeout(resolve, 900))
-        task = await accountsApi.fetchTaskStatus(started.task_id)
-      }
-      const result = (task.result || {}) as { success?: number; errors?: unknown[] }
-      const success = Number(result.success || 0)
-      const failed = Array.isArray(result.errors) ? result.errors.length : 0
-      await loadData({ silentErrorToast: true })
-      clearSelection()
-      if (failed > 0) {
-        toast.warning(`重登完成，成功 ${success} 个，失败 ${failed} 个`)
-      } else {
-        toast.success(`重登完成，共 ${success} 个`)
-      }
-    } catch (error) {
-      setError('批量重新登录失败', error)
-    } finally {
-      batchBusy.value = false
-      batchActionLabel.value = ''
-    }
+      },
+    })
   }
 
   // ── 导出四档 ─────────────────────────────────────────────────────
@@ -457,7 +442,6 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
       await exportAccounts('all')
       return
     }
-    // filter / channel：拉 tokens 后用 selected 路径导出
     const count = scopeCount(scope)
     if (!count) {
       toast.warning('暂无可导出的账号')
@@ -498,6 +482,7 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
     showInspectSummary,
     inspectStopRequested,
     closeInspectSummary,
+    openInspectSummaryFromTask,
     runGlobalRefresh,
     runGlobalDelete,
     runInspect,
