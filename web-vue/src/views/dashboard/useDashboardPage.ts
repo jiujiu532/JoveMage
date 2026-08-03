@@ -16,12 +16,12 @@ import { BP } from '@/lib/breakpoints'
 
 
 export function useDashboardPage() {
-  const { enabledChannels, loadChannels } = useChannels()
+  const { channels, loadChannels } = useChannels()
   /**
-   * 概览渠道卡：只渲染启用渠道（关闭=不出现）。
-   * 0 账号也保留卡片，由 ChannelCard 空态占位，避免布局跳动。
+   * 概览渠道卡：注册表内全部渠道始终占位（含 0 账号空态、未启用）。
+   * 不再按 enabled 过滤，避免「只有 ChatGPT」时半边空白或 Firefly 整卡消失。
    */
-  const channelCards = computed(() => enabledChannels.value.map((item) => ({ ...item })))
+  const channelCards = computed(() => channels.value.map((item) => ({ ...item })))
   type ChartInstance = {
     setOption: (
       option: unknown,

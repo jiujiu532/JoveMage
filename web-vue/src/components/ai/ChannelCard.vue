@@ -34,14 +34,23 @@
       />
     </header>
 
-    <!-- 空态：保留卡片占位，引导去账号管理 -->
+    <!-- 空态：保留卡片占位；未启用与 0 账号文案分开 -->
     <div v-if="isEmpty" class="channel-card__empty">
-      <p class="channel-card__empty-title">暂无账号</p>
-      <p class="channel-card__empty-desc">
-        此渠道尚未接入号池，添加后才会参与调度与统计。
-      </p>
-      <RouterLink class="channel-card__empty-link" to="/accounts">
+      <p class="channel-card__empty-title">{{ emptyTitle }}</p>
+      <p class="channel-card__empty-desc">{{ emptyDesc }}</p>
+      <RouterLink
+        v-if="descriptor.enabled"
+        class="channel-card__empty-link"
+        to="/accounts"
+      >
         去账号管理添加
+      </RouterLink>
+      <RouterLink
+        v-else
+        class="channel-card__empty-link"
+        to="/settings"
+      >
+        去设置启用渠道
       </RouterLink>
     </div>
 
@@ -151,7 +160,6 @@ const titleText = computed(() => {
   const short = channelShortName(props.descriptor)
   return `${short} 池`
 })
-const subtitleText = computed(() => props.subtitle || '并行上游 · 号池摘要')
 const accountCount = computed(() => Math.max(0, Number(props.descriptor.account_count ?? 0) || 0))
 /** 展示用「正常」：优先 normal_count（不卡新鲜度），回落 healthy_count */
 const normalCount = computed(() => {
@@ -165,6 +173,19 @@ const creditsTotal = computed(() => Math.max(0, Number(props.descriptor.credits_
 const meterIsCredits = computed(() => props.descriptor.meter_kind === 'credits')
 const secondaryLine = computed(() => String(props.secondary || '').trim())
 const isEmpty = computed(() => accountCount.value <= 0)
+const emptyTitle = computed(() => (
+  props.descriptor.enabled ? '暂无账号' : '渠道未启用'
+))
+const emptyDesc = computed(() => (
+  props.descriptor.enabled
+    ? '此渠道尚未接入号池，添加后才会参与调度与统计。'
+    : '设置中打开该渠道后，导入账号即可在此查看号池摘要。'
+))
+const subtitleText = computed(() => {
+  if (props.subtitle) return props.subtitle
+  if (!props.descriptor.enabled) return '未启用 · 占位展示'
+  return '并行上游 · 号池摘要'
+})
 
 const healthPercent = computed(() => {
   if (accountCount.value <= 0) return 0

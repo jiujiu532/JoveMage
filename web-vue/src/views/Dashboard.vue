@@ -56,10 +56,11 @@
       </article>
     </section>
 
-    <!-- 渠道并列卡：启用渠道始终占位（含 0 账号空态）；未启用不出现；整行通栏，避免单卡只显示半边 -->
+    <!-- 渠道并列卡：注册表内渠道始终显示（0 账号走空态）；≥2 张时中屏起双列 -->
     <section
       v-if="channelCards.length"
       class="channel-cards-grid grid grid-cols-1 gap-3"
+      :class="channelCards.length >= 2 ? 'md:grid-cols-2' : ''"
     >
       <ChannelCard
         v-for="channel in channelCards"
