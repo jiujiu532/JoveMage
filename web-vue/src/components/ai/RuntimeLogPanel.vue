@@ -10,8 +10,13 @@
         <span
           v-if="showToolbar && locked"
           class="runtime-log-panel__lock-hint"
-          title="已锁定：新日志不会自动滚到底部"
+          title="已锁定：日志继续更新，但不自动跳到最新；可手动滑动查看"
         >已锁定</span>
+        <span
+          v-else-if="showToolbar && !isEmpty"
+          class="runtime-log-panel__follow-hint"
+          title="自动跟随最新日志"
+        >跟随中</span>
       </div>
       <div class="runtime-log-panel__actions">
         <slot name="actions" />
@@ -20,15 +25,15 @@
             size="xs"
             variant="outline"
             :disabled="isEmpty"
-            title="滚动到最新日志并保持跟随"
-            @click="scrollToBottom(true)"
+            title="跳到最新日志并恢复自动跟随"
+            @click="scrollToLatest(true)"
           >
             滚动
           </Button>
           <Button
             size="xs"
             :variant="locked ? 'primary' : 'outline'"
-            :title="locked ? '解锁：恢复自动跟随最新日志' : '锁定：日志照常更新，但停止自动滚动，可自行滑动查看历史'"
+            :title="locked ? '解锁并回到最新' : '锁定视口：日志仍会增长，但不再自动滚动'"
             @click="toggleLock"
           >
             {{ locked ? '解锁' : '锁定' }}
@@ -154,7 +159,8 @@ function isNearBottom(el: HTMLElement) {
   return el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_BOTTOM_PX
 }
 
-function scrollToBottom(force = false) {
+/** 跳到最新（列表底部）。force=true 时即使锁定也跳转并解除锁定 */
+function scrollToLatest(force = false) {
   const el = bodyEl.value
   if (!el) return
   if (!force && locked.value) return
@@ -163,7 +169,6 @@ function scrollToBottom(force = false) {
   window.setTimeout(() => {
     ignoreScrollEvent.value = false
   }, 80)
-  // 仅用户主动点「滚动」时才解除锁定并恢复跟随；自动更新不擅自解锁
   if (force && locked.value) {
     locked.value = false
   }
@@ -172,8 +177,8 @@ function scrollToBottom(force = false) {
 function toggleLock() {
   locked.value = !locked.value
   if (!locked.value) {
-    // 手动解锁 → 回到最新并恢复自动跟随
-    void nextTick(() => scrollToBottom(true))
+    // 解锁 → 回到最新并恢复自动跟随
+    void nextTick(() => scrollToLatest(true))
   }
 }
 
@@ -181,10 +186,14 @@ function onBodyScroll() {
   if (ignoreScrollEvent.value) return
   const el = bodyEl.value
   if (!el) return
-  // 只在「当前处于自动跟随（未锁定）」时，用户上滑离开底部才转为锁定；
-  // 已锁定状态下用户自由滑动查看历史，不再被这个监听改来改去
+  // 未锁定时用户上滑离开底部 → 自动锁定，避免抢视口
   if (!locked.value && !isNearBottom(el)) {
     locked.value = true
+    return
+  }
+  // 已锁定时若用户自己滚回底部，恢复跟随
+  if (locked.value && isNearBottom(el)) {
+    locked.value = false
   }
 }
 
@@ -202,7 +211,7 @@ watch(
   async () => {
     if (isEmpty.value || locked.value) return
     await nextTick()
-    scrollToBottom(false)
+    scrollToLatest(false)
   },
   { flush: 'post' },
 )
@@ -256,6 +265,17 @@ watch(
   color: hsl(var(--muted-foreground));
   font-size: 10px;
   line-height: 1.4;
+}
+
+.runtime-log-panel__follow-hint {
+  flex: 0 0 auto;
+  border: 1px solid hsl(var(--border));
+  border-radius: 999px;
+  padding: 0.05rem 0.42rem;
+  color: hsl(var(--muted-foreground));
+  font-size: 10px;
+  line-height: 1.4;
+  opacity: 0.85;
 }
 
 .runtime-log-panel__actions {

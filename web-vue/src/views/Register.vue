@@ -1167,8 +1167,9 @@ const registerMetricItems = computed(() => {
   ]
 })
 
-const runtimeLogLines = computed<RuntimeLogPanelLine[]>(() => legacyLogs.value.slice().reverse().map((item, index) => ({
-  key: `${item.time || 'log'}-${index}`,
+// 正序：旧上新下；RuntimeLogPanel 默认跟随底部最新，锁定后停跟仍可手滑
+const runtimeLogLines = computed<RuntimeLogPanelLine[]>(() => legacyLogs.value.map((item, index) => ({
+  key: `${item.time || 'log'}-${index}-${String(item.text || '').slice(0, 48)}`,
   time: formatClock(item.time),
   text: item.text || '-',
   level: normalizeLogLevel(item.level),
