@@ -1,6 +1,6 @@
 import { computed, ref, type Ref } from 'vue'
 import { accountsApi } from '@/api/accounts'
-import type { Account, AccountRefreshProgress } from '@/api/accounts'
+import type { AccountRefreshProgress } from '@/api/accounts'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useToast } from '@/composables/useToast'
 import {
@@ -14,9 +14,6 @@ import {
 export type UseAccountBulkActionsOptions = {
   setError: SetErrorFn
   loadData: (options?: { silentErrorToast?: boolean }) => Promise<void>
-  accounts: Ref<Account[]>
-  accountListTotal: Ref<number>
-  accountAllTotal: Ref<number>
   selectedIds: Ref<string[]>
   clearSelection: () => void
 }
@@ -28,9 +25,6 @@ export function useAccountBulkActions(options: UseAccountBulkActionsOptions) {
   const {
     setError,
     loadData,
-    accounts,
-    accountListTotal,
-    accountAllTotal,
     selectedIds,
     clearSelection,
   } = options
@@ -101,20 +95,26 @@ export function useAccountBulkActions(options: UseAccountBulkActionsOptions) {
     showRefreshProgress.value = false
   }
 
-  async function refreshAccountsWithProgress(accountIds: string[], title: string) {
+  async function refreshAccountsWithProgress(
+    accountIds: string[],
+    title: string,
+    options?: { skipConfirm?: boolean },
+  ) {
     const targetIds = Array.from(new Set(accountIds.filter(Boolean)))
     if (!targetIds.length) {
       toast.warning('没有可刷新的账号')
       return
     }
 
-    const confirmed = await confirmDialog.ask({
-      title,
-      message: `即将按每批 ${REFRESH_BATCH_SIZE} 个刷新 ${targetIds.length} 个账号的信息和额度，是否继续？`,
-      confirmText: '开始刷新',
-      cancelText: '取消',
-    })
-    if (!confirmed) return
+    if (!options?.skipConfirm) {
+      const confirmed = await confirmDialog.ask({
+        title,
+        message: `即将按每批 ${REFRESH_BATCH_SIZE} 个刷新 ${targetIds.length} 个账号的信息和额度，是否继续？`,
+        confirmText: '开始刷新',
+        cancelText: '取消',
+      })
+      if (!confirmed) return
+    }
 
     openBulkProgress(title, targetIds.length, 'refresh')
     batchBusy.value = true
@@ -187,64 +187,24 @@ export function useAccountBulkActions(options: UseAccountBulkActionsOptions) {
     }
   }
 
-  async function refreshAllAccountsServerPageSafe() {
-    const title = '刷新所有账号信息和额度'
-    const totalHint = accountAllTotal.value || accountListTotal.value || accounts.value.length
-    if (!totalHint) {
-      toast.warning('没有可刷新的账号')
-      return
-    }
-
-    const confirmed = await confirmDialog.ask({
-      title,
-      message: `即将刷新全部 ${totalHint} 个账号的信息和额度，可能触发大量外部 ChatGPT 请求。是否继续？`,
-      confirmText: '开始刷新',
-      cancelText: '取消',
-    })
-    if (!confirmed) return
-
-    openBulkProgress(title, totalHint, 'refresh')
-    batchBusy.value = true
-    batchActionLabel.value = title
-    try {
-      const result = await accountsApi.refreshAllAccountsWithProgress((progress) => {
-        refreshProgress.value = {
-          ...progress,
-          total: Number(progress.total || totalHint),
-          processed: Number(progress.processed || 0),
-          done: false,
-        }
-      })
-      const progress = result.progress
-      const errors = Array.isArray(progress?.result?.errors) ? progress.result.errors : []
-      refreshProgress.value = {
-        ...(progress || refreshProgress.value || { total: totalHint }),
-        total: Number(progress?.total || totalHint),
-        processed: Number(progress?.processed || progress?.total || totalHint),
-        done: true,
-      }
-      await loadData({ silentErrorToast: true })
-      if (errors.length > 0) {
-        toast.warning(`${title}完成，失败 ${errors.length} 个`)
-      } else {
-        toast.success(`${title}完成`)
-      }
-    } catch (error) {
-      refreshProgress.value = {
-        ...(refreshProgress.value || { total: totalHint, processed: 0 }),
-        done: true,
-        error: normalizeErrorMessage(error),
-      }
-      setError(`${title}失败`, error)
-      await loadData({ silentErrorToast: true })
-    } finally {
-      batchBusy.value = false
-      batchActionLabel.value = ''
-    }
-  }
-
+  /** 全部刷新：先拉全量 token，再走分批路径（可停止），不再用空 tokens 一次刷完的老接口 */
   async function refreshAllAccounts() {
-    await refreshAllAccountsServerPageSafe()
+    const title = '刷新所有账号信息和额度'
+    try {
+      const { tokens } = await accountsApi.fetchAccountIds({
+        keyword: '',
+        status: 'all',
+        group_id: 'all',
+        source_type: 'all',
+      })
+      if (!tokens.length) {
+        toast.warning('没有可刷新的账号')
+        return
+      }
+      await refreshAccountsWithProgress(tokens, title)
+    } catch (error) {
+      setError(`${title}失败`, error)
+    }
   }
 
   async function refreshSelectedAccounts() {

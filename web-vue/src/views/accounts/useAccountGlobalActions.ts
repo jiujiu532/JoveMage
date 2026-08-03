@@ -28,8 +28,11 @@ export type UseAccountGlobalActionsOptions = {
   batchBusy: Ref<boolean>
   batchActionLabel: Ref<string>
   bulkStopRequested: Ref<boolean>
-  refreshAccountsWithProgress: (accountIds: string[], title: string) => Promise<void>
-  refreshAllAccounts: () => Promise<void>
+  refreshAccountsWithProgress: (
+    accountIds: string[],
+    title: string,
+    options?: { skipConfirm?: boolean },
+  ) => Promise<void>
   exportAccounts: (scope: 'selected' | 'all' | 'auto') => Promise<void>
 }
 
@@ -58,7 +61,6 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
     batchActionLabel,
     bulkStopRequested,
     refreshAccountsWithProgress,
-    refreshAllAccounts,
     exportAccounts,
   } = options
   const toast = useToast()
@@ -95,11 +97,14 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
     }
   }
 
-  /** 按范围拿账号 token；all 返回 null 表示交给全量接口 */
-  async function resolveTokens(scope: AccountGlobalScope): Promise<string[] | null> {
+  /** 按范围拿账号 token（selected / filter / channel / all 统一走 ids 接口） */
+  async function resolveTokens(scope: AccountGlobalScope): Promise<string[]> {
     if (scope === 'selected') return selectedIds.value.filter(Boolean)
-    if (scope === 'all') return null
-    const params = scope === 'channel' ? { source_type: sourceFilter.value || 'all' } : filterParams(true)
+    const params = scope === 'all'
+      ? { keyword: '', status: 'all' as const, group_id: 'all', source_type: 'all' }
+      : scope === 'channel'
+        ? { source_type: sourceFilter.value || 'all' }
+        : filterParams(true)
     const { tokens } = await accountsApi.fetchAccountIds(params)
     return tokens
   }
@@ -118,17 +123,18 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
       channelLabel: channelLabel.value,
     })
     if (!res.confirmed) return
-    if (scope === 'all') {
-      await refreshAllAccounts()
-      return
-    }
     try {
       const tokens = await resolveTokens(scope)
-      if (!tokens || !tokens.length) {
+      if (!tokens.length) {
         toast.warning('没有可刷新的账号')
         return
       }
-      await refreshAccountsWithProgress(tokens, `刷新${scopeLabelText(scope)}账号信息和额度`)
+      // 已确认过：跳过 refreshAccountsWithProgress 内二次确认；全部也走 20/批 + 可停止
+      await refreshAccountsWithProgress(
+        tokens,
+        `刷新${scopeLabelText(scope)}账号信息和额度`,
+        { skipConfirm: true },
+      )
     } catch (error) {
       setError('刷新失败', error)
     }
@@ -156,7 +162,7 @@ export function useAccountGlobalActions(options: UseAccountGlobalActionsOptions)
       setError('获取账号列表失败', error)
       return
     }
-    if (!tokens || !tokens.length) {
+    if (!tokens.length) {
       toast.warning('没有可删除的账号')
       return
     }

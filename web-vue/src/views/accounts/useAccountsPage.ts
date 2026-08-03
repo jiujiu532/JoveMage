@@ -147,9 +147,6 @@ export function useAccountsPage() {
   const bulk = useAccountBulkActions({
     setError,
     loadData,
-    accounts,
-    accountListTotal,
-    accountAllTotal,
     selectedIds,
     clearSelection,
   })
@@ -194,7 +191,6 @@ export function useAccountsPage() {
     batchActionLabel,
     bulkStopRequested,
     refreshAccountsWithProgress,
-    refreshAllAccounts,
     exportAccounts: (scope) => exportAccounts(scope),
   })
 
