@@ -45,9 +45,10 @@ from services.sub2api_service import (
 from utils.diagnostics import redact_auth_diagnostic
 from utils.helper import anonymize_token
 
-# 巡检分批大小：与 refresh_accounts 内部并发上限同量级，便于进度更新
+# 账号批量任务分批大小：刷新/巡检/删除统一 20
 _INSPECT_BATCH_SIZE = 20
-
+_ACCOUNT_BATCH_SIZE = 20
+_LIGHT_TIER_MAX = 50
 
 
 class ReloginRequest(BaseModel):
@@ -56,6 +57,7 @@ class ReloginRequest(BaseModel):
 
 class ReloginBatchRequest(BaseModel):
     tokens: list[str] = Field(default_factory=list)
+    tier: Literal["light", "heavy"] | None = None
 
 
 class ReloginPrecheckRequest(BaseModel):
@@ -91,6 +93,11 @@ class AccountCreateRequest(BaseModel):
 
 class AccountDeleteRequest(BaseModel):
     tokens: list[str] = Field(default_factory=list)
+    # selected=勾选；filter/channel/all=顶栏范围（影响档位判定）
+    scope: Literal["selected", "filter", "channel", "all"] | None = None
+    tier: Literal["light", "heavy"] | None = None
+    # True → 走 account_delete 后台任务；False → 同步删除（兼容旧前端）
+    as_task: bool = False
 
 
 class AccountImportCleanupRequest(BaseModel):
@@ -100,6 +107,9 @@ class AccountImportCleanupRequest(BaseModel):
 
 class AccountRefreshRequest(BaseModel):
     access_tokens: list[str] = Field(default_factory=list)
+    # selected=勾选；filter/channel/all=顶栏范围（影响档位判定）
+    scope: Literal["selected", "filter", "channel", "all"] | None = None
+    tier: Literal["light", "heavy"] | None = None
 
 
 class AccountExportRequest(BaseModel):
@@ -121,6 +131,11 @@ class AccountUpdateRequest(BaseModel):
 class AccountBatchUpdateRequest(BaseModel):
     access_tokens: list[str] = Field(default_factory=list)
     status: str | None = None
+    # enable|disable|reset：任务化时决定 task_type；未传则由 status 推导
+    action: Literal["enable", "disable", "reset"] | None = None
+    tier: Literal["light", "heavy"] | None = None
+    # True → 走 account_enable/disable/reset 后台任务；False → 同步写状态（兼容旧前端）
+    as_task: bool = False
 
 
 class AccountGroupBindRequest(BaseModel):
@@ -537,6 +552,270 @@ def _empty_inspect_stats() -> dict[str, Any]:
     }
 
 
+def _resolve_account_task_tier(
+        tokens: list[str],
+        *,
+        scope: str | None = None,
+        tier: str | None = None,
+) -> str:
+    """档位判定：显式 tier 优先；否则 scope 为 filter/channel/all 或数量 >50 → heavy。"""
+    if tier in ("light", "heavy"):
+        return tier
+    normalized_scope = (scope or "").strip().lower()
+    if normalized_scope in ("filter", "channel", "all"):
+        return "heavy"
+    if len(tokens) > _LIGHT_TIER_MAX:
+        return "heavy"
+    return "light"
+
+
+def _bump_task_batch_progress(
+        task,
+        *,
+        progress: int,
+        batch_remaining: int,
+        current_batch_size: int = 0,
+        current_batch_done: int = 0,
+        **result_updates: Any,
+) -> None:
+    """统一进度上报：bump 总进度 + bump_batch_progress 本批进度。
+
+    基建签名：bump_batch_progress(current_batch_size, current_batch_done)；
+    batch_remaining 由属性推导，无需写入。
+    """
+    size = int(current_batch_size or 0)
+    done = int(current_batch_done or 0)
+    # 若调用方只给了 batch_remaining，反推 done
+    if size > 0 and done == 0 and batch_remaining is not None:
+        try:
+            remaining = max(0, int(batch_remaining))
+            if remaining <= size:
+                done = size - remaining
+        except (TypeError, ValueError):
+            pass
+    if hasattr(task, "bump_batch_progress"):
+        try:
+            task.bump_batch_progress(size, done)
+        except TypeError:
+            # 兼容其它签名
+            try:
+                task.bump_batch_progress(
+                    current_batch_size=size,
+                    current_batch_done=done,
+                )
+            except TypeError:
+                pass
+    task.bump(progress=progress, **result_updates)
+
+
+def _submit_account_task(
+        task_type: str,
+        total: int,
+        fn,
+        *,
+        tier: str = "light",
+):
+    """提交账号类任务；优先带 tier（backend-infra），否则回落旧签名。"""
+    try:
+        return task_manager.submit(task_type, total, fn, tier=tier)
+    except TypeError:
+        task = task_manager.submit(task_type, total, fn)
+        if hasattr(task, "tier"):
+            try:
+                task.tier = tier
+            except Exception:
+                pass
+        return task
+
+
+def _run_account_refresh(task, tokens: list[str], *, scope: str | None = None) -> None:
+    """刷新任务体：按 20 分批调 refresh_accounts，批边界检查 cancel。"""
+    tokens = list(dict.fromkeys(t for t in tokens if t))
+    total = len(tokens)
+    refreshed = 0
+    errors: list[Any] = []
+    processed = 0
+    stopped = False
+
+    log_service.add(
+        LOG_TYPE_ACCOUNT,
+        "账号刷新任务开始",
+        {
+            "scope": scope or "selected",
+            "total": total,
+            "sample_tokens": [anonymize_token(t) for t in tokens[:5]],
+        },
+    )
+
+    try:
+        for batch_start in range(0, total, _ACCOUNT_BATCH_SIZE):
+            if task.cancel_requested:
+                stopped = True
+                break
+            batch = tokens[batch_start: batch_start + _ACCOUNT_BATCH_SIZE]
+            batch_size = len(batch)
+            # 批开始：本批剩余 = 整批
+            _bump_task_batch_progress(
+                task,
+                progress=processed,
+                batch_remaining=batch_size,
+                current_batch_size=batch_size,
+                current_batch_done=0,
+                refreshed=refreshed,
+                stopped=stopped,
+            )
+            # 整批交给 refresh_accounts（内部 ThreadPool 并发）
+            # 批级进度：整批完成后一次 bump；批内精细进度依赖 refresh 回调，此处按批更新并留 TODO
+            # TODO(backend-infra): 若 refresh_accounts 支持 per-token 回调，改为每完成 1 个更新 batch_remaining
+            try:
+                result = account_service.refresh_accounts(batch, progress_id=None)
+            except Exception as exc:
+                safe = redact_auth_diagnostic(exc)
+                errors.append(safe)
+                # 整批失败仍计入 processed，避免卡死
+                processed += batch_size
+                _bump_task_batch_progress(
+                    task,
+                    progress=processed,
+                    batch_remaining=0,
+                    current_batch_size=batch_size,
+                    current_batch_done=batch_size,
+                    refreshed=refreshed,
+                    stopped=stopped,
+                    errors=errors[:50],
+                )
+                continue
+
+            batch_refreshed = int(result.get("refreshed") or 0)
+            batch_errors = result.get("errors") or []
+            refreshed += batch_refreshed
+            if isinstance(batch_errors, list):
+                errors.extend(batch_errors)
+            processed += batch_size
+            _bump_task_batch_progress(
+                task,
+                progress=processed,
+                batch_remaining=0,
+                current_batch_size=batch_size,
+                current_batch_done=batch_size,
+                refreshed=refreshed,
+                stopped=stopped,
+                errors=errors[:50],
+            )
+    except Exception as exc:
+        safe = redact_auth_diagnostic(exc)
+        log_service.add(
+            LOG_TYPE_ACCOUNT,
+            "账号刷新任务失败",
+            {"scope": scope or "selected", "total": total, "error": safe},
+        )
+        task.fail(safe)
+        return
+
+    summary = {
+        "total": total,
+        "processed": processed,
+        "refreshed": refreshed,
+        "errors": errors[:50],
+        "stopped": stopped,
+        "scope": scope or "selected",
+    }
+    log_service.add(
+        LOG_TYPE_ACCOUNT,
+        "账号刷新任务已停止" if stopped else "账号刷新任务完成",
+        summary,
+    )
+    if stopped:
+        task.result.update(summary)
+        task.cancel()
+    else:
+        task.complete(**summary)
+
+
+def _run_account_delete(task, tokens: list[str], *, scope: str | None = None) -> None:
+    """删除任务体：按 20 分批 delete_accounts，批边界检查 cancel。"""
+    tokens = list(dict.fromkeys(t for t in tokens if t))
+    total = len(tokens)
+    removed = 0
+    processed = 0
+    stopped = False
+    errors: list[str] = []
+
+    log_service.add(
+        LOG_TYPE_ACCOUNT,
+        "账号删除任务开始",
+        {
+            "scope": scope or "selected",
+            "total": total,
+            "sample_tokens": [anonymize_token(t) for t in tokens[:5]],
+        },
+    )
+
+    try:
+        for batch_start in range(0, total, _ACCOUNT_BATCH_SIZE):
+            if task.cancel_requested:
+                stopped = True
+                break
+            batch = tokens[batch_start: batch_start + _ACCOUNT_BATCH_SIZE]
+            batch_size = len(batch)
+            _bump_task_batch_progress(
+                task,
+                progress=processed,
+                batch_remaining=batch_size,
+                current_batch_size=batch_size,
+                current_batch_done=0,
+                removed=removed,
+                stopped=stopped,
+            )
+            try:
+                result = account_service.delete_accounts(batch, return_items=False)
+                batch_removed = int(result.get("removed") or 0)
+                removed += batch_removed
+            except Exception as exc:
+                safe = redact_auth_diagnostic(exc)
+                errors.append(safe)
+            processed += batch_size
+            # 删除是同步整批，批结束后剩余清零
+            _bump_task_batch_progress(
+                task,
+                progress=processed,
+                batch_remaining=0,
+                current_batch_size=batch_size,
+                current_batch_done=batch_size,
+                removed=removed,
+                stopped=stopped,
+                errors=errors[:50],
+            )
+    except Exception as exc:
+        safe = redact_auth_diagnostic(exc)
+        log_service.add(
+            LOG_TYPE_ACCOUNT,
+            "账号删除任务失败",
+            {"scope": scope or "selected", "total": total, "error": safe},
+        )
+        task.fail(safe)
+        return
+
+    summary = {
+        "total": total,
+        "processed": processed,
+        "removed": removed,
+        "errors": errors[:50],
+        "stopped": stopped,
+        "scope": scope or "selected",
+    }
+    log_service.add(
+        LOG_TYPE_ACCOUNT,
+        "账号删除任务已停止" if stopped else "账号删除任务完成",
+        summary,
+    )
+    if stopped:
+        task.result.update(summary)
+        task.cancel()
+    else:
+        task.complete(**summary)
+
+
 def _run_account_inspect(
         task,
         tokens: list[str],
@@ -630,6 +909,8 @@ def _run_account_inspect(
                 stats["stopped"] = True
                 break
             batch = tokens[batch_start: batch_start + _INSPECT_BATCH_SIZE]
+            # 本批开始：重置 batch 进度，供停止中展示「本批剩余」
+            task.bump_batch_progress(len(batch), 0)
             max_workers = min(10, len(batch)) or 1
             executor = ThreadPoolExecutor(max_workers=max_workers)
             outcomes: dict[str, tuple[bool, str]] = {}
@@ -643,6 +924,7 @@ def _run_account_inspect(
                     ): token
                     for token in batch
                 }
+                batch_done = 0
                 for future in as_completed(futures):
                     token = futures[future]
                     try:
@@ -650,6 +932,8 @@ def _run_account_inspect(
                         outcomes[token] = (False, "")
                     except Exception as exc:
                         outcomes[token] = (True, redact_auth_diagnostic(exc))
+                    batch_done += 1
+                    task.bump_batch_progress(len(batch), batch_done)
             finally:
                 executor.shutdown(wait=True, cancel_futures=False)
 
@@ -984,11 +1268,36 @@ def create_router() -> APIRouter:
 
     @router.delete("/api/accounts")
     async def delete_accounts(body: AccountDeleteRequest, authorization: str | None = Header(default=None)):
+        """批量删除账号。
+
+        - 默认同步删除（兼容旧前端循环 bulkDelete）。
+        - body.as_task=true 时走 account_delete 后台任务，返回 task_id。
+        """
         require_admin(authorization)
-        tokens = [str(token or "").strip() for token in body.tokens if str(token or "").strip()]
+        tokens = _unique_tokens(body.tokens)
         if not tokens:
             raise HTTPException(status_code=400, detail={"error": "tokens is required"})
-        return account_service.delete_accounts(tokens, return_items=False)
+
+        if not body.as_task:
+            return account_service.delete_accounts(tokens, return_items=False)
+
+        tier = _resolve_account_task_tier(tokens, scope=body.scope, tier=body.tier)
+        scope = (body.scope or "selected").strip().lower()
+
+        def _run(task) -> None:
+            _run_account_delete(task, tokens, scope=scope)
+
+        try:
+            task = _submit_account_task("account_delete", len(tokens), _run, tier=tier)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail={"error": redact_auth_diagnostic(exc)}) from exc
+
+        return {
+            "task_id": task.task_id,
+            "total": len(tokens),
+            "tier": tier,
+            "task_type": "account_delete",
+        }
 
     @router.post("/api/accounts/import-cleanup")
     async def cleanup_imported_abnormal_accounts(
@@ -1011,24 +1320,41 @@ def create_router() -> APIRouter:
 
     @router.post("/api/accounts/refresh")
     async def refresh_accounts(body: AccountRefreshRequest, authorization: str | None = Header(default=None)):
+        """提交账号刷新任务（account_refresh）。
+
+        兼容：仍接受 access_tokens；空列表时刷新全部 token。
+        返回 task_id（新）+ progress_id（兼容旧前端轮询，映射到 task_id）。
+        """
         require_admin(authorization)
-        access_tokens = [str(token or "").strip() for token in body.access_tokens if str(token or "").strip()]
+        access_tokens = _unique_tokens(body.access_tokens)
+        scope = (body.scope or "").strip().lower() or None
         if not access_tokens:
+            # 空列表 → 全量；等同 scope=all
             access_tokens = account_service.list_tokens()
+            if scope is None:
+                scope = "all"
         if not access_tokens:
             raise HTTPException(status_code=400, detail={"error": "access_tokens is required"})
 
-        progress_id = str(uuid.uuid4())
+        tier = _resolve_account_task_tier(access_tokens, scope=scope, tier=body.tier)
+        resolved_scope = scope or "selected"
 
-        async def _do_refresh():
-            try:
-                await run_in_threadpool(account_service.refresh_accounts, access_tokens, progress_id)
-            except Exception as e:
-                account_service.finish_refresh_progress(progress_id, error=str(e))
+        def _run(task) -> None:
+            _run_account_refresh(task, access_tokens, scope=resolved_scope)
 
-        asyncio.create_task(_do_refresh())
+        try:
+            task = _submit_account_task("account_refresh", len(access_tokens), _run, tier=tier)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail={"error": redact_auth_diagnostic(exc)}) from exc
 
-        return {"progress_id": progress_id}
+        # progress_id 兼容旧前端：与 task_id 相同，旧轮询接口会转发到 TaskManager
+        return {
+            "task_id": task.task_id,
+            "progress_id": task.task_id,
+            "total": len(access_tokens),
+            "tier": tier,
+            "task_type": "account_refresh",
+        }
 
     @router.post("/api/accounts/inspect")
     async def inspect_accounts(body: AccountInspectRequest, authorization: str | None = Header(default=None)):
@@ -1067,15 +1393,37 @@ def create_router() -> APIRouter:
             _run_account_inspect(task, tokens, scope=scope)
 
         try:
-            task = task_manager.submit("account_inspect", len(tokens), _run)
+            # 巡检属扫库语义，固定 heavy 档位
+            task = task_manager.submit("account_inspect", len(tokens), _run, tier="heavy")
         except RuntimeError as exc:
             raise HTTPException(status_code=409, detail={"error": redact_auth_diagnostic(exc)}) from exc
 
-        return {"task_id": task.task_id, "total": len(tokens)}
+        return {"task_id": task.task_id, "total": len(tokens), "tier": task.tier}
 
     @router.get("/api/accounts/refresh/progress/{progress_id}")
     async def get_refresh_progress(progress_id: str, authorization: str | None = Header(default=None)):
+        """兼容旧前端 progress 轮询：优先 TaskManager（task_id=progress_id），再回落旧 progress 表。"""
         require_admin(authorization)
+        task = task_manager.get(progress_id)
+        if task is not None:
+            status = task.status
+            done = status in ("completed", "failed", "cancelled", "stopped")
+            result = dict(task.result or {})
+            payload = {
+                "total": task.total,
+                "processed": task.progress,
+                "done": done,
+                "error": task.error or None,
+                "status": status,
+                "task_id": task.task_id,
+                "task_type": task.task_type,
+                "cancel_requested": bool(getattr(task, "cancel_requested", False)),
+                "batch_remaining": getattr(task, "batch_remaining", result.get("batch_remaining", 0)),
+                "result": result if done else None,
+                "status_counts": result.get("status_counts"),
+                "total_quota": result.get("total_quota", 0),
+            }
+            return payload
         progress = account_service.get_refresh_progress(progress_id)
         if progress is None:
             raise HTTPException(status_code=404, detail={"error": "progress not found"})
@@ -1491,8 +1839,18 @@ def create_router() -> APIRouter:
         return {"task_id": task.task_id, "total": len(tokens)}
 
     # ============================================================
-    #  Tasks: 任务列表 / 任务详情
+    #  Tasks: 任务列表 / 任务详情 / 按档位进行中
     # ============================================================
+
+    @router.get("/api/account-tasks/active")
+    async def list_active_account_tasks(authorization: str | None = Header(default=None)):
+        """按档位返回进行中账号任务（heavy/light 各至多一条，含 stopping）。"""
+        require_admin(authorization)
+        active = task_manager.list_active_by_tier()
+        return {
+            "heavy": active["heavy"].to_active_dict() if active["heavy"] else None,
+            "light": active["light"].to_active_dict() if active["light"] else None,
+        }
 
     @router.get("/api/tasks")
     async def list_tasks(authorization: str | None = Header(default=None)):
@@ -1509,11 +1867,19 @@ def create_router() -> APIRouter:
 
     @router.post("/api/tasks/{task_id}/cancel")
     async def cancel_task(task_id: str, authorization: str | None = Header(default=None)):
-        """请求取消后台任务（置标志，任务体每批边界自行收尾；真停止）。"""
+        """请求取消后台任务（仅置 cancel_requested，不直接改 status；任务体批边界收尾）。"""
         require_admin(authorization)
         task = task_manager.request_cancel(task_id)
         if task is None:
             raise HTTPException(status_code=404, detail={"error": "task not found or already finished"})
-        return {"ok": True, "task_id": task.task_id, "status": task.status}
+        # 不改 status；返回快照供前端显示「停止中 + 本批剩余」
+        return {
+            "ok": True,
+            "task_id": task.task_id,
+            "status": task.status,
+            "cancel_requested": task.cancel_requested,
+            "batch_remaining": task.batch_remaining,
+            "tier": task.tier,
+        }
 
     return router
