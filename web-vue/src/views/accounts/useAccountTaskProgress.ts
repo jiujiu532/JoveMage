@@ -237,9 +237,41 @@ export function useAccountTaskProgress(options: UseAccountTaskProgressOptions) {
   })
 
   const visibleStrips = computed(() => (
-    [heavyTask.value, lightTask.value].filter(
-      (task): task is TrackedAccountTask => Boolean(task?.stripVisible),
-    )
+    // 顶栏常驻两条：重量 + 轻量；无任务时由组件渲染「无任务」占位
+    [
+      heavyTask.value || {
+        taskId: '',
+        type: 'account_task' as AccountTaskType,
+        tier: 'heavy' as AccountTaskTier,
+        title: '',
+        status: '',
+        uiStatus: 'idle' as AccountTaskUiStatus,
+        progress: 0,
+        total: 0,
+        batchRemaining: 0,
+        cancelRequested: false,
+        error: '',
+        result: null,
+        stripVisible: true,
+        fading: false,
+      },
+      lightTask.value || {
+        taskId: '',
+        type: 'account_task' as AccountTaskType,
+        tier: 'light' as AccountTaskTier,
+        title: '',
+        status: '',
+        uiStatus: 'idle' as AccountTaskUiStatus,
+        progress: 0,
+        total: 0,
+        batchRemaining: 0,
+        cancelRequested: false,
+        error: '',
+        result: null,
+        stripVisible: true,
+        fading: false,
+      },
+    ]
   ))
 
   function slotOf(tier: AccountTaskTier): Ref<TrackedAccountTask | null> {

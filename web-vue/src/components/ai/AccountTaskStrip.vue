@@ -1,54 +1,59 @@
 <template>
-  <div v-if="tasks.length" class="account-task-strips" aria-label="账号批量任务进度">
+  <div class="account-task-strips" aria-label="账号批量任务进度">
     <div
-      v-for="task in tasks"
-      :key="`${task.tier}-${task.taskId}`"
+      v-for="slot in slots"
+      :key="slot.tier"
       class="account-task-strip"
       :class="[
-        task.tier === 'light' ? 'account-task-strip--light' : 'account-task-strip--heavy',
-        `account-task-strip--${task.uiStatus}`,
-        task.fading ? 'account-task-strip--fading' : '',
+        slot.tier === 'light' ? 'account-task-strip--light' : 'account-task-strip--heavy',
+        slot.task ? `account-task-strip--${slot.task.uiStatus}` : 'account-task-strip--empty',
+        slot.task?.fading ? 'account-task-strip--fading' : '',
       ]"
-      role="button"
-      tabindex="0"
-      @click="emit('expand', task.tier)"
-      @keydown.enter.prevent="emit('expand', task.tier)"
-      @keydown.space.prevent="emit('expand', task.tier)"
+      :role="slot.task ? 'button' : undefined"
+      :tabindex="slot.task ? 0 : undefined"
+      @click="slot.task && emit('expand', slot.tier)"
+      @keydown.enter.prevent="slot.task && emit('expand', slot.tier)"
+      @keydown.space.prevent="slot.task && emit('expand', slot.tier)"
     >
-      <span class="account-task-strip__badge" :title="task.tier === 'light' ? '轻量任务' : '重量任务'">
-        {{ tierBadgeLabel(task.tier) }}
+      <span class="account-task-strip__badge" :title="slot.tier === 'light' ? '轻量任务' : '重量任务'">
+        {{ tierBadgeLabel(slot.tier) }}
       </span>
       <span class="account-task-strip__body">
-        <span class="account-task-strip__title">{{ stripTitle(task) }}</span>
-        <span class="account-task-strip__meta">
-          <span class="tabular-nums">{{ task.progress }}/{{ task.total || '?' }}</span>
-          <span v-if="task.uiStatus === 'stopping'" class="account-task-strip__stop-hint">
-            · 停止中{{ task.batchRemaining > 0 ? ` 本批剩 ${task.batchRemaining}` : '' }}
+        <template v-if="slot.task">
+          <span class="account-task-strip__title">{{ stripTitle(slot.task) }}</span>
+          <span class="account-task-strip__meta">
+            <span class="tabular-nums">{{ slot.task.progress }}/{{ slot.task.total || '?' }}</span>
+            <span v-if="slot.task.uiStatus === 'stopping'" class="account-task-strip__stop-hint">
+              · 停止中{{ slot.task.batchRemaining > 0 ? ` 本批剩 ${slot.task.batchRemaining}` : '' }}
+            </span>
+            <span v-else-if="slot.task.uiStatus === 'completed'"> · 已完成</span>
+            <span v-else-if="slot.task.uiStatus === 'stopped'"> · 已停止</span>
+            <span v-else-if="slot.task.uiStatus === 'failed'" class="account-task-strip__failed"> · 失败</span>
           </span>
-          <span v-else-if="task.uiStatus === 'completed'"> · 已完成</span>
-          <span v-else-if="task.uiStatus === 'stopped'"> · 已停止</span>
-          <span v-else-if="task.uiStatus === 'failed'" class="account-task-strip__failed"> · 失败</span>
-        </span>
+        </template>
+        <template v-else>
+          <span class="account-task-strip__empty-text">无任务</span>
+        </template>
       </span>
-      <span class="account-task-strip__actions" @click.stop>
+      <span v-if="slot.task" class="account-task-strip__actions" @click.stop>
         <Button
-          v-if="task.uiStatus === 'running' || task.uiStatus === 'stopping'"
+          v-if="slot.task.uiStatus === 'running' || slot.task.uiStatus === 'stopping'"
           size="xs"
           variant="outline"
           root-class="min-w-8 justify-center"
-          :disabled="task.uiStatus === 'stopping' || task.cancelRequested"
-          :title="task.uiStatus === 'stopping' ? '停止中…' : '停止'"
-          @click="emit('stop', task.tier)"
+          :disabled="slot.task.uiStatus === 'stopping' || slot.task.cancelRequested"
+          :title="slot.task.uiStatus === 'stopping' ? '停止中…' : '停止'"
+          @click="emit('stop', slot.tier)"
         >
-          {{ task.uiStatus === 'stopping' || task.cancelRequested ? '…' : '停' }}
+          {{ slot.task.uiStatus === 'stopping' || slot.task.cancelRequested ? '…' : '停' }}
         </Button>
         <Button
-          v-else-if="task.uiStatus === 'failed'"
+          v-else-if="slot.task.uiStatus === 'failed'"
           size="xs"
           variant="outline"
           root-class="min-w-8 justify-center"
           title="关闭"
-          @click="emit('dismiss', task.tier)"
+          @click="emit('dismiss', slot.tier)"
         >
           ×
         </Button>
@@ -57,7 +62,7 @@
           variant="outline"
           root-class="min-w-8 justify-center"
           title="展开进度"
-          @click="emit('expand', task.tier)"
+          @click="emit('expand', slot.tier)"
         >
           ▣
         </Button>
@@ -67,6 +72,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { Button } from 'nanocat-ui'
 import type { AccountTaskTier } from '@/api/accounts'
 import { taskTypeLabel, tierBadgeLabel } from '@/views/accounts/accountTaskLabels'
@@ -89,8 +95,15 @@ function stripTitle(task: TrackedAccountTask) {
   return short
 }
 
-// template 使用 props.tasks
-void props
+// 常驻两条：重量 + 轻量；无任务时显示「无任务」占位
+const slots = computed(() => {
+  const heavy = props.tasks.find((task) => task.tier === 'heavy') || null
+  const light = props.tasks.find((task) => task.tier === 'light') || null
+  return [
+    { tier: 'heavy' as AccountTaskTier, task: heavy },
+    { tier: 'light' as AccountTaskTier, task: light },
+  ]
+})
 </script>
 
 <style scoped>
@@ -136,6 +149,23 @@ void props
 .account-task-strip--failed {
   border-color: hsl(var(--tone-error-border) / 0.55);
   background: hsl(var(--tone-error-bg));
+}
+
+.account-task-strip--empty {
+  cursor: default;
+  border-style: dashed;
+  background: hsl(var(--muted) / 0.3);
+  opacity: 0.75;
+}
+
+.account-task-strip--empty:hover {
+  border-color: hsl(var(--border));
+}
+
+.account-task-strip__empty-text {
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .account-task-strip--fading {

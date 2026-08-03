@@ -39,7 +39,7 @@ export function tierBadgeLabel(tier: AccountTaskTier | string | undefined): stri
  * stopping = running + cancel_requested
  * cancelled 后端字段映射为 stopped
  */
-export type AccountTaskUiStatus = 'running' | 'stopping' | 'completed' | 'stopped' | 'failed'
+export type AccountTaskUiStatus = 'idle' | 'running' | 'stopping' | 'completed' | 'stopped' | 'failed'
 
 export function resolveTaskUiStatus(task: {
   status?: string
@@ -62,6 +62,8 @@ export function taskStatusLabel(
 ): string {
   const batchRemaining = Math.max(0, Number(options?.batchRemaining || 0))
   switch (uiStatus) {
+    case 'idle':
+      return '无任务'
     case 'stopping':
       return batchRemaining > 0 ? `停止中 本批剩 ${batchRemaining}` : '停止中…'
     case 'completed':
