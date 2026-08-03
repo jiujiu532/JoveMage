@@ -816,6 +816,242 @@ def _run_account_delete(task, tokens: list[str], *, scope: str | None = None) ->
         task.complete(**summary)
 
 
+# 启停/重置 → 账号 status 映射（与前端 bulkEnable/bulkDisable/reset 一致）
+_STATUS_ACTION_MAP: dict[str, str] = {
+    "enable": "正常",
+    "disable": "禁用",
+    "reset": "正常",
+}
+
+
+def _resolve_status_action(
+        *,
+        action: str | None,
+        status: str | None,
+) -> tuple[str, str]:
+    """返回 (action, target_status)。action 优先；否则由 status 反推。"""
+    normalized_action = (action or "").strip().lower()
+    if normalized_action in _STATUS_ACTION_MAP:
+        return normalized_action, _STATUS_ACTION_MAP[normalized_action]
+    target = _clean_text(status)
+    if not target:
+        raise ValueError("action or status is required")
+    if target == "禁用":
+        return "disable", target
+    if target == "正常":
+        # 无显式 action 时，status=正常 归为 enable（与 bulkEnable 同步路径一致）
+        return "enable", target
+    # 其它状态字面量仍允许同步写入，任务类型按 enable 记
+    return "enable", target
+
+
+def _run_account_status(
+        task,
+        tokens: list[str],
+        *,
+        status: str,
+        action: str,
+) -> None:
+    """启用/禁用/重置任务体：按 20 分批 update_account，批边界检查 cancel。"""
+    tokens = list(dict.fromkeys(t for t in tokens if t))
+    total = len(tokens)
+    updated = 0
+    processed = 0
+    stopped = False
+    errors: list[str] = []
+    updates = {"status": status}
+
+    log_service.add(
+        LOG_TYPE_ACCOUNT,
+        f"账号{action}任务开始",
+        {
+            "action": action,
+            "status": status,
+            "total": total,
+            "sample_tokens": [anonymize_token(t) for t in tokens[:5]],
+        },
+    )
+
+    try:
+        for batch_start in range(0, total, _ACCOUNT_BATCH_SIZE):
+            if task.cancel_requested:
+                stopped = True
+                break
+            batch = tokens[batch_start: batch_start + _ACCOUNT_BATCH_SIZE]
+            batch_size = len(batch)
+            _bump_task_batch_progress(
+                task,
+                progress=processed,
+                batch_remaining=batch_size,
+                current_batch_size=batch_size,
+                current_batch_done=0,
+                updated=updated,
+                stopped=stopped,
+                action=action,
+            )
+            batch_done = 0
+            for token in batch:
+                try:
+                    account = account_service.update_account(token, updates, quiet=True)
+                    if account is None:
+                        errors.append(f"{anonymize_token(token)}: not found")
+                    else:
+                        updated += 1
+                except Exception as exc:
+                    errors.append(f"{anonymize_token(token)}: {redact_auth_diagnostic(exc)}")
+                batch_done += 1
+                processed += 1
+                _bump_task_batch_progress(
+                    task,
+                    progress=processed,
+                    batch_remaining=batch_size - batch_done,
+                    current_batch_size=batch_size,
+                    current_batch_done=batch_done,
+                    updated=updated,
+                    stopped=stopped,
+                    action=action,
+                    errors=errors[:50],
+                )
+    except Exception as exc:
+        safe = redact_auth_diagnostic(exc)
+        log_service.add(
+            LOG_TYPE_ACCOUNT,
+            f"账号{action}任务失败",
+            {"action": action, "total": total, "error": safe},
+        )
+        task.fail(safe)
+        return
+
+    summary = {
+        "total": total,
+        "processed": processed,
+        "updated": updated,
+        "success": updated,
+        "errors": errors[:50],
+        "stopped": stopped,
+        "action": action,
+        "status": status,
+    }
+    log_service.add(
+        LOG_TYPE_ACCOUNT,
+        f"账号{action}任务已停止" if stopped else f"账号{action}任务完成",
+        summary,
+    )
+    if stopped:
+        task.result.update(summary)
+        task.cancel()
+    else:
+        task.complete(**summary)
+
+
+def _run_relogin_batch(task, tokens: list[str]) -> None:
+    """批量重登任务体：逐号处理（当前批=1），每号前检查 cancel，上报 batch_remaining。"""
+    tokens = list(dict.fromkeys(t for t in tokens if t))
+    total = len(tokens)
+    success = 0
+    failed = 0
+    processed = 0
+    stopped = False
+    errors: list[dict[str, str]] = []
+
+    log_service.add(
+        LOG_TYPE_ACCOUNT,
+        "账号重登任务开始",
+        {
+            "total": total,
+            "sample_tokens": [anonymize_token(t) for t in tokens[:5]],
+        },
+    )
+
+    try:
+        for old_token in tokens:
+            if task.cancel_requested:
+                stopped = True
+                break
+            # 逐条 = 当前批大小 1
+            _bump_task_batch_progress(
+                task,
+                progress=processed,
+                batch_remaining=1,
+                current_batch_size=1,
+                current_batch_done=0,
+                success=success,
+                failed=failed,
+                stopped=stopped,
+            )
+            try:
+                account = account_service.get_account(old_token)
+                if account is None:
+                    failed += 1
+                    errors.append({"token": old_token[:16], "error": "account not found"})
+                else:
+                    email = str(account.get("email") or "")
+                    password = str(account.get("password") or "")
+                    if not email:
+                        failed += 1
+                        errors.append({"token": old_token[:16], "error": "missing email"})
+                    else:
+                        proxy = str(account.get("proxy") or "")
+                        fp = None
+                        if isinstance(account.get("fingerprint"), dict):
+                            fp = dict(account["fingerprint"])
+                        elif isinstance(account.get("fp"), dict):
+                            fp = dict(account["fp"])
+
+                        new_tokens = _openai_relogin(email, password, proxy, fp)
+                        new_token = str(new_tokens.get("access_token") or "")
+                        if new_token:
+                            account_service.apply_relogin_tokens(old_token, new_tokens)
+                            success += 1
+                        else:
+                            failed += 1
+                            errors.append({"token": old_token[:16], "error": "empty access_token"})
+            except Exception as exc:
+                failed += 1
+                errors.append({"token": old_token[:16], "error": redact_auth_diagnostic(exc, 200)})
+
+            processed += 1
+            _bump_task_batch_progress(
+                task,
+                progress=processed,
+                batch_remaining=0,
+                current_batch_size=1,
+                current_batch_done=1,
+                success=success,
+                failed=failed,
+                stopped=stopped,
+                errors=errors[:50],
+            )
+    except Exception as exc:
+        safe = redact_auth_diagnostic(exc)
+        log_service.add(
+            LOG_TYPE_ACCOUNT,
+            "账号重登任务失败",
+            {"total": total, "error": safe},
+        )
+        task.fail(safe)
+        return
+
+    summary = {
+        "total": total,
+        "processed": processed,
+        "success": success,
+        "failed": failed,
+        "errors": errors[:50],
+        "stopped": stopped,
+    }
+    log_service.add(
+        LOG_TYPE_ACCOUNT,
+        "账号重登任务已停止" if stopped else "账号重登任务完成",
+        summary,
+    )
+    if stopped:
+        task.result.update(summary)
+        task.cancel()
+    else:
+        task.complete(**summary)
+
+
 def _run_account_inspect(
         task,
         tokens: list[str],
@@ -1484,22 +1720,51 @@ def create_router() -> APIRouter:
 
     @router.post("/api/accounts/batch-update")
     async def batch_update_accounts(body: AccountBatchUpdateRequest, authorization: str | None = Header(default=None)):
+        """批量改状态。
+
+        - 默认同步写 status（兼容旧前端 bulkEnable/bulkDisable）。
+        - body.as_task=true 时走 account_enable/disable/reset 后台任务。
+        """
         require_admin(authorization)
         access_tokens = _unique_tokens(body.access_tokens)
         if not access_tokens:
             raise HTTPException(status_code=400, detail={"error": "access_tokens is required"})
-        updates = {key: value for key, value in {"status": body.status}.items() if value is not None}
-        if not updates:
-            raise HTTPException(status_code=400, detail={"error": "no updates provided"})
-        updated = 0
-        errors: list[str] = []
-        for token in access_tokens:
-            account = account_service.update_account(token, updates, quiet=True)
-            if account is None:
-                errors.append(f"{token[:6]}... not found")
-            else:
-                updated += 1
-        return {"updated": updated, "errors": errors, "items": account_service.list_accounts()}
+        try:
+            action, target_status = _resolve_status_action(action=body.action, status=body.status)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail={"error": str(exc)}) from exc
+        updates = {"status": target_status}
+
+        if not body.as_task:
+            updated = 0
+            errors: list[str] = []
+            for token in access_tokens:
+                account = account_service.update_account(token, updates, quiet=True)
+                if account is None:
+                    errors.append(f"{token[:6]}... not found")
+                else:
+                    updated += 1
+            return {"updated": updated, "errors": errors, "items": account_service.list_accounts()}
+
+        task_type = f"account_{action}"
+        tier = _resolve_account_task_tier(access_tokens, scope="selected", tier=body.tier)
+
+        def _run(task) -> None:
+            _run_account_status(task, access_tokens, status=target_status, action=action)
+
+        try:
+            task = _submit_account_task(task_type, len(access_tokens), _run, tier=tier)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail={"error": redact_auth_diagnostic(exc)}) from exc
+
+        return {
+            "task_id": task.task_id,
+            "total": len(access_tokens),
+            "tier": tier,
+            "task_type": task_type,
+            "action": action,
+            "status": target_status,
+        }
 
     @router.post("/api/accounts/group")
     async def bind_accounts_group(body: AccountGroupBindRequest, authorization: str | None = Header(default=None)):
@@ -1783,60 +2048,33 @@ def create_router() -> APIRouter:
 
     @router.post("/api/accounts/relogin-batch")
     async def relogin_accounts_batch(body: ReloginBatchRequest, authorization: str | None = Header(default=None)):
+        """批量重登：提交 account_relogin 任务（兼容旧 task_type 名 relogin_batch 语义）。
+
+        档位：tokens ≤50 → light，>50 → heavy（可显式 body.tier 覆盖）。
+        任务体逐号处理，每号前检查 cancel，batch_remaining 按批=1 上报。
+        """
         require_admin(authorization)
-        tokens = [t for t in (body.tokens or []) if str(t or "").strip()]
+        tokens = _unique_tokens(body.tokens)
         if not tokens:
             raise HTTPException(status_code=400, detail={"error": "tokens list is empty"})
 
-        def _run_relogin_batch(task) -> None:
-            success = 0
-            failed = 0
-            errors: list[dict[str, str]] = []
-            for i, old_token in enumerate(tokens, 1):
-                try:
-                    account = account_service.get_account(old_token)
-                    if account is None:
-                        failed += 1
-                        errors.append({"token": old_token[:16], "error": "account not found"})
-                        task.bump(progress=i, success=success, failed=failed)
-                        continue
+        tier = _resolve_account_task_tier(tokens, scope="selected", tier=body.tier)
 
-                    email = str(account.get("email") or "")
-                    password = str(account.get("password") or "")
-                    if not email:
-                        failed += 1
-                        errors.append({"token": old_token[:16], "error": "missing email"})
-                        task.bump(progress=i, success=success, failed=failed)
-                        continue
-
-                    proxy = str(account.get("proxy") or "")
-                    fp = None
-                    if isinstance(account.get("fingerprint"), dict):
-                        fp = dict(account["fingerprint"])
-                    elif isinstance(account.get("fp"), dict):
-                        fp = dict(account["fp"])
-
-                    new_tokens = _openai_relogin(email, password, proxy, fp)
-                    new_token = str(new_tokens.get("access_token") or "")
-                    if new_token:
-                        account_service.apply_relogin_tokens(old_token, new_tokens)
-                        success += 1
-                    else:
-                        failed += 1
-                        errors.append({"token": old_token[:16], "error": "empty access_token"})
-                except Exception as exc:
-                    failed += 1
-                    errors.append({"token": old_token[:16], "error": redact_auth_diagnostic(exc, 200)})
-                task.bump(progress=i, success=success, failed=failed)
-
-            task.complete(success=success, failed=failed, errors=errors[:50])
+        def _run(task) -> None:
+            _run_relogin_batch(task, tokens)
 
         try:
-            task = task_manager.submit("relogin_batch", len(tokens), _run_relogin_batch)
+            # 统一命名 account_relogin；仍兼容前端轮询 task_id
+            task = _submit_account_task("account_relogin", len(tokens), _run, tier=tier)
         except RuntimeError as exc:
             raise HTTPException(status_code=409, detail={"error": redact_auth_diagnostic(exc)}) from exc
 
-        return {"task_id": task.task_id, "total": len(tokens)}
+        return {
+            "task_id": task.task_id,
+            "total": len(tokens),
+            "tier": tier,
+            "task_type": "account_relogin",
+        }
 
     # ============================================================
     #  Tasks: 任务列表 / 任务详情 / 按档位进行中
