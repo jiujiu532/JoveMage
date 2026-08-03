@@ -5,43 +5,12 @@ import {
   FALLBACK_RELEASES,
   isNewerVersion,
   normalizeVersionTag,
-  parseGithubReleases,
   type ReleaseInfo,
 } from '@/lib/release'
 import localVersion from '../../../VERSION?raw'
 
 const releasePageUrl = 'https://github.com/jiujiu532/JoveMage/releases'
-const latestVersionUrl = 'https://raw.githubusercontent.com/jiujiu532/JoveMage/main/VERSION'
-const latestReleasesApiUrl = 'https://api.github.com/repos/jiujiu532/JoveMage/releases?per_page=20'
 const updateCheckingMessage = '正在检查云端版本...'
-
-async function fetchRemoteText(url: string) {
-  const controller = new AbortController()
-  const timeoutId = window.setTimeout(() => controller.abort(), 8000)
-  try {
-    const response = await fetch(url, { cache: 'no-store', signal: controller.signal })
-    if (!response.ok) throw new Error(`云端返回 ${response.status}`)
-    return response.text()
-  } finally {
-    window.clearTimeout(timeoutId)
-  }
-}
-
-async function fetchRemoteJson(url: string) {
-  const controller = new AbortController()
-  const timeoutId = window.setTimeout(() => controller.abort(), 8000)
-  try {
-    const response = await fetch(url, {
-      cache: 'no-store',
-      signal: controller.signal,
-      headers: { Accept: 'application/vnd.github+json' },
-    })
-    if (!response.ok) throw new Error(`云端返回 ${response.status}`)
-    return response.json()
-  } finally {
-    window.clearTimeout(timeoutId)
-  }
-}
 
 /** 当前版本、检查更新、release notes 与更新提示 */
 export function useAppVersion() {
@@ -84,17 +53,43 @@ export function useAppVersion() {
     isCheckingUpdate.value = true
     updateCheckMessage.value = updateCheckingMessage
     try {
-      const [version, releasesPayload] = await Promise.all([
-        fetchRemoteText(latestVersionUrl),
-        fetchRemoteJson(latestReleasesApiUrl),
-      ])
-      latestVersionTag.value = normalizeVersionTag(version)
-      const remoteReleases = parseGithubReleases(releasesPayload)
+      // 经后端代理拉 GitHub，避免浏览器直连 raw/api.github.com 被 403
+      const result = await versionApi.check()
+      if (result.tag) {
+        currentVersionTag.value = normalizeVersionTag(result.tag)
+      } else if (result.version) {
+        currentVersionTag.value = normalizeVersionTag(result.version)
+      }
+      latestVersionTag.value = normalizeVersionTag(result.latest_tag || result.latest_version || '')
+
+      const remoteReleases = Array.isArray(result.releases)
+        ? result.releases
+            .map((release) => ({
+              version: String(release.version || '').trim(),
+              date: String(release.date || '').trim(),
+              items: Array.isArray(release.items)
+                ? release.items
+                    .map((item) => ({
+                      type: String(item?.type || '更新').trim() || '更新',
+                      content: String(item?.content || '').trim(),
+                    }))
+                    .filter((item) => item.content)
+                : [],
+            }))
+            .filter((release) => release.version && release.items.length)
+        : []
       if (remoteReleases.length) {
         releaseEntries.value = remoteReleases
       } else if (!releaseEntries.value.length) {
         releaseEntries.value = FALLBACK_RELEASES
       }
+
+      if (result.check_error) {
+        updateCheckMessage.value = `云端版本检查失败：${result.check_error}；当前展示本地更新日志。`
+        if (showMessage) toast.warning(updateCheckMessage.value)
+        return
+      }
+
       const message = isNewerVersion(latestVersionLabel.value, currentVersionLabel.value)
         ? `发现新版本：${latestVersionLabel.value}`
         : `当前已是最新版本：${currentVersionLabel.value || latestVersionLabel.value}`

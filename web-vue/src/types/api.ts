@@ -431,6 +431,17 @@ export interface VersionInfoResponse {
   commit: string
 }
 
+export interface VersionReleaseItem {
+  type: string
+  content: string
+}
+
+export interface VersionReleaseEntry {
+  version: string
+  date: string
+  items: VersionReleaseItem[]
+}
+
 export interface VersionCheckResponse extends VersionInfoResponse {
   repository: string
   latest_tag: string
@@ -438,7 +449,8 @@ export interface VersionCheckResponse extends VersionInfoResponse {
   release_url: string
   is_latest: boolean
   update_available: boolean
-  check_error?: string
+  check_error?: string | null
+  releases?: VersionReleaseEntry[]
 }
 
 export interface DashboardAccountStats {

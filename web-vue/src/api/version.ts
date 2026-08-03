@@ -1,12 +1,13 @@
 import apiClient from './client'
 import type { VersionCheckResponse, VersionInfoResponse } from '@/types/api'
 
-function toVersionInfo(payload: { version?: string }): VersionInfoResponse {
+function toVersionInfo(payload: { version?: string; tag?: string; commit?: string }): VersionInfoResponse {
   const version = String(payload.version || '').trim()
+  const tag = String(payload.tag || '').trim()
   return {
     version,
-    tag: version.startsWith('v') ? version : `v${version}`,
-    commit: '',
+    tag: tag || (version.startsWith('v') ? version : version ? `v${version}` : ''),
+    commit: String(payload.commit || ''),
   }
 }
 
@@ -17,15 +18,6 @@ export const versionApi = {
   },
 
   async check(): Promise<VersionCheckResponse> {
-    const current = await this.current()
-    return {
-      ...current,
-      repository: 'jiujiu532/JoveMage',
-      latest_tag: current.tag,
-      latest_version: current.version,
-      release_url: 'https://github.com/jiujiu532/JoveMage/releases',
-      is_latest: true,
-      update_available: false,
-    }
+    return apiClient.get<never, VersionCheckResponse>('/version/check')
   },
 }

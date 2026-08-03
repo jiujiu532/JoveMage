@@ -528,6 +528,13 @@ def create_router(app_version: str) -> APIRouter:
     async def get_version():
         return {"version": app_version}
 
+    @router.get("/version/check")
+    async def check_version():
+        """服务端代理检查 GitHub 最新版本，避免浏览器直连 raw/api.github.com 被 403。"""
+        from services.version_check_service import check_remote_version
+
+        return await run_in_threadpool(check_remote_version, app_version)
+
     @router.get("/public/stats")
     async def public_stats():
         from services.account_service import account_service as acct_svc
