@@ -237,40 +237,10 @@ export function useAccountTaskProgress(options: UseAccountTaskProgressOptions) {
   })
 
   const visibleStrips = computed(() => (
-    // 顶栏常驻两条：重量 + 轻量；无任务时由组件渲染「无任务」占位
+    // 顶栏常驻两条：重量 + 轻量；无任务时只返回 tier，组件显示「无任务」空态
     [
-      heavyTask.value || {
-        taskId: '',
-        type: 'account_task' as AccountTaskType,
-        tier: 'heavy' as AccountTaskTier,
-        title: '',
-        status: '',
-        uiStatus: 'idle' as AccountTaskUiStatus,
-        progress: 0,
-        total: 0,
-        batchRemaining: 0,
-        cancelRequested: false,
-        error: '',
-        result: null,
-        stripVisible: true,
-        fading: false,
-      },
-      lightTask.value || {
-        taskId: '',
-        type: 'account_task' as AccountTaskType,
-        tier: 'light' as AccountTaskTier,
-        title: '',
-        status: '',
-        uiStatus: 'idle' as AccountTaskUiStatus,
-        progress: 0,
-        total: 0,
-        batchRemaining: 0,
-        cancelRequested: false,
-        error: '',
-        result: null,
-        stripVisible: true,
-        fading: false,
-      },
+      heavyTask.value || ({ tier: 'heavy' as AccountTaskTier, isEmpty: true }),
+      lightTask.value || ({ tier: 'light' as AccountTaskTier, isEmpty: true }),
     ]
   ))
 

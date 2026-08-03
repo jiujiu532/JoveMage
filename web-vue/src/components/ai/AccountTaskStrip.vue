@@ -78,8 +78,10 @@ import type { AccountTaskTier } from '@/api/accounts'
 import { taskTypeLabel, tierBadgeLabel } from '@/views/accounts/accountTaskLabels'
 import type { TrackedAccountTask } from '@/views/accounts/useAccountTaskProgress'
 
+type StripSlot = TrackedAccountTask | { tier: AccountTaskTier; isEmpty: true }
+
 const props = defineProps<{
-  tasks: TrackedAccountTask[]
+  tasks: StripSlot[]
 }>()
 
 const emit = defineEmits<{
@@ -95,13 +97,17 @@ function stripTitle(task: TrackedAccountTask) {
   return short
 }
 
+function isEmptySlot(slot: StripSlot): slot is { tier: AccountTaskTier; isEmpty: true } {
+  return 'isEmpty' in slot && slot.isEmpty === true
+}
+
 // 常驻两条：重量 + 轻量；无任务时显示「无任务」占位
 const slots = computed(() => {
   const heavy = props.tasks.find((task) => task.tier === 'heavy') || null
   const light = props.tasks.find((task) => task.tier === 'light') || null
   return [
-    { tier: 'heavy' as AccountTaskTier, task: heavy },
-    { tier: 'light' as AccountTaskTier, task: light },
+    { tier: 'heavy' as AccountTaskTier, task: heavy && !isEmptySlot(heavy) ? heavy : null },
+    { tier: 'light' as AccountTaskTier, task: light && !isEmptySlot(light) ? light : null },
   ]
 })
 </script>
@@ -120,7 +126,7 @@ const slots = computed(() => {
 .account-task-strip {
   display: flex;
   min-width: 0;
-  max-width: 28rem;
+  max-width: 24rem;
   align-items: center;
   gap: 6px;
   border: 1px solid hsl(var(--border));
@@ -154,8 +160,10 @@ const slots = computed(() => {
 .account-task-strip--empty {
   cursor: default;
   border-style: dashed;
-  background: hsl(var(--muted) / 0.3);
-  opacity: 0.75;
+  background: hsl(var(--muted) / 0.25);
+  opacity: 0.7;
+  max-width: 10rem;
+  justify-content: flex-start;
 }
 
 .account-task-strip--empty:hover {
