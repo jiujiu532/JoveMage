@@ -56,11 +56,10 @@
       </article>
     </section>
 
-    <!-- 渠道并列卡：启用渠道始终占位（含 0 账号空态）；未启用不出现；窄屏竖排 -->
+    <!-- 渠道并列卡：启用渠道始终占位（含 0 账号空态）；未启用不出现；整行通栏，避免单卡只显示半边 -->
     <section
       v-if="channelCards.length"
-      class="channel-cards-grid grid grid-cols-1 gap-3 md:grid-cols-2"
-      :class="channelCards.length >= 3 ? 'xl:grid-cols-3' : ''"
+      class="channel-cards-grid grid grid-cols-1 gap-3"
     >
       <ChannelCard
         v-for="channel in channelCards"
