@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="web-vue/public/logo.svg?v=0.7.0" width="96" alt="JoveMage logo">
+  <img src="web-vue/public/logo.svg?v=0.8.0" width="96" alt="JoveMage logo">
 </p>
 
 <h1 align="center">JoveMage</h1>
@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/jiujiu532/JoveMage/stargazers"><img src="https://img.shields.io/github/stars/jiujiu532/JoveMage?style=flat-square&logo=github" alt="GitHub stars"></a>
-  <a href="VERSION"><img src="https://img.shields.io/badge/version-v0.7.0-2563eb?style=flat-square" alt="Version"></a>
+  <a href="VERSION"><img src="https://img.shields.io/badge/version-v0.8.0-2563eb?style=flat-square" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-f97316?style=flat-square" alt="License"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-≥3.13-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python"></a>
   <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/FastAPI-0.136-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI"></a>
@@ -37,7 +37,7 @@ JoveMage is a **multi-channel AI gateway + ops console** for self-hosters:
 One FastAPI process serves both API and console.
 
 > **Image**: `ghcr.io/jiujiu532/jovemage`  
-> **Version**: `v0.7.0`  
+> **Version**: `v0.8.0`  
 > **Env compatibility**: `CHATGPT2API_*` variables still work
 
 ## Features
@@ -45,6 +45,7 @@ One FastAPI process serves both API and console.
 - **API compatibility**: `/v1/chat/completions`, `/v1/messages`, `/v1/images/*`, `/v1/videos/generations`, `/v1/models`, …
 - **Channel registry**: ChatGPT + Firefly as first-class channels; capabilities (`chat` / `image` / `edit` / `video`) drive Studio & UI
 - **Account pool**: freshness metrics, round-robin, token refresh / failover; Firefly identity dedupe by `account_id` and cookie→IMS exchange
+- **Bulk account tasks**: refresh / inspect / delete / relogin / enable-disable-reset as unified backend jobs; light·heavy tier locks, stop at batch boundary, dual top-bar progress strips with resume after reload
 - **Registration** (ChatGPT): passwordless signup, many mail providers, proxy pool binding
 - **Image / video pipelines**: generate · edit · video task polling, storage, structured failure accounting
 - **Anti-ban proxies**: WARP 1–6 instances, `proxy_pool`, optional FlareSolverr
@@ -167,7 +168,7 @@ cd /opt/jovemage && docker compose pull && docker compose up -d
 
 - On push to `main` or tags `v*`, GitHub Actions builds multi-arch images to GHCR
 - Image: `ghcr.io/jiujiu532/jovemage` (`linux/amd64` + `linux/arm64`)
-- Tags: `latest` (main), `v0.7.0`, `0.7`, `sha-...`
+- Tags: `latest` (main), `v0.8.0`, `0.8`, `sha-...`
 - Workflow: `.github/workflows/docker-publish.yml`
 
 ## Disclaimer
