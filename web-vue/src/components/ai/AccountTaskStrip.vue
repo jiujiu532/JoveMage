@@ -1,5 +1,9 @@
 <template>
-  <div class="account-task-strips" aria-label="账号批量任务进度">
+  <div
+    class="account-task-strips"
+    :class="{ 'account-task-strips--empty': !hasAnyTask }"
+    aria-label="账号批量任务进度"
+  >
     <div
       v-for="slot in slots"
       :key="slot.tier"
@@ -110,17 +114,26 @@ const slots = computed(() => {
     { tier: 'light' as AccountTaskTier, task: light && !isEmptySlot(light) ? light : null },
   ]
 })
+
+const hasAnyTask = computed(() => slots.value.some((slot) => Boolean(slot.task)))
 </script>
 
 <style scoped>
 .account-task-strips {
   display: flex;
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   flex-direction: column;
   gap: 4px;
   justify-content: center;
   margin-right: 8px;
+}
+
+/* 双空态：一行两个小胶囊，不撑高工具行 */
+.account-task-strips--empty {
+  flex-direction: row;
+  gap: 6px;
+  align-items: center;
 }
 
 .account-task-strip {
@@ -135,6 +148,17 @@ const slots = computed(() => {
   padding: 3px 6px 3px 4px;
   cursor: pointer;
   transition: opacity 0.45s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.account-task-strip--empty {
+  cursor: default;
+  border-style: dashed;
+  background: hsl(var(--muted) / 0.25);
+  opacity: 0.7;
+  width: auto;
+  min-width: 4.5rem;
+  justify-content: center;
+  padding: 2px 6px;
 }
 
 .account-task-strip:hover {
