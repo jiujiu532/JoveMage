@@ -46,7 +46,7 @@ from utils.diagnostics import redact_auth_diagnostic
 from utils.helper import anonymize_token
 
 # 巡检分批大小：与 refresh_accounts 内部并发上限同量级，便于进度更新
-_INSPECT_BATCH_SIZE = 50
+_INSPECT_BATCH_SIZE = 20
 
 
 
